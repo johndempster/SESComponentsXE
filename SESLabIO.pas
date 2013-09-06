@@ -118,7 +118,7 @@ interface
 
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
-  mmsystem, math, xmldoc, xmlintf, strutils, shlobj ;
+  mmsystem, math, xmldoc, xmlintf, strutils, shlobj, HekaUnit ;
 
 const
      MaxDevices = 5 ;
@@ -155,11 +155,17 @@ const
      Triton = 13 ;
      CED1401_10V = 14 ;
      WirelessEEG = 15 ;
+     HekaEPC9 = 16 ;
+     HekaEPC10 = 17 ;
+     HekaEPC10Plus = 18 ;
+     HekaEPC10USB = 19 ;
+     HekaITC16 = 20 ;
+     HekaITC18 = 21 ;
+     HekaITC1600 = 22 ;
+     HekaLIH88 = 23 ;
 
-     NumLabInterfaceTypes = 16 ;
+     NumLabInterfaceTypes = 24 ;
      StimulusExtTriggerFlag = -1 ;  // Stimulus program started by external trig pulse.
-
-
 
 type
 
@@ -370,6 +376,42 @@ type
     function GetDIGHoldingLevel : Integer ;
     procedure SetDIGHoldingLevel( Value : Integer ) ;
 
+    procedure EPC9SetFilterMode( Num : Integer ; Value : Integer ) ;
+    function EPC9GetFilterMode( Num : Integer ) : Integer ;
+    procedure EPC9SetFilterBandwidth( Num : Integer ; Value : Single ) ;
+    function EPC9GetFilterBandwidth( Num : Integer ) : Single ;
+
+    procedure EPC9SetCfast( Num : Integer ; Value : Single ) ;
+    function EPC9GetCfast( Num : Integer ) : Single ;
+    procedure EPC9SetCfastTau( Value : Single ) ;
+    function EPC9GetCfastTau : Single ;
+    procedure EPC9SetCslowRange( Value : Integer ) ;
+    function EPC9GetCslowRange : Integer ;
+    procedure EPC9SetCslow( Value : Single ) ;
+    function EPC9GetCslow : Single ;
+    procedure EPC9SetGseries( Value : Single ) ;
+    function EPC9GetGseries : Single ;
+    procedure EPC9SetRSValue( Value : Single ) ;
+    function EPC9GetRSValue : Single ;
+    procedure EPC9SetRSFraction( Value : Single ) ;
+    function EPC9GetRSFraction : Single ;
+    procedure EPC9SetRSMode( Value : Integer ) ;
+    function EPC9GetRSMode : Integer ;
+    procedure EPC9SetGleak( Value : Single ) ;
+    function EPC9GetGleak : Single ;
+
+    procedure EPC9SetMode( Value : Integer ) ;
+    function EPC9GetMode : Integer ;
+    procedure EPC9SetVHold( Value : Single ) ;
+    function EPC9GetVHold : Single ;
+    procedure EPC9SetVLiquidJunction( Value : Single ) ;
+    function EPC9GetVLiquidJunction : Single ;
+    procedure EPC9SetVPOffset( Value : Single ) ;
+    function EPC9GetVPOffset : Single ;
+    procedure EPC9SetCCTrackHold( Value : Single ) ;
+    function EPC9GetCCTrackHold : Single ;
+    procedure EPC9SetCCTrackTau( Value : Single ) ;
+    function EPC9GetCCTrackTau : Single ;
 
     // XML procedures
 
@@ -563,6 +605,23 @@ procedure TritonAutoCompensation(
     function GetDBSSamplingRate : Single ;
     function GetDBSNumFramesLost : Integer ;
 
+    procedure GetEPC9State( var pState : PEPC9_StateType ) ;
+
+    procedure EPC9GetCurrentGain(
+          var Gain : Single  ;
+          var ScaleFactor : Single ) ;
+
+    procedure EPC9GetCurrentGainList( List : TStrings ) ;
+
+    procedure EPC9SetCurrentGain(
+              iGain : Integer ) ;
+
+    procedure EPC9AutoCFast ;
+    procedure EPC9AutoCSlow ;
+    procedure EPC9AutoGLeak ;
+    procedure EPC9AutoSearch ;
+    procedure EPC9AutoVpOffset ;
+
     procedure GetADCVoltageRanges(
               var Ranges : Array of Single ;
               var NumRanges : Integer ) ;
@@ -620,6 +679,76 @@ procedure TritonAutoCompensation(
     Property DoNotSaveSettings : Boolean
                                  Read FDoNotSaveSettings
                                  Write FDoNotSaveSettings ;
+
+    Property EPC9FilterMode[Num : Integer] : Integer
+                                             read EPC9GetFilterMode
+                                             write EPC9SetFilterMode ;
+
+    Property EPC9FilterBandwidth[Num : Integer] : Single
+                                                  read EPC9GetFilterBandwidth
+                                                  write EPC9SetFilterBandwidth ;
+
+    Property EPC9Cfast[Num : Integer] : Single
+                                             read EPC9GetCfast
+                                             write EPC9SetCfast ;
+
+    Property EPC9CfastTau : Single
+                            read EPC9GetCfastTau
+                            write EPC9SetCfastTau ;
+
+    Property EPC9CslowRange : Integer
+                            read EPC9GetCslowRange
+                            write EPC9SetCslowRange ;
+
+    Property EPC9Cslow : Single
+                         read EPC9GetCslow
+                         write EPC9SetCslow ;
+
+    Property EPC9Gseries : Single
+                         read EPC9GetGseries
+                         write EPC9SetGseries ;
+
+    Property EPC9RSValue : Single
+                         read EPC9GetRSValue
+                         write EPC9SetRSValue ;
+
+    Property EPC9RSFraction : Single
+                         read EPC9GetRSFraction
+                         write EPC9SetRSFraction ;
+
+    Property EPC9RSMode : Integer
+                         read EPC9GetRSMode
+                         write EPC9SetRSMode  ;
+
+    Property EPC9Gleak : Single
+                         read EPC9GetGleak
+                         write EPC9SetGleak ;
+
+    Property EPC9Mode : Integer
+                         read EPC9GetMode
+                         write EPC9SetMode ;
+
+
+    Property EPC9VHold : Single
+                         read EPC9GetVHold
+                         write EPC9SetVHold ;
+
+    Property EPC9VLiquidJunction : Single
+                         read EPC9GetVLiquidJunction
+                         write EPC9SetVLiquidJunction ;
+
+    Property EPC9VPOffset : Single
+                         read EPC9GetVPOffset
+                         write EPC9SetVPOffset ;
+
+    Property EPC9CCTrackHold : Single
+                         read EPC9GetCCTrackHold
+                         write EPC9SetCCTrackHold ;
+
+    Property EPC9CCTrackTau : Single
+                         read EPC9GetCCTrackTau
+                         write EPC9SetCCTrackTau ;
+
 
   published
 
@@ -714,6 +843,8 @@ procedure TritonAutoCompensation(
              read GetDBSPulseWidth write SetDBSPulseWidth stored false ;
     Property DBSSamplingRate : Single read GetDBSSamplingRate ;
     Property DBSNumFramesLost : Integer read GetDBSNumFramesLost ;
+
+
   end;
 
 procedure Register;
@@ -899,6 +1030,14 @@ begin
        Triton : Result := 'Tecella Triton/Triton+/Pico' ;
        CED1401_10V : Result := 'CED1401 (16 bit)(10V)' ;
        WirelessEEG : Result := 'SIPBS: Wireless EEG transceiver' ;
+       HekaEPC9 : Result := 'Heka EPC-9' ;
+       HekaEPC10 : Result := 'Heka EPC-10' ;
+       HekaEPC10plus : Result := 'Heka EPC-10plus' ;
+       HekaEPC10USB : Result := 'Heka EPC10-USB' ;
+       HekaITC16 : Result := 'Heka ITC-16' ;
+       HekaITC18 : Result := 'Heka ITC-18' ;
+       HekaITC1600 : Result := 'Heka ITC-1600' ;
+       HekaLIH88 : Result := 'Heka LIH-88' ;
        end ;
      end ;
 
@@ -1373,6 +1512,40 @@ begin
                                     FDACMinUpdateInterval ) ;
           end ;
 
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,HekaITC18,HekaITC1600,HekaLIH88 : begin
+          FLabInterfaceName := 'Heka patch clamp  ' ;
+          Heka_ConfigureHardware( FADCEmptyFlag ) ;
+          FLabInterfaceAvailable := Heka_GetLabInterfaceInfo(
+                                    FLabInterfaceType,
+                                    FLabInterfaceModel,
+                                    FADCMaxChannels,
+                                    FADCMinSamplingInterval,
+                                    FADCMaxSamplingInterval,
+                                    FADCMinValue,
+                                    FADCMaxValue,
+                                    FADCVoltageRanges,
+                                    FADCNumVoltageRanges,
+                                    FADCBufferLimit,
+                                    FDACMaxChannels,
+                                    FDACVoltageRange,
+                                    FDACMinUpdateInterval ) ;
+          FDACMinValue := FADCMinValue ;
+          FDACMaxValue := FADCMaxValue ;
+          if FLabInterfaceAvailable then begin
+             FDACBufferLimit := FADCBufferLimit ;
+             FDIGNumOutputs := 4 ; { No. of digital outputs }
+             FDIGInterval := FDACBufferLimit ;
+             FDigMinUpdateInterval := FDACMinUpdateInterval ;
+             FDigMaxUpdateInterval := 1000.0 ;
+             FDACTriggerOnLevel := IntLimit(Round((FDACMaxValue*4.99)/FDACVoltageRange),
+                                   FDACMinValue,FDACMaxValue) ;
+             FDACTriggerOffLevel := 0 ;
+             { Note. no initial points in D/A waveforms because A/D and D/A
+               runs synchronously }
+             FDACInitialPoints := 0 ;
+             end ;
+          end ;
+
        end ;
 
      { Set type to no interface if selected one is not available }
@@ -1475,6 +1648,9 @@ begin
              Triton_CloseLaboratoryInterface ;
              end ;
           WirelessEEG : begin
+             end ;
+          HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88 : begin
+             Heka_CloseLaboratoryInterface ;
              end ;
 
           end ;
@@ -1635,6 +1811,15 @@ begin
                               FADCCircularBuffer ) ;
           end ;
 
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88 : begin
+          Heka_ADCToMemory( ADCBuf,
+                              FADCNumChannels,
+                              FADCNumSamples,
+                              FADCSamplingInterval,
+                              FADCVoltageRanges[FADCVoltageRangeIndex],
+                              FADCTriggerMode,
+                              FADCCircularBuffer ) ;
+          end ;
        end ;
      FADCActive := True ;
      end ;
@@ -1688,6 +1873,10 @@ begin
           end ;
 
        WirelessEEG : begin
+          end ;
+
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88 : begin
+          Heka_StopADC ;
           end ;
 
 
@@ -1810,7 +1999,17 @@ begin
 
        WirelessEEG : begin
           end ;
-             
+
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88 : begin
+             Heka_MemoryToDACAndDigitalOut( DACBuf^,
+                                            FDACNumChannels,
+                                            FDACNumSamples,
+                                            DigBuf^,
+                                            False,
+                                            FStimulusExtTrigger,
+                                            FDACRepeatedWaveform ) ;
+             end ;
+
           end ;
      FDACActive := True ;
      end ;
@@ -1946,6 +2145,16 @@ begin
        WirelessEEG : begin
           end ;
 
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88 : begin
+             Heka_MemoryToDACAndDigitalOut( DACBuf^,
+                                            FDACNumChannels,
+                                            FDACNumSamples,
+                                            DigBuf^,
+                                            True,
+                                            FStimulusExtTrigger,
+                                            FDACRepeatedWaveform ) ;
+             end ;
+
           end ;
      FDACActive := True ;
      FDIGActive := True ;
@@ -2007,6 +2216,10 @@ begin
           end ;
 
        WirelessEEG : begin
+          end ;
+
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88 : begin
+          Heka_StopDAC ;
           end ;
 
        end ;
@@ -2075,6 +2288,10 @@ begin
        WirelessEEG : begin
           end ;
 
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88 : begin
+          Result := Heka_ReadADC( Channel ) ;
+          end ;
+
        else Result := 0 ;
        end ;
      end ;
@@ -2134,6 +2351,10 @@ begin
 
        Triton: begin
           Triton_WriteDACsAndDigitalPort(FLastDACVolts,FLastDACNumChannels,FLastDigValue) ;
+          end ;
+
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88 : begin
+          Heka_WriteDACsAndDigitalPort(FLastDACVolts,FLastDACNumChannels,FLastDigValue) ;
           end ;
 
        end ;
@@ -2226,6 +2447,10 @@ begin
 
        WirelessEEG : begin
           WirelessEEG_GetADCSamples( ADCBuf^, FOutPointer ) ;
+          end ;
+
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88 : begin
+          Heka_GetADCSamples( ADCBuf^, FOutPointer ) ;
           end ;
 
        end ;
@@ -2367,7 +2592,10 @@ begin
 
        WirelessEEG : begin
           end ;
-          
+
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88 : begin
+          Heka_WriteDACsAndDigitalPort( FLastDACVolts, FLastDACNumChannels, DigByte ) ;
+          end ;
 
        end ;
      end ;
@@ -2452,6 +2680,10 @@ begin
           end ;
 
        WirelessEEG : begin
+          end ;
+
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88 : begin
+          Heka_GetChannelOffsets( FADCChannelOffset, FADCNumChannels ) ;
           end ;
 
        end ;
@@ -2561,7 +2793,10 @@ begin
        WirelessEEG : begin
           WirelessEEG_CheckSamplingInterval( FADCSamplingInterval) ;
           end ;
-          
+
+      HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88 : begin
+          Heka_CheckSamplingInterval( FADCSamplingInterval) ;
+          end ;
 
        end ;
 
@@ -3053,6 +3288,9 @@ begin
        WirelessEEG : begin
           end ;
 
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88 : begin
+          FDACUpdateInterval := FADCSamplingInterval ;
+          end ;
        end ;
      end ;
 
@@ -3300,7 +3538,7 @@ begin
 
        WirelessEEG : begin
           end ;
-          
+
        end ;
 
      Result := Triggered ;
@@ -3974,6 +4212,227 @@ begin
        WirelessEEG : Result := Max(WirelessEEG_GetNumFramesLost,0) ;
        end ;
     end ;
+
+procedure TSESLabIO.GetEPC9State( var pState : PEPC9_StateType ) ;
+// ------------------------------------
+// Return pointer to EPC-9 state record
+// ------------------------------------
+begin
+    pState := Heka_GetEPCState ;
+    end;
+
+procedure TSESLabIO.EPC9GetCurrentGain(
+          var Gain : Single  ;
+          var ScaleFactor : Single ) ;
+begin
+    Heka_GetCurrentGain( Gain, ScaleFactor ) ;
+    end ;
+
+procedure TSESLabIO.EPC9GetCurrentGainList( List : TStrings ) ;
+begin
+    Heka_GetCurrentGainList( List ) ;
+    end ;
+
+procedure TSESLabIO.EPC9SetCurrentGain(
+          iGain : Integer ) ;
+begin
+    Heka_SetCurrentGain( iGain ) ;
+    end ;
+
+procedure TSESLabIO.EPC9SetFilterMode( Num : Integer ; Value : Integer ) ;
+begin
+    Heka_SetFilterMode(Num,Value)  ;
+    end;
+
+function TSESLabIO.EPC9GetFilterMode( Num : Integer ) : Integer ;
+begin
+    Heka_GetFilterMode(Num,Result)  ;
+    end;
+
+procedure TSESLabIO.EPC9SetFilterBandwidth( Num : Integer ; Value : Single ) ;
+begin
+     Heka_SetFilterBandwidth(Num,Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetFilterBandwidth( Num : Integer ) : Single ;
+begin
+     Heka_GetFilterBandwidth(Num,Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9SetCfast( Num : Integer ; Value : Single ) ;
+begin
+    Heka_SetCfast(Num,Value)  ;
+    end;
+
+function TSESLabIO.EPC9GetCfast( Num : Integer ) : Single ;
+begin
+    Heka_GetCfast(Num,Result)  ;
+    end;
+
+procedure TSESLabIO.EPC9SetCfastTau( Value : Single ) ;
+begin
+    Heka_SetCfastTau(Value)  ;
+    end;
+
+function TSESLabIO.EPC9GetCfastTau : Single ;
+begin
+    Heka_GetCfastTau(Result)  ;
+    end;
+
+procedure TSESLabIO.EPC9SetCslowRange( Value : Integer ) ;
+begin
+     Heka_SetCslowRange(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetCslowRange : Integer ;
+begin
+     Heka_GetCslowRange(Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9SetCslow( Value : Single ) ;
+begin
+     Heka_SetCslow(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetCslow : Single ;
+begin
+     Heka_GetCslow(Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9SetGseries( Value : Single ) ;
+begin
+     Heka_SetGseries(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetGseries : Single ;
+begin
+     Heka_GetGseries(Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9Setrsvalue( Value : Single ) ;
+begin
+     Heka_Setrsvalue(Value)  ;
+     end;
+
+function TSESLabIO.EPC9Getrsvalue : Single ;
+begin
+     Heka_Getrsvalue(Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9SetRSFraction( Value : Single ) ;
+begin
+     Heka_SetRSFraction(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetRSFraction : Single ;
+begin
+     Heka_GetRSFraction(Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9SetRSMode( Value : Integer ) ;
+begin
+     Heka_SetRSMode(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetRSMode : Integer ;
+begin
+     Heka_GetRSMode(Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9SetGleak( Value : Single ) ;
+begin
+     Heka_SetGleak(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetGleak : Single ;
+begin
+     Heka_GetGleak(Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9SetMode( Value : Integer ) ;
+begin
+     Heka_SetMode(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetMode : Integer ;
+begin
+     Heka_GetMode(Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9SetVHold( Value : Single ) ;
+begin
+     Heka_SetVHold(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetVHold : Single ;
+begin
+     Heka_GetVHold(Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9SetVLiquidJunction( Value : Single ) ;
+begin
+     Heka_SetVLiquidJunction(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetVLiquidJunction : Single ;
+begin
+     Heka_GetVLiquidJunction(Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9SetVPOffset( Value : Single ) ;
+begin
+     Heka_SetVPOffset(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetVPOffset : Single ;
+begin
+     Heka_GetVPOffset(Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9SetCCTrackHold( Value : Single ) ;
+begin
+     Heka_SetCCTrackHold(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetCCTrackHold : Single ;
+begin
+     Heka_GetCCTrackHold(Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9SetCCTrackTau( Value : Single ) ;
+begin
+     Heka_SetCCTrackTau(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetCCTrackTau : Single ;
+begin
+     Heka_GetCCTrackTau(Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9AutoCFast ;
+begin
+     Heka_AutoCFast ;
+     end;
+
+procedure TSESLabIO.EPC9AutoCSlow ;
+begin
+     Heka_AutoCSlow ;
+     end;
+
+procedure TSESLabIO.EPC9AutoGLeak ;
+begin
+     Heka_AutoCFast ;
+     end;
+
+procedure TSESLabIO.EPC9AutoSearch ;
+begin
+     Heka_AutoSearch ;
+     end;
+
+procedure TSESLabIO.EPC9AutoVpOffset ;
+begin
+     Heka_AutoVpOffset ;
+     end;
 
 
 // XML methods
