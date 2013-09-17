@@ -65,6 +65,16 @@ unit Ced1401;
                ClockSource argument added to CED_CheckSamplingInterval()
   19/04/13 ... ClockPeriod initialised to 2.5E-7 s (investigating Motoharu Yoshida's div by 0 problem
   07/08/13 ... Modified to compiled under Delphi XE2/3 )
+  11/09/13 ... Correct 4 MHz clock period (rather than 10 MHz)
+               now set for A/D and D/A timing for Power and Micro 1401 Mk2 and MK2
+               Multiple 64 Kb update buffers now used for D/A transfers to 1401
+               to avoid long delays when updating short pulses with Power 1401 Mk1
+               Tested with Power 1401, Micro 1401 Mk2 at Plymouth
+               A/D data now transferred to host in multiple 64Kbyte blocks
+               to avoid data being scrambled in long records at high sampling rates
+               TEMPORARY FIX CED Power 1401 Mk3 No. of D/A channels limited to 2 since channels
+               get scrambled (AO0 appearing on AO1 AO3 on AO0) when 4 channels used.
+
 }
 interface
 
@@ -73,6 +83,8 @@ uses WinTypes,Dialogs, SysUtils, WinProcs, Classes,use1401, math, strutils ;
 const
      MaxADCChannel = 15 ;
      DIGTIMSlicesBufLimit = 500 ;
+     MaxPointsinBlock = 32000 ;
+     MaxBytesinBlock = MaxPointsinBlock*2 ;
 
      Event0 = 1 ;
      Event1 = 2 ;
@@ -180,11 +192,7 @@ procedure CED_CheckSamplingInterval(
   procedure CED_GetError ;
   function CED_GetType : Integer ;
 
-  procedure CED_WriteToDACBuffer(
-          StartOfDACBuffer : DWord ;
-          NumPointsToWrite : Integer
-          ) ;
-
+  procedure CED_WriteToDACBuffer ;
 
   function ExtractInt ( CBuf : string ) : longint ;
 
@@ -250,9 +258,9 @@ var
    EndOf1401Digbuffer : DWORD ;
    StartOf1401DACBuffer : DWORD ;
    EndOf1401DACBuffer : DWORD ;
-   ADC1401Pointer : Integer ;
+   ADC1401Pointer : DWORD ;
    CircularBufferMode : boolean ;
-   MemoryAvailable : Integer ;
+   MemoryAvailable : DWORD ;
    ADCActive : Boolean ;
    DACActive : Boolean ;
    TypeOf1401 : Integer ;
@@ -268,10 +276,14 @@ var
    DACBufNumPoints : Integer ;
    DAC1401BufferSize : Integer ;
    DACNumPointsIn1401Buf : Integer ;
-   DACNumPointsIn1401BufHalf : Integer ;
-   DACStartOf1401BufLo : Integer ;
-   DACStartOf1401BufHi : Integer ;
-   DACLoBufferActive : Boolean ;
+
+   DACNumPointsInBlock : Integer ;
+   DACNumBytesInBlock : Integer ;
+   DACNumBlocksIn1401Buf : Integer ;
+   DACNextBlockToWrite : Integer ;
+   DAC1401BlockDone : Integer ;
+
+   DACStartOf1401BufLo : DWORD ;
    DACRepeatedWaveform : Boolean ;
    EmptyFlag : Integer ;
    DIGTIMStartEvent : Integer ;
@@ -427,10 +439,10 @@ begin
                 ADCMinSamplingInterval := 3E-6 ;
                 ADCMaxSamplingInterval := 1000.0 ;
                 DACMinUpdateInterval := 1E-4 ;
-                ADC1401BufferSize := 4*131072 ;
+                ADC1401BufferSize := 2*131072 ;
                 DAC1401BufferSize := ADC1401BufferSize ;
                 MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
-                ClockPeriod := 1.0E-7 ;
+                ClockPeriod := 2.5E-7 ;
                 end ;
 
              U14TYPEUNKNOWN : begin
@@ -469,7 +481,7 @@ begin
                 ADC1401BufferSize := 131072 ;
                 DAC1401BufferSize := ADC1401BufferSize ;
                 MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
-                ClockPeriod := 1.0E-7 ;
+                ClockPeriod := 2.5E-7 ;
                 end ;
 
              U14TYPEMICROMK3 : begin
@@ -482,7 +494,7 @@ begin
                 ADC1401BufferSize := 131072 ;
                 DAC1401BufferSize := ADC1401BufferSize ;
                 MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
-                ClockPeriod := 1.0E-7 ;
+                ClockPeriod := 2.50E-7 ;
                 end ;
 
              U14TYPEPOWERMK2 : begin
@@ -495,7 +507,20 @@ begin
                 ADC1401BufferSize := 4*131072 ;
                 DAC1401BufferSize := ADC1401BufferSize ;
                 MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
-                ClockPeriod := 1.0E-7 ;
+                ClockPeriod := 2.5E-7 ;
+                end ;
+
+             U14TYPEPOWERMK3 : begin
+                Model := 'CED Power-1401 Mk3 ';
+                ADCMaxChannels := 16 ;
+                DACMaxChannels := 2 ;
+                ADCMinSamplingInterval := 3E-6 ;
+                ADCMaxSamplingInterval := 1000.0 ;
+                DACMinUpdateInterval := 1E-4 ;
+                ADC1401BufferSize := 4*131072 ;
+                DAC1401BufferSize := ADC1401BufferSize ;
+                MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
+                ClockPeriod := 2.5E-7 ;
                 end ;
 
              else begin
@@ -811,7 +836,7 @@ procedure CED_GetADCSamples(
   ----------------------------------------------------------}
 var
    Reply : Array[0..2] of Integer ;
-   i,nBytes,StartAt,NumSamples : Integer ;
+   i,nBytes,nWrite,StartAt,NumSamples,DAC1401BlockInUse,IOBufPointer : Integer ;
    Done : Boolean ;
 begin
 
@@ -823,22 +848,28 @@ begin
         StartAt := ADC1401Pointer ;
         ADC1401Pointer := Reply[0] ;
         nBytes := Min(ADC1401Pointer - StartAt,ADC1401BufferNumBytes) ;
-        NumSamples := nBytes div 2 ;
-        //outputdebugString(PChar(format('%d',[nBytes div 2])));
-        U14ToHost( Device, PANSIChar(IOBuf), nBytes, StartAt, 0 ) ;
-     end
+        end
      else if Reply[0] < ADC1401Pointer then begin
         { Roll-over has occurred ... just transfer the samples
          from the current position until the end of the buffer,
          leave ADC1401Pointer at the start of the buffer }
         StartAt := ADC1401Pointer ;
         nBytes := Min(Endof1401ADCBuffer + 1 - StartAt,ADC1401BufferNumBytes) ;
-        NumSamples := nBytes div 2 ;
-        //outputdebugString(PChar(format('%d',[nBytes div 2])));
-        U14ToHost( Device, PANSIChar(IOBuf), nBytes, StartAt, 0 ) ;
         ADC1401Pointer := 0 ;
-     end
+        end
      else exit ;
+
+     NumSamples := nBytes div 2 ;
+     IOBufPointer := Cardinal(IOBuf) ;
+     repeat
+       nWrite := Min(nBytes,MaxBytesinBlock) ;
+       U14ToHost( Device,PANSIChar(Pointer(IOBufPointer)),nWrite,StartAt, 0 ) ;
+       IOBufPointer := IOBufPointer + nWrite ;
+       StartAt := StartAt + nWrite ;
+       nBytes := nBytes - nWrite ;
+       until nBytes = 0 ;
+        //outputdebugString(PChar(format('%d',[nBytes div 2])));
+
 
      // Copy A/D samples to host buffer
      i := 0 ;
@@ -863,19 +894,17 @@ begin
      // Update D/A output
 
      if DACActive then begin
-        SendCommand( 'MEMDAC,?;' ) ;
+        SendCommand( 'MEMDAC,P;' ) ;
         U14LongsFrom1401( Device, @Reply, High(Reply) ) ;
-        //outputdebugString(PChar(format('%d',[Reply[0]])));
-        if DACLoBufferActive and (Reply[0] = 1) then begin
-           CED_WriteToDACBuffer( DACStartOf1401BufLo, DACNumPointsIn1401BufHalf ) ;
-           DACLoBufferActive := False ;
-           end
-        else if (not DACLoBufferActive) and (Reply[0] = 2) then begin
-           CED_WriteToDACBuffer( DACStartOf1401BufHi, DACNumPointsIn1401BufHalf ) ;
-           DACLoBufferActive := True ;
+
+        DAC1401BlockInUse := Reply[0] div DACNumBytesInBlock ;
+        //outputdebugString(PChar(format('%d %d %d',[Reply[0],DAC1401BlockInUse,DAC1401BlockDone])));
+        while DAC1401BlockDone <> DAC1401BlockInUse do begin
+           CED_WriteToDACBuffer ;
+           Inc(DAC1401BlockDone) ;
+           if DAC1401BlockDone > DACNumBlocksIn1401Buf then DAC1401BlockDone := 0 ;
            end ;
         end ;
-
      end ;
 
 
@@ -964,8 +993,10 @@ begin
      DACRepeatedWaveform := DACRepeatedWaveformIn ;
      DACNumChannels := nChannels ;
      DACBufNumPoints := nPoints*nChannels ;
-     DACNumPointsIn1401Buf := (DAC1401BufferSize div (nChannels*2))*(nChannels*2) ;
-     DACNumPointsIn1401BufHalf := DACNumPointsIn1401Buf div 2 ;
+     DACNumPointsInBlock := (MaxPointsinBlock div nChannels)*nChannels ;
+     DACNumBytesInBlock := DACNumPointsInBlock*2 ;
+     DACNumBlocksIn1401Buf := DAC1401BufferSize div DACNumPointsInBlock ;
+     DACNumPointsIn1401Buf := DACNumBlocksIn1401Buf*DACNumPointsInBlock ;
 
      // Copy D/A waveform to output buffer
      for i := 0 to DACBufNumPoints-1 do DACBuf^[i] := DACBufIn[i]*DACScale ;
@@ -973,13 +1004,12 @@ begin
      nBytes := DACNumPointsIn1401Buf*2 ;
      Endof1401DACBuffer := StartOf1401DACBuffer + nBytes -1 ;
      DACStartOf1401BufLo := StartOf1401DACBuffer ;
-     DACStartOf1401BufHi := StartOf1401DACBuffer + (nBytes div 2) ;
 
-     // Fill both halfs of 1401 DAC buffer
+     // Fill first two 1401 blocks
      DACBufPointer := 0 ;
-     CED_WriteToDACBuffer( DACStartOf1401BufLo, DACNumPointsIn1401BufHalf ) ;
-     CED_WriteToDACBuffer( DACStartOf1401BufHi, DACNumPointsIn1401BufHalf ) ;
-     DACLoBufferActive := True ;
+     DACNextBlockToWrite := 0 ;
+     DAC1401BlockDone := 0 ;
+     CED_WriteToDACBuffer ;
 
      //outputdebugString(PChar(format('%d',[StartOf1401DACBuffer])));
 
@@ -1038,52 +1068,38 @@ begin
 
      end ;
 
-procedure CED_WriteToDACBuffer(
-          StartOfDACBuffer : DWord ;
-          NumPointsToWrite : Integer
-          ) ;
+procedure CED_WriteToDACBuffer ;
 // -------------------------------
 // Write D/A to DAC buffer in 1401
 // -------------------------------
 var
-    i,iLastPoint,iStart,nBytesToWrite,nWrite : Integer ;
+    i,iLastPoint,iStart : Integer ;
 begin
 
      // Copy from DACBuf to IOBuf
 
-     iLastPoint := DACBufNumPoints - DACNumChannels ;
-     for i := 0 to NumPointsToWrite-1 do begin
-        //IOBuf^[i] := DACBuf^[DACBufPointer] ;
-        //Inc(DACBufPointer) ;
-        if DACBufPointer < DACBufNumPoints then begin
-           IOBuf^[i] := DACBuf^[DACBufPointer] ;
-           Inc(DACBufPointer) ;
-        end
-        else begin
-           if DACRepeatedWaveform then begin
-              // Repeated waveform, go back to start of DACBuf
-              DACBufPointer := 0 ;
-           end
-           else begin
-              // single sweep, pad end with last points
-              IOBuf^[i] := DACBuf[iLastPoint] ;
-              Inc(iLastPoint) ;
-              if iLastPoint >= DACBufNumPoints then iLastPoint := DACBufNumPoints - DACNumChannels ;
+     for i := 0 to DACNumPointsInBlock-1 do begin
+        IOBuf^[i] := DACBuf^[DACBufPointer] ;
+        Inc(DACBufPointer) ;
+        if DACBufPointer >= DACBufNumPoints then begin
+           // Go back to start for repeated waveforms,
+           // Pad with last set of channels for single sweeps
+           if DACRepeatedWaveform then DACBufPointer := 0
+                                  else DACBufPointer := DACBufNumPoints - DACNumChannels ;
            end ;
         end ;
-     end ;
 
-     iStart := 0 ;
-     nBytesToWrite := NumPointsToWrite*2 ;
-     repeat
-        nWrite := Min( 60000, nBytesToWrite ) ;
-        U14To1401( Device, PANSIChar(Pointer(Cardinal(IOBuf)+iStart)),
-                   nWrite, StartOfDACBuffer+iStart, 1 ) ;
-        iStart := iStart + nWrite ;
-        nBytesToWrite := nBytesToWrite - nWrite ;
-        until nBytesToWrite <= 0 ;
-     CED_GetError ;
-     end ;
+     iStart := DACNextBlockToWrite*DACNumBytesInBlock ;
+     U14To1401( Device,
+                PANSIChar(IOBuf),
+                DACNumBytesinBlock,
+                StartOf1401DACBuffer + iStart, 1 ) ;
+     Inc(DACNextBlockToWrite) ;
+     if DACNextBlockToWrite >= DACNumBlocksIn1401Buf then DACNextBlockToWrite := 0 ;
+
+      CED_GetError ;
+
+      end ;
 
 
 procedure CED_SetDAC2( Volts : Single ) ;
