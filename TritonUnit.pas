@@ -939,6 +939,9 @@ procedure Triton_SetTritonICLAMPOn(
           ) ;
 function Triton_GetTritonICLAMPOn : Boolean ;
 
+procedure TECELLA_DisableFPUExceptions ;
+procedure TECELLA_EnableFPUExceptions ;
+
 implementation
 
 uses seslabio ;
@@ -977,6 +980,7 @@ var
     FConfigInUse : Integer ;             // Config currently in use
     FICLAMPOn : Boolean ;
     GetADCSamplesInUse : Boolean ;
+FPUExceptionMask : Set of TFPUException ;
 
         tecella_enumerate : Ttecella_enumerate ;
         tecella_enumerate_get : Ttecella_enumerate_get ;
@@ -1316,7 +1320,7 @@ begin
      if not LibraryLoaded then Triton_LoadLibrary ;
      if not LibraryLoaded then Exit ;
 
-     //Triton_CheckError('tecella_debug :',tecella_debug(PChar('triton debug.txt')));
+     //Triton_CheckError('tecella_debug :',tecella_debug(PANSIChar('c:\triton debug.txt')));
 
      Triton_CheckError('tecella_get_lib_props :',tecella_get_lib_props(LibProps));
 
@@ -2900,7 +2904,7 @@ begin
       FConfigInUse := Config ;
 
       //Triton_CheckError( 'tecella_user_config_set : ',
-      tecella_user_config_set( TecHandle, Config) ;//) ;
+      tecella_user_config_set( TecHandle, Config) ;
 
      // Hardware properties
      Triton_CheckError( 'tecella_get_hw_props : ',
@@ -3034,6 +3038,37 @@ function TECELLA_ACQUIRE_CB(
 begin
 //  outputDebugString( PChar(format('called %d',[0]))) ;
   end ;
+
+
+procedure TECELLA_DisableFPUExceptions ;
+// ----------------------
+// Disable FPU exceptions
+// ----------------------
+var
+    FPUNoExceptions : Set of TFPUException ;
+begin
+
+     FPUExceptionMask := GetExceptionMask ;
+     Include(FPUNoExceptions, exInvalidOp );
+     Include(FPUNoExceptions, exDenormalized );
+     Include(FPUNoExceptions, exZeroDivide );
+     Include(FPUNoExceptions, exOverflow );
+     Include(FPUNoExceptions, exUnderflow );
+     Include(FPUNoExceptions, exPrecision );
+     SetExceptionMask( FPUNoExceptions ) ;
+
+     end ;
+
+
+procedure TECELLA_EnableFPUExceptions ;
+// ----------------------
+// Disable FPU exceptions
+// ----------------------
+begin
+     SetExceptionMask( FPUExceptionMask ) ;
+     end ;
+
+
 
 initialization
 

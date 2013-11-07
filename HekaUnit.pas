@@ -1,7 +1,10 @@
 unit HekaUnit;
-//
+// ==========================================
 // HEKA patch clamps & Instrutech interfaces
-// 08.09.10
+// ==========================================
+// 20.09.13 Tested and working with EPC-10
+//          Support for 2 and 4 channel amplifiers not tested
+//          Digital outputs not supported yet
 
 interface
 
@@ -303,6 +306,7 @@ TEPC9_SetExtStimPath= function(
                       Path : Integer
                       ) : LongInt ; stdcall ;
 
+
 TEPC9_SetF1Index= function(
                   Filter1 : Integer ) : LongInt ; stdcall ;
 
@@ -343,7 +347,7 @@ TEPC9_SetVpOffset= function( Volts : Double) : LongInt ; stdcall ;
 
 TEPC9_SetCCTrackHold= function( TrackVHold : Double) : LongInt ; stdcall ;
 
-TEPC9_SetCCTrackTau= function( Tau : Double) : LongInt ; stdcall ;
+TEPC9_SetCCTrackTau= function( Tau : Integer ) : LongInt ; stdcall ;
 
 TEPC9_GetErrorText= function(Msg : PANSIChar ) : LongInt ; stdcall ;
 
@@ -597,11 +601,10 @@ function EPC9_LoadFileProcType(
    function TrimChar( Input : Array of ANSIChar ) : string ;
    procedure HEKA_CheckError( OK : ByteBool ) ;
 
-   procedure HEKA_FillOutputBufferWithDefaultValues ;
-
    function Heka_GetEPCState : Pointer ;
 
    procedure Heka_GetCurrentGain(
+          AmpNumber : Integer ;
           var Gain : Single  ;
           var ScaleFactor : Single ) ;
 
@@ -645,16 +648,27 @@ function EPC9_LoadFileProcType(
     procedure Heka_GetRsMode( var Value : Integer ) ;
     procedure Heka_SetMode( var Value : Integer ) ;
     procedure Heka_GetMode( var Value : Integer ) ;
+    procedure Heka_SetGentleModeChange( var Value : Boolean ) ;
+    procedure Heka_GetGentleModeChange( var Value : Boolean ) ;
     procedure Heka_SetVHold( var Value : Single ) ;
     procedure Heka_GetVHold( var Value : Single ) ;
     procedure Heka_SetVLiquidJunction( var Value : Single ) ;
     procedure Heka_GetVLiquidJunction( var Value : Single ) ;
     procedure Heka_SetVPOffset( var Value : Single ) ;
     procedure Heka_GetVPOffset( var Value : Single ) ;
+    procedure Heka_SetCCGain( var Value : Integer ) ;
+    procedure Heka_GetCCGain( var Value : Integer ) ;
     procedure Heka_SetCCTrackHold( var Value : Single ) ;
     procedure Heka_GetCCTrackHold( var Value : Single ) ;
-    procedure Heka_SetCCTrackTau( var Value : Single ) ;
-    procedure Heka_GetCCTrackTau( var Value : Single ) ;
+    procedure Heka_SetCCTrackTau( Value : Integer ) ;
+    procedure Heka_GetCCTrackTau( var Value : Integer ) ;
+    procedure Heka_SetExtStimPath( Value : Integer ) ;
+    procedure Heka_GetExtStimPath( var Value : Integer ) ;
+    procedure Heka_SetEnableStimFilter( Value : Boolean ) ;
+    procedure Heka_GetEnableStimFilter( var Value : Boolean ) ;
+    procedure Heka_SetAmplifier( Value : Integer ) ;
+    procedure Heka_GetAmplifier( var Value : Integer ) ;
+    procedure Heka_GetNumAmplifiers( var Value : Integer ) ;
     procedure Heka_AutoCFast ;
     procedure Heka_AutoCSlow ;
     procedure Heka_AutoGLeak ;
@@ -671,11 +685,10 @@ const
     MaxBufs = (HEKA_MaxADCSamples div NumPointsPerBuf) + 2 ;
 var
    InterfaceType : Integer ;
-   ADCNumSamplesRequired : Integer ;
+   EPC9Available : Boolean ;
    FADCVoltageRangeMax : single ;    // Max. positive A/D input voltage range
    FADCMinValue : Integer ;          // Max. binary A/D sample value
    FADCMaxValue : Integer ;          // Min. binary A/D sample value
-   FDACMinUpdateInterval : Double ;  // Min. D/A update interval= function(s)
 
    MinSamplingInterval : double ;  // Min. sampling interval(s)
    MaxSamplingInterval : double ;  // Max. sampling interval(s)
@@ -701,7 +714,6 @@ var
    ADCActive : Boolean ;  // A/D sampling in progress flag
    DACActive : Boolean ;  // D/A output in progress flag
 
-   Err : Integer ;                           // Error number returned by Digidata
    ErrorMsg : Array[0..80] of ANSIchar ;         // Error messages returned by Digidata
 
    LibraryHnd : THandle ;         // axDD1440.dll library handle
@@ -721,6 +733,8 @@ var
    DACDefaultValue : Array[0..LIH_MaxDacChannels-1] of SmallInt ;
    ScaleData : Array[0..49999] of Byte ;
    EPC9MinCurrentGain : Double ;
+
+   GentleModeChange : LongBool ;  // 1=0 gentle mode change
 
    DIGDefaultValue : Integer ;
 
@@ -896,7 +910,6 @@ begin
      ADCMinSamplingInterval := MinSamplingInterval ;
      ADCMaxSamplingInterval := MaxSamplingInterval ;
 
-
      // Upper limit of bipolar D/A voltage range
      DACMaxVolts := 10.0 ;
      FDACVoltageRangeMax := 10.0 ;
@@ -907,8 +920,27 @@ begin
      EPC9State := EPC9_GetStateAdr ;
      EPC9MinCurrentGain := EPC9State^.RealCurrentGain ;
 
+     GentleModeChange := False ;
+
      { Get device model and firmware details }
-     Model := BoardName + format( ' (DLL V.%d)',[EPC9_DLLVersion]) + ANSIString(EPC9State^.SerialNumber);
+     if EPC9Available then begin
+
+        case EPC9State^.AmplKind of
+          EPC9_Epc9Ampl : Model := 'EPC-9' ;
+          EPC9_Epc10Ampl : Model := 'EPC-10' ;
+          EPC9_Epc10PlusAmpl  : Model := 'EPC-10+' ;
+          EPC9_Epc10USB : Model := 'EPC-10-USB' ;
+          else Model := 'EPC-?' ;
+          end ;
+
+        if EPC9State^.IsEpc9N then Model := Model + ' (EPC9N)' ;
+        if EPC9State^.IsQuadro then Model := Model + ' (Quadro)' ;
+        Model := Model + ' s/n ' + ANSIString(EPC9State^.SerialNumber) ;
+        end
+     else Model := '' ;
+
+     Model := Model + ' Board:' + BoardName ;
+     Model := Model + ' ' + format( ' (epc.dll V.%d)',[EPC9_DLLVersion]) ;
 
      Result := DeviceInitialised ;
 
@@ -1074,8 +1106,8 @@ procedure HEKA_InitialiseBoard ;
   Initialise Digidata 1200 interface hardware
   -------------------------------------------}
 var
-   ch,FirstError,LastError,IAmplifier, Err : Integer ;
-   LoadScaleProc,LoadCFastProc : Pointer ;
+   ch,FirstError,LastError,IAmplifier, Err, iBoard : Integer ;
+   //LoadScaleProc,LoadCFastProc : Pointer ;
    ErrorMsg : Array[0..511] of ANSIChar ;
 begin
 
@@ -1089,13 +1121,31 @@ begin
        HekaEPC10 : IAmplifier := EPC9_Epc10Ampl ;
        HekaEPC10plus : IAmplifier := EPC9_Epc10PlusAmpl ;
        HekaEPC10USB : IAmplifier := EPC9_Epc10USB ;
-       else IAmplifier := EPC9_Epc9Ampl ;
+       else IAmplifier := EPC9_Epc7Ampl ;
        end ;
 
-     Err := EPC9_InitializeAndCheckForLife( ErrorMsg,FirstError,LastError,IAmplifier,
+     if IAmplifier = EPC9_Epc7Ampl then begin
+        // Initialise board only
+        case InterfaceType of
+           HekaITC16 : iBoard := LIH_ITC16Board ;
+           HekaITC18 : iBoard := LIH_ITC18Board ;
+           HekaITC1600 : iBoard := LIH_LIH1600Board ;
+           HekaLIH88 : iBoard := LIH_LIH88Board ;
+           else iBoard :=  LIH_ITC16Board ;
+           end ;
+        LIH_InitializeInterface( IAmplifier, iBoard ) ;
+        EPC9Available := False ;
+        end
+     else begin
+        // Initialise patch clamp & boarc
+        Err := EPC9_InitializeAndCheckForLife( ErrorMsg,
+                                            FirstError,
+                                            LastError,
+                                            IAmplifier,
                                             @EPC9_LoadFileProcType,
                                             @EPC9_LoadFileProcType ) ;
-
+        EPC9Available := True ;
+        end ;
      //ShowMessage( ANSIString( ErrorMsg));
 
      // Get board capabilities
@@ -1114,50 +1164,36 @@ begin
      // Set channel mappings
 
      // Input
-     AIChannelList[0] := 0 ;
-     AIChannelList[1] := 3 ;
-     AIChannelList[2] := 2 ;
-     AIChannelList[3] := 1 ;
-     AIChannelList[4] := 4 ;
-     AIChannelList[5] := 5 ;
-     AIChannelList[6] := 6 ;
-     AIChannelList[7] := 7 ;
+     if EPC9Available then begin
+       // EPC-9/10 mappings
+       AIChannelList[0] := 0 ;
+       AIChannelList[1] := 3 ;
+       AIChannelList[2] := 2 ;
+       AIChannelList[3] := 1 ;
+       AIChannelList[4] := 4 ;
+       AIChannelList[5] := 5 ;
+       AIChannelList[6] := 6 ;
+       AIChannelList[7] := 7 ;
 
-     // Output
-     AOChannelList[0] := 3 ;
-     AOChannelList[1] := 1 ;
-     AOChannelList[2] := 2 ;
-     AOChannelList[3] := 0 ;
+       // Output
+       AOChannelList[0] := 3 ;
+       AOChannelList[1] := 1 ;
+       AOChannelList[2] := 2 ;
+       AOChannelList[3] := 0 ;
+       end
+     else begin
+       // Board-only mappings
+       for  ch := 0  to High(AIChannelList) do AIChannelList[ch] := ch ;
+       for  ch := 0  to High(AOChannelList) do AOChannelList[ch] := ch ;
+       end ;
 
      AIBuf := Nil ;
      AOBuf := Nil ;
-
-     // Determine number of available DD1440s
-     //NumDevices := HEKA_CountDevices ;
-
 
     DeviceInitialised := True ;
 
      end ;
 
-
-procedure HEKA_FillOutputBufferWithDefaultValues ;
-// --------------------------------------
-// Fill output buffer with default values
-// --------------------------------------
-var
-    i,j,ch : Integer ;
-begin
-    exit ;
-    // Circular transfer buffer
-    for i := 0 to AONumSamples-1 do begin
-        for ch  := 0 to AONumChannels - 1 do begin
-            AOBuf^[j] := DACDefaultValue[ch] ;
-            Inc(j) ;
-            end ;
-        end ;
-
-    end ;
 
 procedure HEKA_ConfigureHardware(
           EmptyFlagIn : Integer ) ;
@@ -1183,8 +1219,6 @@ function HEKA_ADCToMemory(
   -----------------------------}
 var
    i,AcquisitionMode : Word ;
-   ch : Integer ;
-   iPointer : Cardinal ;
    SetStimEnd,ReadContinuously,OK : LongInt ;
    AODataBufs : Array[0..LIH_MaxDacChannels-1] of PSmallIntArray ;
 begin
@@ -1198,9 +1232,6 @@ begin
      AINumSamples := NumADCSamples ;
      AICircularBuffer := CircularBuffer ;
      AIPointer := 0 ;
-
-
-     //EPC9_SetMuxPath(1) ;
 
      SamplingInterval := dt ;
      Heka_CheckSamplingInterval( SamplingInterval ) ;
@@ -1485,9 +1516,6 @@ begin
      if not ADCActive then  LIH_SetDigital( 0, DigWord ) ;
      DIGDefaultValue := DigValue ;
 
-     // Fill D/A & digital O/P buffers with default values
-     HEKA_FillOutputBufferWithDefaultValues ;
-
      end ;
 
 
@@ -1543,14 +1571,21 @@ begin
      // Shut down interface
      LIH_Shutdown ;
 
+     // Shut down EPC-9
+     if EPC9Available then begin
+        EPC9_Shutdown ;
+        end;
+
      for i := 0 to AIMaxChannels-1 do FreeMem( AIDataBufs[i] );
 
      // Free DLL libraries
      if LibraryHnd > 0 then FreeLibrary( LibraryHnd ) ;
+     LibraryLoaded := False ;
 
      FreeMem( AOBuf ) ;
      FreeMem( AIBuf ) ;
      DeviceInitialised := False ;
+
      DACActive := False ;
      ADCActive := False ;
 
@@ -1587,12 +1622,22 @@ function EPC9_LoadFileProcType(
          var DataStart : Pointer ;
          var FileSize : Integer ;
          MustLocate : LongBool ) : Integer ; cdecl ;
+// -----------------------
+// Load scale factor files
+// -----------------------
 var
     FileHandle : THandle ;
     Path : String ;
     NumBytes : Integer ;
 begin
+
     Path := ExtractFilePath(ParamStr(0)) + ANSIString(FileName) ;
+
+    if not FileExists(Path) then begin
+        ShowMessage('Cannot open ' + ANSIString(FileName) + '! Locate and copy file to folder ' +  ExtractFilePath(ParamStr(0)));
+        Result := 1 ;
+        end ;
+
     if FileExists(Path) then begin
        FileHandle := FileOpen( Path, fmOpenRead ) ;
        if FileHandle > 0 then begin
@@ -1600,11 +1645,14 @@ begin
           FileSeek( FileHandle, 0, 0 ) ;
           FileRead( FileHandle, ScaleData, NumBytes ) ;
           FileClose(FileHandle) ;
+          FileSize := NumBytes ;
           end;
-       end;
-    //ShowMessage( ANSIString(Path)) ;
+       end ;
+
     DataStart := @ScaleData[0] ;
-    FileSize := NumBytes ;
+
+    Result := 0 ;
+
     end;
 
 function Heka_GetEPCState : Pointer ;
@@ -1616,6 +1664,7 @@ begin
       end;
 
 procedure Heka_GetCurrentGain(
+          AmpNumber : Integer ;
           var Gain : Single  ;
           var ScaleFactor : Single ) ;
 // ------------------------------------
@@ -1624,7 +1673,7 @@ procedure Heka_GetCurrentGain(
 var
     EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
+     EPC9State := EPC9_GetEpc9NStateAdr(AmpNumber) ;
      ScaleFactor := EPC9MinCurrentGain*1E-12 ;  // Convert to mV/pA
      Gain :=  EPC9State^.RealCurrentGain / EPC9MinCurrentGain ;
      end;
@@ -1788,6 +1837,7 @@ begin
 
 procedure Heka_SetGseries( var Value : Single ) ;
 begin
+     Value := Max(Value,1E-10) ;
      EPC9_SetGseries( Value ) ;
      end;
 
@@ -1851,7 +1901,7 @@ begin
 
 procedure Heka_SetMode( var Value : Integer ) ;
 begin
-     EPC9_SetMode( Value, True ) ;
+     EPC9_SetMode( Value, GentleModeChange ) ;
      end;
 
 procedure Heka_GetMode( var Value : Integer ) ;
@@ -1860,6 +1910,16 @@ var
 begin
      EPC9State := EPC9_GetStateAdr ;
      Value := EPC9State^.Mode ;
+     end;
+
+procedure Heka_SetGentleModeChange( var Value : Boolean ) ;
+begin
+     GentleModeChange := Value ;
+     end;
+
+procedure Heka_GetGentleModeChange( var Value : Boolean ) ;
+begin
+     Value := GentleModeChange ;
      end;
 
 procedure Heka_SetVHold( var Value : Single ) ;
@@ -1901,6 +1961,19 @@ begin
      Value := EPC9State^.VPOffset ;
      end;
 
+procedure Heka_SetCCGain( var Value : Integer ) ;
+begin
+     EPC9_SetCCGain( Value ) ;
+     end;
+
+procedure Heka_GetCCGain( var Value : Integer ) ;
+var
+    EPC9State : PEPC9_StateType ;
+begin
+     EPC9State := EPC9_GetStateAdr ;
+     Value := EPC9State^.CCGain ;
+     end;
+
 procedure Heka_SetCCTrackHold( var Value : Single ) ;
 begin
      EPC9_SetCCTrackHold( Value ) ;
@@ -1914,18 +1987,64 @@ begin
      Value := EPC9State^.CCTrackVHold ;
      end;
 
-procedure Heka_SetCCTrackTau( var Value : Single ) ;
+procedure Heka_SetCCTrackTau( Value : Integer ) ;
 begin
      EPC9_SetCCTrackTau( Value ) ;
      end;
 
-procedure Heka_GetCCTrackTau( var Value : Single ) ;
+procedure Heka_GetCCTrackTau( var Value : Integer ) ;
 var
     EPC9State : PEPC9_StateType ;
 begin
      EPC9State := EPC9_GetStateAdr ;
      Value := EPC9State^.CCTrackTau ;
      end;
+
+procedure Heka_SetExtStimPath( Value : Integer ) ;
+begin
+     EPC9_SetExtStimPath( 10.0, Value ) ;
+     end;
+
+procedure Heka_GetExtStimPath( var Value : Integer ) ;
+begin
+     Value := EPC9_GetExtStimPath ;
+     end;
+
+procedure Heka_SetEnableStimFilter( Value : Boolean ) ;
+begin
+     EPC9_SetStimFilterOn( Value ) ;
+     end;
+
+procedure Heka_GetEnableStimFilter( var Value :  Boolean ) ;
+var
+    EPC9State : PEPC9_StateType ;
+begin
+     EPC9State := EPC9_GetStateAdr ;
+     Value := EPC9State^.StimFilterOn ;
+     end;
+
+
+procedure Heka_SetAmplifier( Value : Integer ) ;
+begin
+     EPC9_SetE9Board(Value) ;
+     end;
+
+procedure Heka_GetAmplifier( var Value : Integer ) ;
+var
+    EPC9State : PEPC9_StateType ;
+begin
+     EPC9State := EPC9_GetStateAdr ;
+     Value := EPC9State^.ActiveE9Board ;
+     end;
+
+procedure Heka_GetNumAmplifiers( var Value : Integer ) ;
+var
+    EPC9State : PEPC9_StateType ;
+begin
+     EPC9State := EPC9_GetStateAdr ;
+     Value := EPC9State^.E9Boards ;
+     end;
+
 
 procedure Heka_AutoCFast ;
 begin

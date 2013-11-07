@@ -123,8 +123,6 @@ TChannel = record
          color : TColor ;
          end ;
 
-
-
      TROI = record
          InUse : Boolean ;
          Shape : Integer ;
@@ -136,8 +134,6 @@ TChannel = record
          ZoomFactor : Single ;
          XY : Array[0..ROIMaxPoints-1] of TPoint ;
          NumPoints : Integer ;
-         //PixelList : PPointArray ;
-         //NumPixels : Integer ;
          end ;
 
   TBindingEquation = record

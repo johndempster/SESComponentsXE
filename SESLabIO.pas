@@ -112,6 +112,9 @@ unit SESLabIO;
   23/7/13 .... Conditional compile for DECIMALSEPARATOR (V7) and formatsettings.DECIMALSEPARATOR (XE2+)
   20.08.13 'lab interface settings.xml' now stored in Windows
            <common documents folder>\SESLABIO\lab interface settings.xml' rather than program folder
+  19.09.13 Upper limit of .ADCChannelInputNumber logical->physical channel mapping doubled for
+           NI boards with more than 16 channels in differential mapping to allow re-mapping of
+           AI 8-15 to AI 16-23
   ================================================================================ }
 
 interface
@@ -402,16 +405,27 @@ type
 
     procedure EPC9SetMode( Value : Integer ) ;
     function EPC9GetMode : Integer ;
+    procedure EPC9SetGentleModeChange( Value : Boolean ) ;
+    function EPC9GetGentleModeChange : Boolean ;
     procedure EPC9SetVHold( Value : Single ) ;
     function EPC9GetVHold : Single ;
     procedure EPC9SetVLiquidJunction( Value : Single ) ;
     function EPC9GetVLiquidJunction : Single ;
     procedure EPC9SetVPOffset( Value : Single ) ;
     function EPC9GetVPOffset : Single ;
+    procedure EPC9SetCCGain( Value : Integer ) ;
+    function EPC9GetCCGain : Integer ;
     procedure EPC9SetCCTrackHold( Value : Single ) ;
     function EPC9GetCCTrackHold : Single ;
-    procedure EPC9SetCCTrackTau( Value : Single ) ;
-    function EPC9GetCCTrackTau : Single ;
+    procedure EPC9SetCCTrackTau( Value : Integer ) ;
+    function EPC9GetCCTrackTau  : Integer ;
+    procedure EPC9SetExtStimPath( Value : Integer ) ;
+    function EPC9GetExtStimPath  : Integer ;
+    procedure EPC9SetEnableStimFilter( Value : Boolean ) ;
+    function  EPC9GetEnableStimFilter  : Boolean ;
+    procedure EPC9SetAmplifier( Value : Integer ) ;
+    function  EPC9GetAmplifier  : Integer ;
+    function  EPC9GetNumAmplifiers  : Integer ;
 
     // XML procedures
 
@@ -608,6 +622,7 @@ procedure TritonAutoCompensation(
     procedure GetEPC9State( var pState : PEPC9_StateType ) ;
 
     procedure EPC9GetCurrentGain(
+          AmpNumber : Integer ;
           var Gain : Single  ;
           var ScaleFactor : Single ) ;
 
@@ -728,6 +743,9 @@ procedure TritonAutoCompensation(
                          read EPC9GetMode
                          write EPC9SetMode ;
 
+    Property EPC9GentleModeChange : Boolean
+                              read EPC9GetGentleModeChange
+                              write EPC9SetGentleModeChange ;
 
     Property EPC9VHold : Single
                          read EPC9GetVHold
@@ -741,16 +759,35 @@ procedure TritonAutoCompensation(
                          read EPC9GetVPOffset
                          write EPC9SetVPOffset ;
 
+    Property EPC9CCGain : Integer
+                         read EPC9GetCCGain
+                         write EPC9SetCCGain ;
+
     Property EPC9CCTrackHold : Single
                          read EPC9GetCCTrackHold
                          write EPC9SetCCTrackHold ;
 
-    Property EPC9CCTrackTau : Single
+    Property EPC9CCTrackTau : Integer
                          read EPC9GetCCTrackTau
                          write EPC9SetCCTrackTau ;
 
+    Property EPC9ExtStimPath : Integer
+                               read EPC9GetExtStimPath
+                               write EPC9SetExtStimPath ;
+
+    Property EPC9EnableStimFilter : Boolean
+                               read EPC9GetEnableStimFilter
+                               write EPC9SetEnableStimFilter ;
+
+    Property EPC9Amplifier : Integer
+                             read EPC9GetAmplifier
+                             write EPC9SetAmplifier ;
+
+    Property EPC9NumAmplifiers : Integer
+                                 read EPC9GetNumAmplifiers ;
 
   published
+
 
     { Published declarations }
     Property LabInterfaceType : Integer Read FLabInterfaceType write SetLabInterfaceType stored false ;
@@ -1513,7 +1550,7 @@ begin
           end ;
 
        HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,HekaITC18,HekaITC1600,HekaLIH88 : begin
-          FLabInterfaceName := 'Heka patch clamp  ' ;
+          FLabInterfaceName := GetLabInterfaceName(FLabInterfaceType) ;
           Heka_ConfigureHardware( FADCEmptyFlag ) ;
           FLabInterfaceAvailable := Heka_GetLabInterfaceInfo(
                                     FLabInterfaceType,
@@ -3174,8 +3211,12 @@ begin
 
      if (Chan >= 0) and (Chan < MaxADCChannels) then begin
         case FLabInterfaceType of
-            NationalInstruments,NIDAQMX : FADCChannelInputNumber[Chan] :=
-                                            Max(Min(FADCMaxChannels-1,Value),0) ;
+            NationalInstruments,NIDAQMX : begin
+                if ((ADCInputMode = imDifferential) or (ADCInputMode = imBNC2090)) and
+                   (FADCMaxChannels > 8 ) then
+                    FADCChannelInputNumber[Chan] := Max(Min((FADCMaxChannels*2)-1,Value),0)
+                else FADCChannelInputNumber[Chan] := Max(Min(FADCMaxChannels-1,Value),0) ;
+                end;
             else FADCChannelInputNumber[Chan] := Chan ;
             end ;
         end ;
@@ -4222,10 +4263,11 @@ begin
     end;
 
 procedure TSESLabIO.EPC9GetCurrentGain(
+          AmpNumber : Integer ;
           var Gain : Single  ;
           var ScaleFactor : Single ) ;
 begin
-    Heka_GetCurrentGain( Gain, ScaleFactor ) ;
+    Heka_GetCurrentGain( AmpNumber, Gain, ScaleFactor ) ;
     end ;
 
 procedure TSESLabIO.EPC9GetCurrentGainList( List : TStrings ) ;
@@ -4359,6 +4401,16 @@ begin
      Heka_GetMode(Result)  ;
      end;
 
+procedure TSESLabIO.EPC9SetGentleModeChange( Value : Boolean ) ;
+begin
+     Heka_SetGentleModeChange(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetGentleModeChange : Boolean ;
+begin
+     Heka_GetGentleModeChange(Result)  ;
+     end;
+
 procedure TSESLabIO.EPC9SetVHold( Value : Single ) ;
 begin
      Heka_SetVHold(Value)  ;
@@ -4389,6 +4441,16 @@ begin
      Heka_GetVPOffset(Result)  ;
      end;
 
+procedure TSESLabIO.EPC9SetCCGain( Value : Integer ) ;
+begin
+     Heka_SetCCGain(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetCCGain : Integer ;
+begin
+     Heka_GetCCGain(Result)  ;
+     end;
+
 procedure TSESLabIO.EPC9SetCCTrackHold( Value : Single ) ;
 begin
      Heka_SetCCTrackHold(Value)  ;
@@ -4399,14 +4461,49 @@ begin
      Heka_GetCCTrackHold(Result)  ;
      end;
 
-procedure TSESLabIO.EPC9SetCCTrackTau( Value : Single ) ;
+procedure TSESLabIO.EPC9SetCCTrackTau( Value : Integer ) ;
 begin
      Heka_SetCCTrackTau(Value)  ;
      end;
 
-function TSESLabIO.EPC9GetCCTrackTau : Single ;
+function TSESLabIO.EPC9GetCCTrackTau : Integer ;
 begin
      Heka_GetCCTrackTau(Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9SetExtStimPath( Value : Integer ) ;
+begin
+     Heka_SetExtStimPath(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetExtStimPath : Integer ;
+begin
+     Heka_GetExtStimPath(Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9SetEnableStimFilter( Value : Boolean ) ;
+begin
+     Heka_SetEnableStimFilter(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetEnableStimFilter : Boolean ;
+begin
+     Heka_GetEnableStimFilter(Result)  ;
+     end;
+
+procedure TSESLabIO.EPC9SetAmplifier( Value : Integer ) ;
+begin
+     Heka_SetAmplifier(Value)  ;
+     end;
+
+function TSESLabIO.EPC9GetAmplifier : Integer ;
+begin
+     Heka_GetAmplifier(Result)  ;
+     end;
+
+function TSESLabIO.EPC9GetNumAmplifiers : Integer ;
+begin
+     Heka_GetNumAmplifiers(Result)  ;
      end;
 
 procedure TSESLabIO.EPC9AutoCFast ;

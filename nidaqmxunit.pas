@@ -48,7 +48,7 @@ unit NidaqMXUnit;
 // 23.07.13 Warning message no longer produced when unsupported A/D input mode changed
 // 20.08.13 Unnecessary DAQmxResetDevice in NIDAQmx_initialise() removed to speed up
 //          initialisation
-
+// 05.11.13 FDACVoltageRange now defaults to 10V when no DACs available
 
 interface
 
@@ -2355,6 +2355,7 @@ begin
            FDACMaxVolts := Max(AORanges[i],FDACMaxVolts) ;
            end ;
        end ;
+    if FDACMaxVolts = 0 then FDACMaxVolts := 10.0 ;
 
     // Create D/A task
     FDACNumChannels := 0 ;
@@ -3009,6 +3010,7 @@ begin
 
      // Select A/D input channels
 //     ChannelList := format( DeviceName + '/AI0:%d', [nChannels-1] ) ;
+
      ChannelList := '' ;
      for ch := 0 to nChannels-1 do begin
          ChannelList := ChannelList +
@@ -3606,7 +3608,6 @@ var
     TaskHandle : Integer ;
     Voltage : Double ;
     ADCModeCode : Integer ;
-//    VUnScale,ADCValue : Single ;
 begin
      Result := 0 ;
      if not BoardInitialised then NIMX_InitialiseBoard ;
@@ -3641,10 +3642,6 @@ begin
                                                  DefaultTimeOut,
                                                  Voltage,
                                                  Nil )) ;
-
-    //ADCValue := Voltage / ADCVoltageRange ;
-    //VUnScale := FADCMaxValue/ADCVoltageRange ;
-    //Result := Round( (ADCValue*FADCScaleFactors[1] + FADCScaleFactors[0])*VUnScale ) ;
 
      // Clear task
      NIMX_CheckError( DAQmxClearTask ( TaskHandle ) ) ;

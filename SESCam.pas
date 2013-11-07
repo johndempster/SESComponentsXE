@@ -50,6 +50,12 @@ unit SESCam;
  30/07/12 .... JD IMAQDX_SetVideoMode removed from SetCameraADC to avoid frame size being set
                   incorrectly on program start for IMAQdx cameras
  02/05/13 .... JD Andor SDK3 camera support added
+ 30-10-13 .... JD IMAQ_CheckFrameInterval() changed. Camera frame interval now set to fixed video
+               interval (1/25, 1/30 sec) depending upon RS170 or CCIR camera (IMAQ_CheckFrameInterval()
+               .ShortenExposureBy property added Exposure time for externally triggered exposures
+               now shortened by the larger of .ShortenExposureBy or .AdditionalReadoutTime
+
+ 07-11-13 .... JD Andor SDK2 Readout preamp gain and vertical shift speed can now be set by user
 
   ================================================================================ }
 {$OPTIMIZATION OFF}
@@ -58,7 +64,7 @@ interface
 
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs, itex, imaq1394,
-  pixelflyunit, SensiCamUnit, HamDCAMUnit, Math, AndorUnit, 
+  pixelflyunit, SensiCamUnit, HamDCAMUnit, Math, AndorUnit,
   QCAMUnit, pvcam, imaqunit, nimaqdxunit, strutils, DTOpenLayersUnit, AndorSDK3Unit ;
 
 const
@@ -142,6 +148,7 @@ type
     FTriggerMode : Integer ;      // Frame capture trigger mode
     FTriggerType : Integer ;      // Camera trigger type
     FAdditionalReadoutTime : Double ; // Additional readout time
+    FShortenExposureBy : Double ;     // Shorten exposure
 
     FPixeldepth : Integer ;     // No. of bits per pixel
     FGreyLevelMin : Integer ;   // Minimum pixel grey level value
@@ -163,6 +170,8 @@ type
     CameraReadoutSpeedList : TStringList ;
     CameraModeList : TStringList ;
     CameraADCList : TStringList ;
+    ADCGainList : TStringList ;
+    CCDVerticalShiftSpeedList : TStringList ;
 
     FTemperature : Single ;
     FTemperatureSetPoint : Single ;
@@ -170,6 +179,9 @@ type
     FCameraFanMode : Integer ;      // 0=Off, 1=low, 2=high
     FDisableEMCCD : Boolean ;       // TRUE=EMCDD function disabled
     FCameraRestartRequired : Boolean ;     // TRUE=restart of camera required
+
+    FADCGain : Integer ;            // A/D gain index value
+    FCCDVerticalShiftSpeed : Integer ; // Vertical CCD line shift speed index
 
     ImageAreaChanged : Boolean ;   // TRUE = image area has been changed
 
@@ -235,6 +247,8 @@ type
 
     procedure SetCameraMode( Value : Integer ) ;
     procedure SetCameraADC( Value : Integer ) ;
+    procedure SetADCGain( Value : Integer ) ;
+    procedure SetCCDVerticalShiftSpeed( Value : Integer ) ;
 
   protected
     { Protected declarations }
@@ -258,6 +272,9 @@ type
     procedure GetCameraReadoutSpeedList( List : TStrings ) ;
     procedure GetCameraModeList( List : TStrings ) ;
     procedure GetCameraADCList( List : TStrings ) ;
+    procedure GetADCGainList( List : TStrings ) ;
+    procedure GetCCDVerticalShiftSpeedList( List : TStrings ) ;
+
     procedure GetCameraInfo( List : TStrings ) ;
     function IsLSM( iCameraType : Integer ) : Boolean ;
     procedure SetCCDArea( FrameLeft : Integer ;
@@ -289,6 +306,9 @@ type
     Property ReadoutTime : Double Read GetReadoutTime ;
     Property AdditionalReadoutTime : Double
              read FAdditionalReadoutTime Write FAdditionalReadoutTime ;
+    Property ShortenExposureBy : Double
+             read FShortenExposureBy Write FShortenExposureBy ;
+
     Property FrameInterval : Double Read FFrameInterval Write SetFrameInterval ;
     Property PixelDepth : Integer Read FPixelDepth ;
     Property GreyLevelMin : Integer Read FGreyLevelMin ;
@@ -320,6 +340,8 @@ type
 
     Property CameraMode : Integer read FCameraMode write SetCameraMode ;
     Property CameraADC : Integer read FCameraADC write SetCameraADC ;
+    Property ADCGain : Integer read FADCGain write SetADCGain ;
+    Property CCDVerticalShiftSpeed : Integer read FCCDVerticalShiftSpeed write SetCCDVerticalShiftSpeed ;
 
   end;
 
@@ -391,6 +413,7 @@ begin
      FTriggerMode := CamFreeRun ;
      FTriggerType := CamExposureTrigger ;
      FAdditionalReadoutTime := 0.0 ;
+     FShortenExposureBy := 0.0 ;
      FDisableEMCCD := False ;
      FCameraRestartRequired := False ;
 
@@ -421,6 +444,12 @@ begin
      // A/D converter list
      CameraADCList := TStringList.Create ;
 
+     ADCGainList := TStringList.Create ;
+     ADCGainList.Add('X1') ;
+
+     CCDVerticalShiftSpeedList := TStringList.Create ;
+     CCDVerticalShiftSpeedList.Add('n/a') ;
+
      FTemperature := 0.0 ;
      FTemperatureSetPoint := -50.0 ;
      FCameraCoolingOn := True ;
@@ -449,6 +478,8 @@ begin
      CameraGainList.Free ;
      CameraModeList.Free ;
      CameraADCList.Free ;
+     ADCGainList.Free ;
+     CCDVerticalShiftSpeedList.Free ;
 
      { Call inherited destructor }
      inherited Destroy ;
@@ -540,6 +571,9 @@ begin
      FPixelWidth := 1.0 ;
      FPixelUnits := '' ;
      FTriggerType := CamExposureTrigger ;
+
+     FADCGain := 0 ;                  // A/D gain index value
+     FCCDVerticalShiftSpeed := -1 ;  // Vertical CCD line shift speed index
 
      CameraGainList.Clear ;
      CameraGainList.Add( '1 ' ) ;
@@ -863,6 +897,8 @@ begin
                               FNumBytesPerPixel,
                               FPixelDepth,
                               FPixelWidth,
+                              ADCGainList,
+                              CCDVerticalShiftSpeedList,
                               CameraInfo ) ;
 
           if FCameraAvailable then begin
@@ -1090,8 +1126,10 @@ begin
              FGreyLevelMax := FGreyLevelMax - 1 ;
              FGreyLevelMin := 0 ;
              FCCDRegionReadoutAvailable := True ;
+
              // Get frame readout speed
-             IMAQ_CheckFrameInterval( IMAQSession, FFrameInterval ) ;
+             IMAQ_CheckFrameInterval( IMAQSession, FTriggerMode, FFrameWidthMax,
+                                      FFrameInterval,FReadoutTime ) ;
 
              FBinFactor := 1 ;
              FBinFactorMax := 1 ;
@@ -1619,7 +1657,7 @@ begin
                                                PFrameBuffer,
                                                FNumBytesInFrameBuffer,
                                                FFrameInterval,
-                                               FAdditionalReadoutTime,
+                                               Max(FAdditionalReadoutTime,FShortenExposureBy),
                                                FAmpGain,
                                                FFrameWidth,
                                                FFrameHeight,
@@ -1634,7 +1672,7 @@ begin
           FCameraActive := IMAQ1394_StartCapture(
                            Session,
                            FFrameInterval,
-                           FAdditionalReadoutTime,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
                            FAmpGain,
                            FTriggerMode,
                            FFrameLeft,
@@ -1653,7 +1691,7 @@ begin
           FCameraActive := PixelFly_StartCapture(
                            PixelFlySession,
                            FFrameInterval,
-                           FAdditionalReadoutTime,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
                            FAmpGain,
                            FTriggerMode,
                            FFrameLeft,
@@ -1672,7 +1710,7 @@ begin
           FCameraActive := SENSICAM_StartCapture(
                            SENSICAMSession,
                            FFrameInterval,       // this should be the ExposureTime ?
-                           FAdditionalReadoutTime,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
                            FAmpGain,
                            FTriggerMode,
                            FFrameLeft,
@@ -1735,7 +1773,7 @@ begin
           FCameraActive := QCAMAPI_StartCapture(
                            QCAMSession,
                            FFrameInterval,
-                           FAdditionalReadoutTime,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
                            FAmpGain,
                            FReadoutSpeed,
                            FTriggerMode,
@@ -1757,7 +1795,7 @@ begin
           FCameraActive := DCAMAPI_StartCapture(
                            DCAMSession,
                            FFrameInterval,
-                           FAdditionalReadoutTime,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
                            FAmpGain,
                            FReadoutSpeed,
                            FTriggerMode,
@@ -2186,7 +2224,8 @@ begin
           end ;
 
        IMAQ : begin
-          IMAQ_CheckFrameInterval( IMAQSession, FFrameInterval ) ;
+          IMAQ_CheckFrameInterval( IMAQSession, FTriggerMode, FFrameWidthMax,
+                                   FFrameInterval,FReadoutTime ) ;
           end ;
 
        IMAQDX : begin
@@ -2207,13 +2246,10 @@ procedure TSESCam.SetNumFramesInBuffer( Value : Integer ) ;
 // ---------------------------------------------
 // Set number of frames in internal image buffer
 // ---------------------------------------------
-var
-     OldValue : Integer ;
 begin
      if not FCameraActive then begin
-        OldValue := FNumFramesInBuffer ;
         FNumFramesInBuffer := LimitTo( Value, 2, 10000 ) ;
-        {if OldValue <> FNumFramesInBuffer then }AllocateFrameBuffer ;
+        AllocateFrameBuffer ;
         end ;
      end ;
 
@@ -2369,6 +2405,40 @@ begin
 
      // Ensure list is not empty
      if List.Count < 1 then List.Add(' ') ;
+
+     end ;
+
+
+procedure TSESCam.GetADCGainList( List : TStrings ) ;
+// --------------------------------------------------------
+// Get list of available camera A/D converter gain settings
+// --------------------------------------------------------
+var
+     i : Integer ;
+begin
+
+     List.Clear ;
+     for i := 0 to ADCGainList.Count-1 do List.Add(ADCGainList[i]) ;
+
+     // Ensure list is not empty
+     if List.Count < 1 then List.Add('X1') ;
+
+     end ;
+
+
+procedure TSESCam.GetCCDVerticalShiftSpeedList( List : TStrings ) ;
+// ----------------------------------------------
+// Get list of CCD vertical shift speed settings
+// ----------------------------------------------
+var
+     i : Integer ;
+begin
+
+     List.Clear ;
+     for i := 0 to CCDVerticalShiftSpeedList.Count-1 do List.Add(CCDVerticalShiftSpeedList[i]) ;
+
+     // Ensure list is not empty
+     if List.Count < 1 then List.Add('n/a') ;
 
      end ;
 
@@ -2726,6 +2796,41 @@ begin
 
     end ;
 
+
+procedure TSESCam.SetADCGain( Value : Integer ) ;
+// -----------------------------
+// Set camera A/D converter gain
+// -----------------------------
+begin
+
+     FADCGain := Value ;
+
+     case FCameraType of
+       ANDOR : begin
+         AndorSession.PreAmpGain := FADCGain ;
+         end ;
+       end ;
+
+    end ;
+
+
+procedure TSESCam.SetCCDVerticalShiftSpeed( Value : Integer ) ;
+// ---------------------------------
+// Set CCD vertical line shift speed
+// ---------------------------------
+begin
+
+     FCCDVerticalShiftSpeed := Value ;
+
+     case FCameraType of
+       ANDOR : begin
+         AndorSession.VSSpeed := FCCDVerticalShiftSpeed ;
+         if AndorSession.VSSpeed < 0 then AndorSession.VSSpeed := AndorSession.DefaultVSSpeed ;
+         FCCDVerticalShiftSpeed := AndorSession.VSSpeed ;
+         end ;
+       end ;
+
+    end ;
 
 
 end.

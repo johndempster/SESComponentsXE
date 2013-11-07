@@ -8,6 +8,8 @@ unit imaqUnit;
 // 27.07.10 External trigger supported added.
 //          Camera now also outputs pulse on trigger at end of frame
 // 24-7-13 JD Now compiles unders Delphi XE2/3 as well as 7. (not tested)
+// 29-10-13 JD IMAQ_CheckFrameInterval() changed. Camera frame interval now set to fixed video
+//          interval (1/25, 1/30 sec) depending upon RS170 or CCIR camera (IMAQ_CheckFrameInterval()
 
 interface
 
@@ -1458,9 +1460,13 @@ procedure IMAQ_GetImage(
 
 procedure IMAQ_GetCameraGainList( CameraGainList : TStringList ) ;
 
-function IMAQ_CheckFrameInterval(
+procedure IMAQ_CheckFrameInterval(
           var Session : TIMAQSession ;
-          var FrameInterval : Double ) : Integer ;
+          TriggerMode : Integer ;
+          FrameWidthMax : Integer ;
+          var FrameInterval : Double ;
+          var FrameIntervalMin : Double
+          ) ;
 
 procedure IMAQ_LoadLibrary  ;
 function IMAQ_GetDLLAddress(
@@ -1677,9 +1683,7 @@ function IMAQ_OpenCamera(
 // ---------------------
 var
     Err : Integer ;
-    i,j :Integer ;
-    Supported : Boolean ;
-    s : String ;
+    i :Integer ;
     InterfaceName : Array[0..255] of ANSIchar ;
     InterfaceType : Integer ;
     ColourSupported : Integer ;
@@ -1872,7 +1876,7 @@ function IMAQ_StartCapture(
 // Start frame capture
 // -------------------
 var
-    i,Err : Integer ;
+    i : Integer ;
 begin
 
     // Stop any acquisition which is in progress
@@ -1919,7 +1923,6 @@ begin
                                                      IMG_TRIG_ACTION_BUFFER)) ;
         end ;
 
-
       // Set CCD readout region
       IMAQ_CheckError( imgSessionConfigureROI( Session.SessionID,
                                                FrameTop,
@@ -1937,7 +1940,6 @@ begin
       Session.FrameBufPointer := PFrameBuffer ;
       Session.NumBytesPerFrame := NumBytesPerFrame ;
       Session.BufferIndex := 0 ;
-
 
      // Start acquisition
      IMAQ_CheckError(imgSessionStartAcquisition(Session.SessionID)) ;
@@ -1974,8 +1976,6 @@ procedure IMAQ_GetImage(
 // -----------------------------------------------------
 var
     i : Cardinal ;
-    Err : Integer ;
-    t0 :Integer ;
     Status,LatestIndex :Integer ;
     PFromBuf, PToBuf : PByteArray ;
 
@@ -2022,17 +2022,27 @@ begin
     end ;
 
 
-function IMAQ_CheckFrameInterval(
+procedure IMAQ_CheckFrameInterval(
          var Session : TIMAQSession ;
-         var FrameInterval : Double
-         ) : Integer ;
-//
+         TriggerMode : Integer ;
+         FrameWidthMax : Integer ;
+         var FrameInterval : Double ;
+         var FrameIntervalMin : Double
+         )  ;
+// -------------------------------------------
 // Check that selected frame interval is valid
 // -------------------------------------------
-//
+const
+    RS170Width = 640 ;
 begin
+     // Determine whether RS170 or CCIR camera from frame width
+     if FrameWidthMax > RS170Width then FrameIntervalMin := (1.0/25.0)*0.999
+                                   else FrameIntervalMin := (1.0/30.0)*0.999 ;
 
-     FrameInterval := Max(0.04,FrameInterval) ;
+     // In free run mode set to  camera interval. In external trigger mode force above camera interval
+     if TriggerMode = CamExtTrigger then
+        FrameInterval := Max(FrameIntervalMin,FrameInterval)
+     else FrameInterval := FrameIntervalMin ;
 
      end ;
 

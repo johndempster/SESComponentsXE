@@ -1569,7 +1569,7 @@ procedure DCAMAPI_GetCameraReadoutSpeedList(
 function DCAMAPI_StartCapture(
          var Session : TDCAMAPISession ;   // Camera session record
          var InterFrameTimeInterval : Double ;      // Frame exposure time
-         var AdditionalReadoutTime : Double ;
+         AdditionalReadoutTime : Double ;
          AmpGain : Integer ;              // Camera amplifier gain index
          ReadoutSpeed : Integer ;         // Camera Read speed index number
          ExternalTrigger : Integer ;      // Trigger mode
@@ -2087,7 +2087,7 @@ begin
 function DCAMAPI_StartCapture(
          var Session : TDCAMAPISession ;   // Camera session record
          var InterFrameTimeInterval : Double ;      // Frame exposure time
-         var AdditionalReadoutTime : Double ;
+         AdditionalReadoutTime : Double ;
          AmpGain : Integer ;              // Camera amplifier gain index
          ReadoutSpeed : Integer ;         // Camera Read speed index number
          ExternalTrigger : Integer ;      // Trigger mode

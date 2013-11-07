@@ -18,7 +18,7 @@ unit AndorUnit;
 // 30-4-12 JD Latest Andor SDK folder now searched for atmcd32.DLL as well as old#
 //         if DLL not found in c:\winfluor. Correct folder is now supplied to initialize
 //         to ensure detector.ini is located for older Ixon cameras
-// 24-7-13 JD Now compiles unders Delphi XE2/3 as well as 7.
+// 16.08.13 JD Readout preamp gain and vertical shift speed can now be set by user
 
 interface
 
@@ -59,6 +59,11 @@ TAndorSession = record
      ADChannel : Integer ;
      PixelDepth : Integer ;
      LibFileName : String ;
+     NumPreAmpGains : Integer ;
+     PreAmpGain : Integer ;
+     VSSpeed : Integer ;
+     NumVSSpeeds : Integer ;
+     DefaultVSSpeed : Integer ;
      end ;
 
 PAndorSession = ^TAndorSession ;
@@ -527,6 +532,28 @@ TGetNumberADChannels = function(
                        var NumChannels : Integer
                        ) : Integer ; stdcall ;
 
+TGetNumberPreAmpGains = function(
+                       var NumGains : Integer
+                       ) : Integer ; stdcall ;
+
+TSetPreAmpGain = function(
+                       Gain : Integer
+                       ) : Integer ; stdcall ;
+
+TGetPreAmpGain = function(
+                       Index : Integer ;
+                       Var Gain : Single
+                       ) : Integer ; stdcall ;
+
+TIsPreAmpGainAvailable = function(
+                         channel : Integer ;
+                         amplifier : Integer ;
+                         iSpeed : Integer ;
+                         GainIndex : Integer ;
+                         var status : Integer
+                         ) : Integer ; stdcall ;
+
+
 function Andor_GetDLLAddress(
          Handle : Integer ;
          const ProcName : string ) : Pointer ;
@@ -542,6 +569,8 @@ function Andor_OpenCamera(
           var NumBytesPerPixel : Integer ;   // Returns bytes/pixel
           var PixelDepth : Integer ;         // Returns no. bits/pixel
           var PixelWidth : Single ;          // Returns pixel size (um)
+          ADCGainList : TStringList ;           // Returns ADC preamp gain settings
+          VerticalShiftSpeedList : TStringList ; // Returns vertical shift speed settings
           CameraInfo : TStringList         // Returns Camera details
           ) : Boolean ;
 
@@ -908,6 +937,11 @@ var
   IdAndorDll : TIdAndorDll ;
   SetBaselineClamp : TSetBaselineClamp ;
   GetNumberADChannels : TGetNumberADChannels ;
+  GetNumberPreAmpGains : TGetNumberPreAmpGains ;
+  SetPreAmpGain : TSetPreAmpGain ;
+  GetPreAmpGain : TGetPreAmpGain ;
+  IsPreAmpGainAvailable : TIsPreAmpGainAvailable ;
+
 
 procedure Andor_LoadLibrary(
           var Session : TAndorSession   // Camera session record
@@ -1049,6 +1083,10 @@ begin
      @SetFrameTransferMode := Andor_GetDLLAddress(LibraryHnd,'SetFrameTransferMode') ;
      @SetBaselineClamp := Andor_GetDLLAddress(LibraryHnd,'SetBaselineClamp') ;
      @GetNumberADChannels := Andor_GetDLLAddress(LibraryHnd,'GetNumberADChannels') ;
+     @GetNumberPreAmpGains := Andor_GetDLLAddress(LibraryHnd,'GetNumberPreAmpGains') ;
+     @SetPreAmpGain := Andor_GetDLLAddress(LibraryHnd,'SetPreAmpGain') ;
+     @GetPreAmpGain := Andor_GetDLLAddress(LibraryHnd,'GetPreAmpGain') ;
+     @IsPreAmpGainAvailable := Andor_GetDLLAddress(LibraryHnd,'IsPreAmpGainAvailable') ;
 
      LibraryLoaded := True ;
 
@@ -1064,7 +1102,7 @@ function Andor_GetDLLAddress(
 begin
     Result := GetProcAddress(Handle,PChar(ProcName)) ;
     if Result = Nil then
-       ShowMessage('atmcd32d.dll: ' + ProcName + ' not found') ;
+       MessageDlg('atmcd32d.dll: ' + ProcName + ' not found',mtWarning,[mbOK],0) ;
     end ;
 
 
@@ -1075,6 +1113,8 @@ function Andor_OpenCamera(
           var NumBytesPerPixel : Integer ;   // Returns bytes/pixel
           var PixelDepth : Integer ;         // Returns no. bits/pixel
           var PixelWidth : Single ;          // Returns pixel size (um)
+          ADCGainList : TStringList ;           // Returns ADC preamp gain settings
+          VerticalShiftSpeedList : TStringList ; // Returns vertical shift speed settings
           CameraInfo : TStringList         // Returns Camera details
           ) : Boolean ;
 // ---------------------
@@ -1083,7 +1123,7 @@ function Andor_OpenCamera(
 var
     Err : Integer ;
     cBuf : Array[0..79] of ANSIChar ;
-    s : String ;
+    s,ss : String ;
     i,j :Integer ;
     CCDTemperature : Integer ;
     CCDXSize : Integer ;
@@ -1103,6 +1143,8 @@ var
     NumAmps : Integer ;
     AmpMaxSpeed : Single ;
     Path : ANSIstring ;
+    Gain : Single ;
+    fpValue : Single ;
 begin
 
      Result := False ;
@@ -1175,11 +1217,11 @@ begin
 
      Andor_CheckError( 'GetNumberAmp', GetNumberAmp( NumAmps )) ;
      CameraInfo.Add(' ') ;
-     s := 'CCD readout amplifiers: '  ;
+     s := 'CCD readout channels: '  ;
      for i := 0 to NumAmps-1 do begin
          Andor_CheckError( 'GetAmpDesc',GetAmpDesc(i , cBuf, 79 )) ;
          Andor_CheckError( 'GetAmpMaxSpeed',GetAmpMaxSpeed(i , AmpMaxSpeed )) ;
-         s := s + format('%d= %s ',[i,string(cBuf)]) ;
+         s := s + format('%s ',[string(cBuf)]) ;
          end ;
      CameraInfo.Add(s) ;
 
@@ -1193,10 +1235,9 @@ begin
          Andor_CheckError( 'GetHSSpeed',
                            GetHSSpeed( Session.ADChannel, 1, i, ReadoutRate )) ;
          if i > 0 then s := s + ', ' ;
-         s := s + format('%d=%.4g MHz',[i,ReadoutRate] ) ;
+         s := s + format('%.4g MHz',[ReadoutRate] ) ;
          end ;
      CameraInfo.Add(s) ;
-
 
      // List horizontal pixel readout rates
      Andor_CheckError( 'GetNumberHSSpeeds', GetNumberHSSpeeds( Session.ADChannel, 0, NumHSSpeeds )) ;
@@ -1205,7 +1246,7 @@ begin
          Andor_CheckError( 'GetHSSpeed',
                            GetHSSpeed( Session.ADChannel, 0, i, ReadoutRate )) ;
          if i > 0 then s := s + ', ' ;
-         s := s + format('%d=%.4g MHz',[i,ReadoutRate] ) ;
+         s := s + format('%.4g MHz',[ReadoutRate] ) ;
          end ;
      CameraInfo.Add(s) ;
 
@@ -1215,23 +1256,42 @@ begin
                                                  Session.CameraMode, 0, ReadoutRate )) ;
      CameraInfo.Add(format('Readout rate = %.4g MHz',[ReadoutRate])) ;
 
-     // List vertical line shift times
-     Andor_CheckError( 'GetNumberVSSpeeds',
-                       GetNumberVSSpeeds( NumVSSpeeds )) ;
-     CameraInfo.Add(' ') ;
-     s := 'Vertical line shift times: ' ;
-     for i := 0 to NumVSSpeeds-1 do begin
-         Andor_CheckError( 'GetVSSpeed',GetVSSpeed( i, ShiftTime )) ;
-         if i > 0 then s := s + ', ' ;
-         s := s + format('%d=%.4g us ',[i,ShiftTime] )
+     Andor_CheckError( 'GetNumberPreAmpGains',
+                        GetNumberPreAmpGains(Session.NumPreAmpGains)) ;
+     ss := 'Readout Pre-Amp Gains: ' ;
+     ADCGainList.Clear ;
+     for i := 0 to Session.NumPreAmpGains-1 do begin
+         Andor_CheckError( 'GetNumberPreAmpGains', GetPreAmpGain(i,Gain)) ;
+         s := format('X%.3g',[Gain]) ;
+         ADCGainList.Add(s) ;
+         ss := ss + s ;
+         if i < (Session.NumPreAmpGains-1) then ss := ss + ', ' ;
          end ;
-     CameraInfo.Add(s) ;
+     CameraInfo.Add(ss) ;
+
+     // List vertical line shift speeds
+
+     Andor_CheckError( 'GetNumberVSSpeeds', GetNumberVSSpeeds( Session.NumVSSpeeds )) ;
+
+     CameraInfo.Add(' ') ;
+     VerticalShiftSpeedList.Clear ;
+     ss := 'Vertical line shift times: ' ;
+     for i := 0 to Session.NumVSSpeeds-1 do begin
+         Andor_CheckError( 'GetVSSpeed',GetVSSpeed( i, ShiftTime )) ;
+         if i > 0 then ss := ss + ', ' ;
+         s := format('%.4g us ',[ShiftTime] ) ;
+         VerticalShiftSpeedList.Add(s) ;
+         ss := ss + s ;
+         end ;
+     CameraInfo.Add(ss) ;
+
      // Set vertical shift to fastest recommended speed
      Andor_CheckError( 'GetFastestRecommendedVSSpeed',
-                        GetFastestRecommendedVSSpeed( i, ShiftTime )) ;
-     Andor_CheckError( 'SetVSSpeed', SetVSSpeed( i )) ;
-     Andor_CheckError( 'GetVSSpeed',GetVSSpeed( i, ShiftTime )) ;
-     CameraInfo.Add(format('Vertical line shift time= %.4g us',[ShiftTime])) ;
+                        GetFastestRecommendedVSSpeed( Session.DefaultVSSpeed, fpValue )) ;
+     Session.VSSpeed := Session.DefaultVSSpeed ;
+     Andor_CheckError( 'SetVSSpeed', SetVSSpeed( Session.DefaultVSSpeed )) ;
+     Andor_CheckError( 'GetVSSpeed',GetVSSpeed( Session.DefaultVSSpeed, fpValue )) ;
+     CameraInfo.Add(format('Default vertical line shift time= %.4g us',[fpValue])) ;
 
      // Set frame transfer time
      Session.FrameTransferTime :=  ShiftTime*FrameHeightMax*1E-6 ;
@@ -1349,6 +1409,7 @@ begin
         Andor_CheckError( 'SetOutputAmplifier', SetOutputAmplifier(AmpType)) ;
         end ;
 
+
      end ;
 
 
@@ -1406,6 +1467,7 @@ begin
     GreyLevelMin := 0 ;
 
     end ;
+
 
 
 procedure Andor_CloseCamera(
@@ -1609,11 +1671,8 @@ begin
                                         FrameBottom,
                                         BinFactor ) ;}
 
-//outputdebugString(PChar('Done')) ;
     FrameWidth := (FrameRight - FrameLeft + 1) div BinFactor ;
     FrameHeight := (FrameBottom - FrameTop + 1 ) div BinFactor ;
-
-    //outputdebugString(PChar(format('H=%d B-T== %d',[FrameHeight,FrameBottom - FrameTop]))) ;
 
     end ;
 
@@ -1647,7 +1706,7 @@ var
     ExposureTime : Single ;
     AccumulateTime : Single ;
     TrigMode : Integer ;
-    AndorGain,MaxGain,MinGain : Integer ;
+    AndorGain,MaxGain,MinGain,iPreAmpGain : Integer ;
     NumOutputAmplifiers : Integer ;
 begin
 
@@ -1665,6 +1724,11 @@ begin
 
      // Set CCD readout speed
      Andor_CheckError( 'SetHSSpeed', SetHSSpeed( Session.CameraMode, Session.ReadoutSpeed )) ;
+
+     // Set vertical line shift speed
+     if Session.VSSpeed < 0 then Session.VSSpeed := Session.DefaultVSSpeed ;
+     Session.VSSpeed := Min(Max(Session.VSSpeed,0),Session.NumVSSpeeds-1) ;
+     Andor_CheckError( 'SetVSSpeed', SetVSSpeed( Session.VSSpeed )) ;
 
      // Check that frame interval is valid
      Andor_CheckFrameInterval( Session,
@@ -1687,6 +1751,12 @@ begin
      Andor_CheckError( 'GetEMGainRange', GetEMGainRange(MinGain,MaxGain)) ;
      AndorGain := Max(Min(Round(AmpGain*(MaxGain-MinGain)*0.01)+MinGain,MaxGain),MinGain) ;
      Andor_CheckError( 'SetEMCCDGain', SetEMCCDGain( AndorGain )) ;
+
+     // Set A/D pre-amp gain
+     if Session.NumPreAmpGains > 0 then begin
+        iPreAmpGain := Min(Max(0,Session.PreAmpGain),Session.NumPreAmpGains-1) ;
+        Andor_CheckError( 'SetPreAmpGain', SetPreAmpGain(iPreAmpGain) ) ;
+        end ;
 
      // Set image read mode
      Andor_CheckError( 'SetReadMode', SetReadMode(4)) ;
@@ -1951,12 +2021,6 @@ begin
                             Session.NumPixelsPerFrame,
                             FirstValidImageNum,
                             LastValidImageNum ) ;
-//        Andor_CheckError( 'GetImages16', Err ) ;
-//        outputdebugString(PChar(format('%d %d %d %d',[FirstImageNum,
-//                                              Session.ImageBufferSize,
-//                      ImageNum
-//                                              ,
-//                                              Session.PImageBuffer[0]          ]))) ;
 
        Session.FrameNum := Session.FrameNum + 1 ;
        if Session.FrameNum >= Session.NumFrames then Session.FrameNum := 0 ;
