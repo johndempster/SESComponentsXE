@@ -48,6 +48,8 @@ unit IDRFile;
 // 30.01.13 .. Z stack parameters (ZNUMSECTIONS,ZSTART,ZSPACING) added
 // 24-7-13 JD Now compiles unders Delphi XE2/3 as well as 7.
 //            CopyStringToArray() name changed to AppendStringToANSIArray()
+// 13-11-13 JD .ADCNumScansInFile now Int64 as is StartScan in .LoadADC() .SaveADC()
+//            .EDR files larger than 2GB now supported
 
 interface
 
@@ -204,8 +206,8 @@ TChannel = record
     // Analogue signal channel parameters
     FADCMaxChannels : Integer ;
     Channels : Array[0..MaxChannel] of TChannel ;
-    FADCNumScansInFile : Integer ;  // No. of A/D multi-channel scans in file
-    FADCNumSamplesInFile : Integer ; // No. of A/D samples in file
+    FADCNumScansInFile : Int64 ;  // No. of A/D multi-channel scans in file
+    FADCNumSamplesInFile : Int64 ; // No. of A/D samples in file
     FADCNumChannels : Integer ;     // No. of A/D channels per scan
     FADCScanInterval : Single ;     // Time interval between A/D scans (s)
     FADCVoltageRange : Single ;     // A/D input voltage range
@@ -272,7 +274,7 @@ TChannel = record
 
     procedure GetEDRHeader ;
     procedure SaveEDRHeader ;
-    function GetNumScansInEDRFile : Integer ;
+    function GetNumScansInEDRFile : Int64 ;
 
     procedure AppendFloat(
               var Dest : array of ANSIchar;
@@ -288,10 +290,20 @@ TChannel = record
               Keyword : ANSIstring ;
               Value : LongInt
               ) ;
+    procedure AppendInt64(
+              var Dest : array of ANSIchar;
+              Keyword : ANSIstring ;
+              Value : Int64
+              ) ;
     procedure ReadInt(
               const Source : array of ANSIchar;
               Keyword : ANSIstring ;
               var Value : LongInt
+              ) ;
+    procedure ReadInt64(
+              const Source : array of ANSIchar;
+              Keyword : ANSIstring ;
+              var Value : Int64
               ) ;
     procedure AppendLogical(
               var Dest : array of ANSIchar;
@@ -325,7 +337,7 @@ TChannel = record
     function ExtractFloat ( CBuf : ANSIstring ; Default : Single) : single ;
 
     function ExtractInt ( CBuf : ANSIstring ) : LongInt ;
-
+    function ExtractInt64 ( CBuf : ANSIstring ) : Int64 ;
 
     function GetFrameType( i : Integer ) : String ;
 
@@ -416,13 +428,13 @@ TChannel = record
     function DiskSpaceAvailable( NumFrames : Integer ) : Boolean ;
 
     function LoadADC(
-             StartScan : Integer ;
+             StartScan : Int64 ;
              NumScans : Integer ;
              var ADCBuf : Array of SmallInt
              ) : Integer ;
 
     function SaveADC(
-             StartScan : Integer ;
+             StartScan : Int64 ;
              NumScans : Integer ;
              var ADCBuf : Array of SmallInt
              ) : Integer ;
@@ -498,7 +510,7 @@ TChannel = record
     Property NumIDRHeaderBytes : Integer Read FNumIDRHeaderBytes ;
     Property NumEDRHeaderBytes : Integer Read FNumEDRHeaderBytes ;
 
-    Property ADCNumScansInFile : Integer Read FADCNumScansInFile Write FADCNumScansInFile ;  // No. of A/D multi-channel scans in file
+    Property ADCNumScansInFile : Int64 Read FADCNumScansInFile Write FADCNumScansInFile ;  // No. of A/D multi-channel scans in file
     Property ADCNumChannels : Integer Read FADCNumChannels Write SetADCNumChannels ;
     Property ADCNumScansPerFrame : Integer Read FADCNumScansPerFrame write FADCNumScansPerFrame ;
     Property ADCMaxValue : Integer Read FADCMaxValue Write FADCMaxValue ;
@@ -1155,12 +1167,16 @@ begin
 
      // Frame parameters
      ReadFloat( Header, 'FI=', FFrameInterval ) ;
+
      ReadInt( Header, 'FW=', FFrameWidth ) ;
 
      ReadInt( Header, 'FH=', FFrameHeight ) ;
 
+
      ReadInt( Header, 'NBPP=', FNumBytesPerPixel ) ;
+     FNumBytesPerPixel := 2 ;
      ReadInt( Header, 'NF=', FNumFrames ) ;
+
 
      ReadInt(Header, 'ZNUMS=',FNumZSections) ;
      FNumZSections := Max(FNumZSections,1) ;
@@ -1177,12 +1193,6 @@ begin
                                    div Int64(NumBytesPerFrame) ) ;
         outputdebugstring(pchar(format('Numbytesinfile=%d,NumFramesActual=%d,NumFrames=%d'
         ,[NumBytesInFile,NumFrameActual,FNumFrames])));
-{        if NumFrameActual <> FNumFrames then begin
-           if MessageDlg(
-              format('No. of frames (%d) does not match size of file (%d). Correct?',
-              [FNumFrames,NumFrameActual]),
-              mtConfirmation,[mbYes,mbNo], 0 ) = mrYes then FNumFrames := NumFrameActual ;
-           end ;}
         end;
 
      // Line scan flag
@@ -1227,6 +1237,7 @@ begin
 
      // Types of frame
      ReadInt( Header, 'NFTYP=', FNumFrameTypes ) ;
+
      for i := 0 to FNumFrameTypes-1 do begin
          ReadString( Header, format('FTYP%d=',[i]),FFrameTypes[i] ) ;
          FFrameTypeDivideFactor[i] := 1 ;
@@ -1249,8 +1260,10 @@ begin
 
      // A/D channel settings
      ReadInt( Header, 'ADCNC=', FADCNumChannels ) ;
+
      ReadInt( Header, 'ADCNSPF=', FADCNumScansPerFrame ) ;
-     ReadInt( Header, 'ADCNSC=', FADCNumScansInFile ) ;
+     ReadInt64( Header, 'ADCNSC=', FADCNumScansInFile ) ;
+
      ReadInt( Header, 'ADCMAX=', FADCMaxValue ) ;
      ReadFloat( Header, 'ADCSI=', FADCSCanInterval ) ;
 
@@ -1705,7 +1718,7 @@ begin
 
 
 function  TIDRFile.LoadADC(
-          StartScan : Integer ;               // First A/D channel scan to be loaded
+          StartScan : Int64 ;               // First A/D channel scan to be loaded
           NumScans : Integer ;                // No. of A/D channel scans to load
           var ADCBuf : Array of SmallInt     // A/D sample buffer to be filled with samples
           ) : Integer ;                       // Returns no. of scans loaded
@@ -1715,7 +1728,7 @@ function  TIDRFile.LoadADC(
 var
      FileOffset : Int64 ;
      NumBytes,NumBytesRead : Integer ;
-     FirstAvailableScan,NumScansAvailable,iShift : Integer ;
+     FirstAvailableScan,NumScansAvailable,iShift : Int64 ;
      i,jFrom,jTo,ch : Integer ;
      TempBuf : pSmallIntArray ;
 begin
@@ -1754,7 +1767,7 @@ begin
 
 
 function  TIDRFile.SaveADC(
-          StartScan : Integer ;               // First A/D channel scan to be saved
+          StartScan : Int64 ;               // First A/D channel scan to be saved
           NumScans : Integer ;                // No. of A/D channel scans to save
           var ADCBuf : Array of SmallInt     // A/D sample buffer to saved to file
           ) : Integer ;                       // Returns no. of scans saved
@@ -1822,7 +1835,7 @@ begin
         end
      else FADCNumScansInFile := 1 ;
 
-     AppendInt( Header, 'NP=', FADCNumSamplesInFile ) ;
+     AppendInt64( Header, 'NP=', FADCNumSamplesInFile ) ;
 
      AppendFloat( Header, 'DT=',FADCScanInterval );
 
@@ -1876,8 +1889,14 @@ begin
      // A/D converter input voltage range
      ReadFloat( Header, 'AD=', FADCVoltageRange ) ;
 
-     ReadInt( Header, 'NP=', FADCNumSamplesInFile ) ;
-     FADCNumScansInFile := FADCNumSamplesInFile div Max(FADCNumChannels,1) ;
+     ReadInt64( Header, 'NP=', FADCNumSamplesInFile ) ;
+     if FADCNumSamplesInFile <= 0 then begin
+        FADCNumScansInFile := GetNumScansInEDRFile ;
+        FADCNumSamplesInFile := FADCNumChannels*FADCNumScansInFile ;
+        end
+     else begin
+        FADCNumScansInFile := FADCNumSamplesInFile div Max(FADCNumChannels,1) ;
+        end;
 
      ReadFloat( Header, 'DT=',FADCScanInterval );
 
@@ -1900,18 +1919,18 @@ begin
      end ;
 
 
-function TIDRFile.GetNumScansInEDRFile : Integer ;
+function TIDRFile.GetNumScansInEDRFile : Int64 ;
 // ------------------------------------
 // Get number of A/D scans in data file
 // ------------------------------------
 var
-     NumSamplesInFile : Integer ;
+     NumSamplesInFile,Offset : Int64 ;
 begin
 
      if EDRFileHandle > 0 then begin
-
-        NumSamplesInFile := (FileSeek(EDRFileHandle,0,2)
-                             + 1 - FNumEDRHeaderBytes) div 2 ;
+        Offset := 0 ;
+        NumSamplesInFile := (FileSeek(EDRFileHandle,Offset,2)
+                             + 1 - Int64(FNumEDRHeaderBytes)) div 2 ;
 
         Result := NumSamplesInFile div Max(FADCNumChannels,1) ;
         end
@@ -2324,6 +2343,21 @@ begin
      end ;
 
 
+procedure TIDRFile.AppendInt64(
+          var Dest : Array of ANSIChar;
+          Keyword : ANSIstring ;
+          Value : Int64 ) ;
+{ -------------------------------------------------------
+  Append a long integer point parameter line
+  'Keyword' = 'Value' on to end of the header text array
+  ------------------------------------------------------ }
+begin
+     AppendStringToANSIArray( Dest, Keyword ) ;
+     AppendStringToANSIArray( Dest, InttoStr( Value ) ) ;
+     AppendStringToANSIArray( Dest, #13 + #10 ) ;
+     end ;
+
+
 procedure TIDRFile.ReadInt(
           const Source : Array of ANSIChar;
           Keyword : ANSIstring ;
@@ -2334,6 +2368,20 @@ begin
      FindParameter( Source, Keyword, Parameter ) ;
      if Parameter <> '' then Value := ExtractInt( Parameter ) ;
      end ;
+
+
+procedure TIDRFile.ReadInt64(
+          const Source : Array of ANSIChar;
+          Keyword : ANSIstring ;
+          var Value : Int64 ) ;
+var
+   Parameter : ANSIstring ;
+begin
+     FindParameter( Source, Keyword, Parameter ) ;
+     if Parameter <> '' then Value := ExtractInt64( Parameter ) ;
+     end ;
+
+
 
 { Append a text string parameter line
   'Keyword' = 'Value' on to end of the header text array}
@@ -2573,11 +2621,64 @@ begin
      try
 
 
-        ExtractInt := StrToInt( CNum ) ;
+        Result := StrToInt( CNum ) ;
      except
-        ExtractInt := 1 ;
+        Result := 1 ;
         end ;
      end ;
+
+
+function TIDRFile.ExtractInt64 ( CBuf : ANSIstring ) : Int64 ;
+{ ---------------------------------------------------
+  Extract a 64 bit integer number from a string which
+  may contain additional non-numeric text
+  ---------------------------------------------------}
+
+Type
+    TState = (RemoveLeadingWhiteSpace, ReadNumber) ;
+var CNum : string ;
+    i : integer ;
+    Quit : Boolean ;
+    State : TState ;
+
+begin
+     CNum := '' ;
+     i := 1;
+     Quit := False ;
+     State := RemoveLeadingWhiteSpace ;
+     while not Quit do begin
+
+           case State of
+
+                { Ignore all non-numeric characters before number }
+                RemoveLeadingWhiteSpace : begin
+                   if CBuf[i] in ['0'..'9','+','-'] then State := ReadNumber
+                                                    else i := i + 1 ;
+                   end ;
+
+                { Copy number into string CNum }
+                ReadNumber : begin
+                    {End copying when a non-numeric character
+                    or the end of the string is encountered }
+                    if CBuf[i] in ['0'..'9','E','e','+','-','.'] then begin
+                       CNum := CNum + CBuf[i] ;
+                       i := i + 1 ;
+                       end
+                    else Quit := True ;
+                    end ;
+                else end ;
+
+           if i > Length(CBuf) then Quit := True ;
+           end ;
+     try
+
+        Result := StrToInt64( CNum ) ;
+     except
+        Result := 1 ;
+        end ;
+     end ;
+
+
 
 function TIDRFile.DiskSpaceAvailable(
          NumFrames : Integer

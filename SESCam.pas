@@ -56,7 +56,8 @@ unit SESCam;
                now shortened by the larger of .ShortenExposureBy or .AdditionalReadoutTime
 
  07-11-13 .... JD Andor SDK2 Readout preamp gain and vertical shift speed can now be set by user
-
+ 09-12-13 .... JD ITEX.ConfigFileName now ensured to point at program directory (rather than default)
+                  C4880 no longered opened if frame grabber not available.
   ================================================================================ }
 {$OPTIMIZATION OFF}
 {$R 'sescam.dcr'}
@@ -614,8 +615,7 @@ begin
           FCameraName := GetCameraName( ITEX_CCIR ) ;
           CameraInfo.Clear ;
           CameraInfo.Add( 'Camera Type: ' + FCameraName ) ;
-          //ITEX.ConfigFileName := 'c:\itex41\config\ccir.cnf' ;
-          ITEX.ConfigFileName := 'ccir.cnf' ;
+          ITEX.ConfigFileName := ExtractFilePath(ParamStr(0)) + 'ccir.cnf' ;
           CameraInfo.Add( 'Config file: ' + ITEX.ConfigFileName ) ;
           ITEX.HostTransferPossible := False ;
 
@@ -653,8 +653,8 @@ begin
           // Open Hamamatsu C4880 with ITEX RS422 frame grabber
 
           FCameraName := GetCameraName( FCameraType ) ;
-          //ITEX.ConfigFileName := 'c:\itex41\config\camdb\hamc4880.cnf' ;
-          ITEX.ConfigFileName := 'hamc4880.cnf' ;
+          ITEX.ConfigFileName := ExtractFilePath(ParamStr(0)) + 'hamc4880.cnf' ;
+          CameraInfo.Add( 'Config file: ' + ITEX.ConfigFileName ) ;
           ITEX.HostTransferPossible := False ;
           FComPortUsed := True ;
           FNumBytesPerPixel := 2 ;
@@ -686,10 +686,12 @@ begin
           FPixelUnits := 'um' ;
           FTriggerType := CamExposureTrigger ;
 
-          // Initialise camera
-          C4880_OpenCamera( FComPort, ReadoutRate, CameraInfo ) ;
+          if FCameraAvailable then begin
+             // Initialise camera
+             C4880_OpenCamera( FComPort, ReadoutRate, CameraInfo ) ;
 
-          C4880_GetCameraGainList( CameraGainList ) ;
+             C4880_GetCameraGainList( CameraGainList ) ;
+             end ;
 
           end ;
 

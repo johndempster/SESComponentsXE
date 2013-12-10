@@ -6,8 +6,9 @@ unit Itex;
   13/6/3
   1/2/5
   8/7/5 .... Higher performance frame transfer implemented using
-             polling of frame grabber with 20 ms timed routine   
-
+             polling of frame grabber with 20 ms timed routine
+  9/12/13 .. Char/String converted to ANSIChar/ANSIString for Delphi XE3 compatibility
+             Program drive now searched for ITEX folder (rather than C:)
  ================================================================================ }
 interface
 
@@ -139,7 +140,7 @@ TCP_COLOR =(
 ) ;
 
   TITEX = record
-        ConfigFileName : string ;
+        ConfigFileName : ANSIstring ;
         PModHandle : Pointer ;
         AModHandle : Pointer ;
         GrabHandle : Pointer ;
@@ -197,12 +198,12 @@ Titx_init = Function(
             ) : SmallInt ; stdcall ;
 
 Titx_load_cnf = Function(
-                itxpath : PChar
+                itxpath : PANSIChar
                 ) : SmallInt ; stdcall ;
 
 Titx_get_modcnf = Function(
                   PModule : Pointer ;
-                  ModuleName : PChar ;
+                  ModuleName : PANSIChar ;
                   Location : SmallInt
                   ) : Pointer ; stdcall ;
 
@@ -235,7 +236,7 @@ Titx_grab_latest_seqnum = Function(
                           ) : Integer ; stdcall ;
 
 Titx_imagefile_props = Function(
-                       FileName : PChar ;
+                       FileName : PANSIChar ;
                        Source : Array of Byte ;
                        var dx : SmallInt ;
                        var dy : SmallInt ;
@@ -383,14 +384,14 @@ Titx_select_cam_port = Function(
 
 Titx_set_port_camera = Function(
                        PModule : Pointer ;
-                       CameraName : PChar ;
+                       CameraName : PANSIChar ;
                        Port : SmallInt
                        ) : SmallInt ; stdcall ;
 
 Titx_strcpy  = Function(
-               OutStr : PChar ;
-               InStr : PChar
-               ) : PChar ; stdcall ;
+               OutStr : PANSIChar ;
+               InStr : PANSIChar
+               ) : PANSIChar ; stdcall ;
 
 Titx_get_modname = Function(
                    PModule : Pointer
@@ -617,16 +618,17 @@ procedure ITEX_LoadLibrary  ;
   ---------------------------------}
 var
     LibFileName : string ;
-    FileName : string ;
+    FileName,Drive : string ;
     LibraryHnd : THandle ;
 begin
 
      // Load ITEX interface DLL library
      LibFileName := '' ;
-     if FileExists('c:\itex41\lib\itxco10.dll') then
-        LibFileName := 'c:\itex41\lib\itxco10.dll'
-     else if FileExists('c:\itex33\lib\itxco10.dll') then
-        LibFileName := 'c:\itex33\lib\itxco10.dll' ;
+     Drive := ExtractFileDrive(ParamStr(0)) ;
+     if FileExists(Drive + '\itex41\lib\itxco10.dll') then
+        LibFileName := Drive + '\itex41\lib\itxco10.dll'
+     else if FileExists(Drive + '\itex33\lib\itxco10.dll') then
+        LibFileName := Drive + '\itex33\lib\itxco10.dll' ;
 //     else begin
 //        FileName := ExtractFilePath(ParamStr(0)) + '\itxco10.dll' ;
 //        if FileExists(FileName) then LibFileName := FileName ;
@@ -694,10 +696,9 @@ begin
         LibraryLoaded := True ;
         end
      else begin
-          MessageDlg( LibFileName + ' not found!', mtWarning, [mbOK], 0 ) ;
+          ShowMessage( 'ITXC10.DLL not found in ' + LibFileName + ' !' ) ;
           LibraryLoaded := False ;
           end ;
-
 
      end ;
 
@@ -711,7 +712,7 @@ function ITEX_GetDLLAddress(
 begin
     Result := GetProcAddress(Handle,PChar(ProcName)) ;
     if Result = Nil then
-       MessageDlg('itxco10.DLL: ' + ProcName + ' not found',mtWarning,[mbOK],0) ;
+      ShowMessage('itxco10.DLL: ' + ProcName + ' not found') ;
     end ;
 
 
@@ -736,15 +737,14 @@ begin
      if not LibraryLoaded then Exit ;
 
      // Load camera configuration from file
-     if itx_load_cnf(PChar(ITEX.ConfigFileName)) <> ITX_NO_ERROR then begin
-        MessageDlg('Could not load config file ' + ITEX.ConfigFileName,
-        mtInformation,[mbOk], 0);
+     if itx_load_cnf(PANSIChar(ITEX.ConfigFileName)) <> ITX_NO_ERROR then begin
+        ShowMessage('Could not load config file ' + ITEX.ConfigFileName);
         Exit ;
         end ;
 
      // Initialise system
      if itx_init_sys(0) <> ITX_NO_ERROR then begin
-        MessageDlg('System Initialisation failed!', mtInformation,[mbOk], 0) ;
+        ShowMessage('System Initialisation failed!') ;
         ITEX.SystemInitialised := False ;
         Exit ;
         end
@@ -754,20 +754,20 @@ begin
      if PCVision then ITEX.PModHandle := itx_get_modcnf( Nil, Nil, SEQ0 )
                  else ITEX.PModHandle := itx_get_modcnf( Nil, 'ICP', SEQ0 ) ;
      if ITEX.PModHandle = Nil then begin
-        MessageDlg('Frame grabber module not found!', mtInformation,[mbOk], 0);
+        ShowMessage('Frame grabber module not found!');
         Exit ;
         end ;
 
      // Get pointer to acquisition module
      ITEX.AModHandle := itx_get_am( ITEX.PModHandle ) ;
      if ITEX.AModHandle = Nil then begin
-        MessageDlg('Acquisition module not found!', mtInformation,[mbOk], 0);
+        ShowMessage('Acquisition module not found!');
         Exit ;
         end ;
 
      // Get camera frame dimensions
      if itx_get_acq_dim( ITEX.PModHandle, ITEX.FrameWidth, ITEX.FrameHeight ) <> ITX_NO_ERROR then
-        MessageDlg('Error reading camera frame dimensions ',mtInformation,[mbOk], 0);
+        ShowMessage('Error reading camera frame dimensions ');
 
      // Create a camera frame
      ITEX.NumBytesPerPixel := NumBytesPerPixel ;
@@ -839,9 +839,7 @@ begin
 
      // Ensure frame limits are valid for use with frame grabber hardware
      if (FrameLeft mod 8) <> 0 then
-        MessageDlg(
-        'ITEX_StartCapture : FrameLeft must be multiple of 8!',
-        mtInformation,[mbOk], 0) ;
+        ShowMessage('ITEX_StartCapture : FrameLeft must be multiple of 8!') ;
 
      FrameWidth := FrameRight - FrameLeft + 1 ;
      FrameWidth := (FrameWidth div 4)*4 ;
@@ -888,12 +886,12 @@ begin
      Result := False ;
 
      if FrameBuf = Nil then begin
-        MessageDlg('ITEX_StartCapture failed! (Frame buffer not allocated)', mtInformation,[mbOk], 0) ;
+        ShowMessage('ITEX_StartCapture failed! (Frame buffer not allocated)') ;
         exit ;
         end ;
 
      if ITEX.PModHandle = Nil then begin
-        MessageDlg('ITEX_StartCapture failed! (No PModule)', mtInformation,[mbOk], 0) ;
+        ShowMessage('ITEX_StartCapture failed! (No PModule)') ;
         exit ;
         end ;
 
@@ -910,7 +908,7 @@ begin
                               FrameBuf,
                               NumFrames ) ;
            if ITEX.GrabHandle = Nil then
-               MessageDlg('ITEX_StartCapture failed! (itx_host_grab failed)', mtInformation,[mbOk], 0)
+               ShowMessage('ITEX_StartCapture failed! (itx_host_grab failed)')
            else Result := True ;
 
            end ;

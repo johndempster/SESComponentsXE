@@ -17,7 +17,7 @@ unit itcmm;
   19/12/11 ... D/A fifo now filled by ITCMM_GetADCSamples allowing
                record buffer to be increased to MaxADCSamples div 2 (4194304)
   27/8/12 ... ITCMM_WriteDACsAndDigitalPort and ITCMM_ReadADC now disabled when ADCActive = TRUE
-  07.08.13 Updated to compile under Delphi XE3
+  06.11.13 .. A/D input channels can now be mapped to different physical inputs
   }
 
 interface
@@ -42,8 +42,10 @@ uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math;
             ADCVoltageRange : Single ;
             TriggerMode : Integer ;
             ExternalTriggerActiveHigh : Boolean ;
-            CircularBuffer : Boolean
+            CircularBuffer : Boolean ;
+            ADCChannelInputMap : Array of Integer
             ) : Boolean ;
+
   function ITCMM_StopADC : Boolean ;
   procedure ITCMM_GetADCSamples (
             OutBuf : Pointer ;
@@ -97,6 +99,8 @@ function ITCMM_GetDACUpdateInterval : double ;
 
 
    function TrimChar( Input : Array of ANSIChar ) : string ;
+   function MinInt( const Buf : array of LongInt ) : LongInt ;
+   function MaxInt( const Buf : array of LongInt ) : LongInt ;
 
 Procedure ITCMM_CheckError( Err : Cardinal ; ErrSource : String ) ;
 
@@ -491,8 +495,8 @@ type
    TVersionInfo = packed record
        Major : Integer ;
        Minor : Integer ;
-       Description : Array[0..79] of ANSIChar ;
-       Date : Array[0..79] of ANSIChar ;
+       Description : Array[0..79] of ANSIchar ;
+       Date : Array[0..79] of ANSIchar ;
        end ;
 
    TGlobalDeviceInfo = packed record
@@ -898,7 +902,7 @@ begin
         LibraryLoaded := True ;
         end
      else begin
-          ShowMessage( ' Instrutech interface library (ITCMM.DLL) not found') ;
+          MessageDlg( ' Instrutech interface library (ITCMM.DLL) not found', mtWarning, [mbOK], 0 ) ;
           LibraryLoaded := False ;
           end ;
      end ;
@@ -913,7 +917,7 @@ function ITCMM_GetDLLAddress(
 begin
     Result := GetProcAddress(Handle,PChar(ProcName)) ;
     if Result = Nil then
-       ShowMessage('ITCMM.DLL- ' + ProcName + ' not found') ;
+       MessageDlg('ITCMM.DLL- ' + ProcName + ' not found',mtWarning,[mbOK],0) ;
     end ;
 
 
@@ -1041,7 +1045,8 @@ function ITCMM_ADCToMemory(
           ADCVoltageRange : Single ;              { A/D input voltage range (V) (IN) }
           TriggerMode : Integer ;                 { A/D sweep trigger mode (IN) }
           ExternalTriggerActiveHigh : Boolean ;   // External trigger is active high
-          CircularBuffer : Boolean                { Repeated sampling into buffer (IN) }
+          CircularBuffer : Boolean ;               { Repeated sampling into buffer (IN) }
+          ADCChannelInputMap : Array of Integer   // Physical A/D input channel map
           ) : Boolean ;                           { Returns TRUE indicating A/D started }
 { -----------------------------
   Start A/D converter sampling
@@ -1137,14 +1142,14 @@ begin
 
      // Set up FIFO acquisition sequence for A/D input channels
      for ch := 0 to nChannels-1 do begin
-            if ch = 0 then Sequence[ch] := INPUT_AD0 ;
-            if ch = 1 then Sequence[ch] := INPUT_AD1 ;
-            if ch = 2 then Sequence[ch] := INPUT_AD2 ;
-            if ch = 3 then Sequence[ch] := INPUT_AD3 ;
-            if ch = 4 then Sequence[ch] := INPUT_AD4 ;
-            if ch = 5 then Sequence[ch] := INPUT_AD5 ;
-            if ch = 6 then Sequence[ch] := INPUT_AD6 ;
-            if ch = 7 then Sequence[ch] := INPUT_AD7 ;
+            if ADCChannelInputMap[ch] = 0 then Sequence[ch] := INPUT_AD0 ;
+            if ADCChannelInputMap[ch] = 1 then Sequence[ch] := INPUT_AD1 ;
+            if ADCChannelInputMap[ch] = 2 then Sequence[ch] := INPUT_AD2 ;
+            if ADCChannelInputMap[ch] = 3 then Sequence[ch] := INPUT_AD3 ;
+            if ADCChannelInputMap[ch] = 4 then Sequence[ch] := INPUT_AD4 ;
+            if ADCChannelInputMap[ch] = 5 then Sequence[ch] := INPUT_AD5 ;
+            if ADCChannelInputMap[ch] = 6 then Sequence[ch] := INPUT_AD6 ;
+            if ADCChannelInputMap[ch] = 7 then Sequence[ch] := INPUT_AD7 ;
             if ch = (nChannels-1) then Sequence[ch] := Sequence[ch] or INPUT_UPDATE ;
             end ;
      Config.Sequence := @Sequence ;
@@ -1705,7 +1710,38 @@ var
 begin
      pInput := @Input ;
      Result := '' ;
-     for i := 0 to StrLen(pInput)-1 do Result := Result + Char(Input[i]) ;
+     for i := 0 to StrLen(pInput)-1 do Result := Result + Input[i] ;
+     end ;
+
+
+{ -------------------------------------------
+  Return the smallest value in the array 'Buf'
+  -------------------------------------------}
+function MinInt(
+         const Buf : array of LongInt { List of numbers (IN) }
+         ) : LongInt ;                { Returns Minimum of Buf }
+var
+   i,Min : LongInt ;
+begin
+     Min := High(Min) ;
+     for i := 0 to High(Buf) do
+         if Buf[i] < Min then Min := Buf[i] ;
+     Result := Min ;
+     end ;
+
+{ -------------------------------------------
+  Return the largest value in the array 'Buf'
+  -------------------------------------------}
+function MaxInt(
+         const Buf : array of LongInt { List of numbers (IN) }
+         ) : LongInt ;                { Returns Maximum of Buf }
+var
+   i,Max : LongInt ;
+begin
+     Max := -High(Max) ;
+     for i := 0 to High(Buf) do
+         if Buf[i] > Max then Max := Buf[i] ;
+     Result := Max ;
      end ;
 
 
@@ -1759,8 +1795,8 @@ begin
         else ErrName := 'Unknown' ;
         end ;
 
-     ShowMessage( 'Error ' + ErrName + ' in ' + ErrSource ) ;
-
+     MessageDlg( 'Error ' + ErrName + ' in ' + ErrSource, mtError, [mbOK], 0) ;
+     //outputdebugString(PChar('Error ' + ErrName + ' in ' + ErrSource));
      end ;
 
    end ;

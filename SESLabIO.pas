@@ -115,6 +115,11 @@ unit SESLabIO;
   19.09.13 Upper limit of .ADCChannelInputNumber logical->physical channel mapping doubled for
            NI boards with more than 16 channels in differential mapping to allow re-mapping of
            AI 8-15 to AI 16-23
+  05.12.13 A/D input channels can now be mapped to different physical inputs
+           for CED 1401s, Digidatas 1320 and 1440 and ITC-16 and ITC-18
+           Stimulus support for Digidata 132X added
+           Long stimuli now work correctly with Digidata 132X
+
   ================================================================================ }
 
 interface
@@ -1763,7 +1768,8 @@ begin
                            FADCVoltageRanges[FADCVoltageRangeIndex],
                            FADCTriggerMode,
                            FADCExternalTriggerActiveHigh,
-                           FADCCircularBuffer ) ;
+                           FADCCircularBuffer,
+                           FADCChannelInputNumber ) ;
 
           end ;
 
@@ -1774,7 +1780,8 @@ begin
                               FADCSamplingInterval,
                               FADCVoltageRanges[FADCVoltageRangeIndex],
                               FADCTriggerMode,
-                              FADCCircularBuffer ) ;
+                              FADCCircularBuffer,
+                              FADCChannelInputNumber ) ;
           end ;
 
        Instrutech : begin
@@ -1785,7 +1792,8 @@ begin
                              FADCVoltageRanges[FADCVoltageRangeIndex],
                              FADCTriggerMode,
                              FADCExternalTriggerActiveHigh,
-                             FADCCircularBuffer ) ;
+                             FADCCircularBuffer,
+                             FADCChannelInputNumber ) ;
           end ;
 
        ITC_16, ITC_18 : begin
@@ -1795,7 +1803,8 @@ begin
                            FADCSamplingInterval,
                            FADCVoltageRanges[FADCVoltageRangeIndex],
                            FADCTriggerMode,
-                           FADCCircularBuffer ) ;
+                           FADCCircularBuffer,
+                           FADCChannelInputNumber ) ;
           end ;
 
        VP500 : begin
@@ -1825,7 +1834,8 @@ begin
                               FADCSamplingInterval,
                               FADCVoltageRanges[FADCVoltageRangeIndex],
                               FADCTriggerMode,
-                              FADCCircularBuffer ) ;
+                              FADCCircularBuffer,
+                              FADCChannelInputNumber ) ;
           end ;
 
        Triton : begin
@@ -1979,7 +1989,8 @@ begin
                                               FDACNumSamples,
                                               DigBuf^,
                                               False,
-                                              FStimulusExtTrigger ) ;
+                                              FStimulusExtTrigger,
+                                              FDACRepeatedWaveform ) ;
              end ;
 
           Instrutech : begin
@@ -2120,7 +2131,8 @@ begin
                                               FDACNumSamples,
                                               DigBuf^,
                                               True,
-                                              FStimulusExtTrigger ) ;
+                                              FStimulusExtTrigger,
+                                              FDACRepeatedWaveform ) ;
              end ;
 
           Instrutech : begin
@@ -3217,7 +3229,11 @@ begin
                     FADCChannelInputNumber[Chan] := Max(Min((FADCMaxChannels*2)-1,Value),0)
                 else FADCChannelInputNumber[Chan] := Max(Min(FADCMaxChannels-1,Value),0) ;
                 end;
-            else FADCChannelInputNumber[Chan] := Chan ;
+            else begin
+                 if (Chan >= 0) and (Chan < MaxADCChannels) then begin
+                    FADCChannelInputNumber[Chan] := Value ;
+                    end ;
+               end;
             end ;
         end ;
 

@@ -11,7 +11,7 @@ unit itclib;
   16/01/12 ... D/A fifo now filled by ITC_GetADCSamples allowing
                record buffer to be increased to MaxADCSamples div 2 (4194304)
   27/8/12 ... ITC_WriteDACsAndDigitalPort and ITC_ReadADC now disabled when ADCActive = TRUE
-  07.08.13 Updated to compile under Delphi XE3
+  06.11.13 .. A/D input channels can now be mapped to different physical inputs
   }
 
 interface
@@ -36,8 +36,10 @@ procedure ITC_ConfigureHardware(
             var dt : Double ;
             ADCVoltageRange : Single ;
             TriggerMode : Integer ;
-            CircularBuffer : Boolean
+            CircularBuffer : Boolean ;
+            ADCChannelInputMap : Array of Integer
             ) : Boolean ;
+            
   function ITC_StopADC : Boolean ;
   procedure ITC_GetADCSamples (
             OutBuf : Pointer ;
@@ -639,7 +641,7 @@ begin
         LibraryLoaded := True ;
         end
      else begin
-          ShowMessage( ' Instrutech interface library (ITCLIB.DLL) not found' ) ;
+          MessageDlg( ' Instrutech interface library (ITCLIB.DLL) not found', mtWarning, [mbOK], 0 ) ;
           LibraryLoaded := False ;
           end ;
      end ;
@@ -654,7 +656,7 @@ function ITC_GetDLLAddress(
 begin
     Result := GetProcAddress(Handle,PChar(ProcName)) ;
     if Result = Nil then
-       ShowMessage('ITCLIB.DLL- ' + ProcName + ' not found') ;
+       MessageDlg('ITCLIB.DLL- ' + ProcName + ' not found',mtWarning,[mbOK],0) ;
     end ;
 
 
@@ -792,7 +794,8 @@ function ITC_ADCToMemory(
           var dt : Double ;                       { Sampling interval (s) (IN) }
           ADCVoltageRange : Single ;              { A/D input voltage range (V) (IN) }
           TriggerMode : Integer ;                 { A/D sweep trigger mode (IN) }
-          CircularBuffer : Boolean                { Repeated sampling into buffer (IN) }
+          CircularBuffer : Boolean ;               { Repeated sampling into buffer (IN) }
+          ADCChannelInputMap : Array of Integer   // Physical A/D input channel map
           ) : Boolean ;                           { Returns TRUE indicating A/D started }
 { -----------------------------
   Start A/D converter sampling
@@ -839,14 +842,14 @@ begin
 
      // Set up FIFO acquisition sequence for A/D input channels
      for ch := 0 to nChannels-1 do begin
-         if ch = 0 then Sequence[ch] := INPUT_AD0 ;
-         if ch = 1 then Sequence[ch] := INPUT_AD1 ;
-         if ch = 2 then Sequence[ch] := INPUT_AD2 ;
-         if ch = 3 then Sequence[ch] := INPUT_AD3 ;
-         if ch = 4 then Sequence[ch] := INPUT_AD4 ;
-         if ch = 5 then Sequence[ch] := INPUT_AD5 ;
-         if ch = 6 then Sequence[ch] := INPUT_AD6 ;
-         if ch = 7 then Sequence[ch] := INPUT_AD7 ;
+            if ADCChannelInputMap[ch] = 0 then Sequence[ch] := INPUT_AD0 ;
+            if ADCChannelInputMap[ch] = 1 then Sequence[ch] := INPUT_AD1 ;
+            if ADCChannelInputMap[ch] = 2 then Sequence[ch] := INPUT_AD2 ;
+            if ADCChannelInputMap[ch] = 3 then Sequence[ch] := INPUT_AD3 ;
+            if ADCChannelInputMap[ch] = 4 then Sequence[ch] := INPUT_AD4 ;
+            if ADCChannelInputMap[ch] = 5 then Sequence[ch] := INPUT_AD5 ;
+            if ADCChannelInputMap[ch] = 6 then Sequence[ch] := INPUT_AD6 ;
+            if ADCChannelInputMap[ch] = 7 then Sequence[ch] := INPUT_AD7 ;
          if ch = (nChannels-1) then Sequence[ch] := Sequence[ch] or INPUT_UPDATE ;
          end ;
 
@@ -1457,7 +1460,7 @@ var
 begin
      pInput := @Input ;
      Result := '' ;
-     for i := 0 to StrLen(pInput)-1 do Result := Result + Char(Input[i]) ;
+     for i := 0 to StrLen(pInput)-1 do Result := Result + Input[i] ;
      end ;
 
 
@@ -1501,12 +1504,12 @@ Procedure ITC_CheckError(
 const
    MAX_SIZE = 100 ;
 var
-   MsgBuf: array[0..MAX_SIZE] of ANSIChar;
+   MsgBuf: array[0..MAX_SIZE] of ANSIchar;
 begin
 
    if Err <> ACQ_SUCCESS then begin
       ITC_GetStatusText( device, Err, MsgBuf, MAX_SIZE);
-      ShowMessage( ErrSource + ' - ' + String(StrPas(MsgBuf))) ;
+      MessageDlg( ErrSource + ' - ' + StrPas(MsgBuf), mtError, [mbOK], 0) ;
      end ;
 
    end ;

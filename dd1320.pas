@@ -1,5 +1,5 @@
 unit Dd1320;
-{ =================================================================
+{ =================================================================           *`*`
   Axon Instruments Digidata 1320 Interface Library V1.0
   (c) John Dempster, University of Strathclyde, All Rights Reserved
   8/2/2001
@@ -28,16 +28,23 @@ unit Dd1320;
            in WinEDR
   07.11.11 LoadLibrary now set to false when library unloaded by DD132X_CloseLaboratoryInterface
   18.11.11 Buffer size increased from 65536 to 1048576
-  07.08.13 Updated to compile under Delphi XE3
+  06.11.13 A/D input channels can now be mapped to different physical inputs
+  18.11.13 MemoryToDACAndDigital now works in circular buffer mode
+  02.12.13 MemoryToDACAndDigital now works with very large (150s/12Msamples) buffers
+           Digital update interval now correct
+  05.12.13 Compiled under Delphi XE
   =================================================================}
 
 interface
 
 uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem,math;
 const
+     DD132X_MAX_AO_CHANNELS = 8 ;
+     DD132X_MAX_AI_CHANNELS = 16 ;
      DD132X_MaxADCSamples = 1048576 ;//Old value 65536 ;
-     DD132X_BufferSize = 7560 ;
-     DD132X_NumBuffers = (DD132X_MaxADCSamples div DD132X_BufferSize)*2 ;
+     DD132X_BufferSize = 1000000 ;
+     DD132X_MaxSamplesPerSubBuf = 600 ;
+     DD132X_NumBuffers = (DD132X_BufferSize div DD132X_MaxSamplesPerSubBuf) + 1 ;
 
      SecsToMicroSecs = 1E6 ;
      MasterClockPeriod = 1E-9 ;
@@ -68,7 +75,6 @@ const
      DD132X_MSG_SHOWNONE = 2;
 
 
-
 type
 {$Z4}
     TDD132X_Triggering = (DD132X_StartImmediately,
@@ -81,9 +87,6 @@ type
                          DD132X_Bit0Tag_Bit1ExtStart,
                          DD132X_Bit0Tag_Bit1Line ) ;
 {$Z1}
-    // Size of TDACBuf chosen to be able to hold whole numbers of 1-10 channels
-    TDACBuf = Array[0..DD132X_BufferSize-1] of SmallInt ;
-    PDACBuf = ^TDACBuf ;
     TLongLong = packed record
                 Lo : Cardinal ;
                 Hi : Cardinal ;
@@ -103,7 +106,8 @@ type
             var dt : Double ;
             ADCVoltageRange : Single ;
             TriggerMode : Integer ;
-            CircularBuffer : Boolean
+            CircularBuffer : Boolean ;
+            ADCChannelInputMap : Array of Integer
             ) : Boolean ;
 
   function DD132X_StopADC : Boolean ;
@@ -118,14 +122,15 @@ type
             var Ticks : Cardinal
             ) ;
 
-  function  DD132X_MemoryToDACAndDigitalOut(
-          var DACValues : Array of SmallInt  ; // D/A output values
-          NumDACChannels : Integer ;                // No. D/A channels
-          NumDACPoints : Integer ;                  // No. points per channel
-          var DigValues : Array of SmallInt  ; // Digital port values
-          DigitalInUse : Boolean ;             // Output to digital outs
-          ExternalTrigger : Boolean            // Wait for ext. trigger
-          ) : Boolean ;                        // before starting output
+function  DD132X_MemoryToDACAndDigitalOut(
+          var DACValues : Array of SmallInt  ;
+          NumDACChannels : Integer ;
+          NumDACPoints : Integer ;
+          var DigValues : Array of SmallInt  ;
+          DigitalInUse : Boolean ;
+          ExternalTrigger : Boolean ;
+          RepeatWaveform  : Boolean
+          ) : Boolean ;
 
   function DD132X_GetDACUpdateInterval : double ;
 
@@ -166,8 +171,8 @@ type
    procedure ClearBits( var Dest : Word ; Bits : Word ) ;
    function TrimChar( Input : Array of ANSIChar ) : string ;
    procedure DD132X_CheckError( Error : Integer ) ;
-   function MinInt( const Buf : array of LongInt ) : LongInt ;
-   function MaxInt( const Buf : array of LongInt ) : LongInt ;
+   procedure DD132X_FillOutputBufferWithDefaultValues ;
+
 implementation
 
 uses SESLabIO ;
@@ -180,9 +185,9 @@ type
        ImageType: Byte ;
        ResetType: Byte ;
        Manufacturer : Array[1..16] of ANSIchar ;
-       Name : Array[1..32] of ANSIChar ;
-       ProductVersion : Array[1..8] of ANSIChar ;
-       FirmwareVersion : Array[1..16] of ANSIChar ;
+       Name : Array[1..32] of ANSIchar ;
+       ProductVersion : Array[1..8] of ANSIchar ;
+       FirmwareVersion : Array[1..16] of ANSIchar ;
        InputBufferSize : Cardinal ;
        OutputBufferSize : Cardinal ;
        SerialNumber : Cardinal ;
@@ -192,15 +197,16 @@ type
        Unused: Array[1..280] of Byte ;
        end ;
 
-TDataBuffer = packed record
-            NumSamples : Cardinal ;
-            Flags : Cardinal ;
-            Data : pDACBuf ;
-            DataFlags : pDACBuf ;
-            NextBuffer : Pointer ;
-            PreviousBuffer : Pointer ;
-            end ;
-PDataBuffer = ^TDataBuffer ;
+TDATABUFFER = packed record
+   uNumSamples : Cardinal ;      // Number of samples in this buffer.
+   uFlags : Cardinal ;           // Flags discribing the data buffer.
+   pnData : Pointer ;         // The buffer containing the data.
+   psDataFlags : Pointer ;      // Byte Flags split out from the data buffer.
+   pNextBuffer : Pointer ;      // Next buffer in the list.
+   pPrevBuffer : Pointer ;      // Previous buffer in the list.
+   end ;
+PDATABUFFER = ^TDATABUFFER ;
+
 
 TDD132X_Protocol = packed record
               Length : Cardinal ;
@@ -208,15 +214,15 @@ TDD132X_Protocol = packed record
               Flags : Cardinal ;
               DD132X_Triggering : TDD132X_Triggering ;
               DD132X_AIDataBits : TDD132X_AIDataBits ;
-              AIChannels : Cardinal ;
+              uAIChannels : Cardinal ;
               anAIChannels : Array[0..DD132X_SCANLIST_SIZE-1] of Integer ;
               pAIBuffers : PDataBuffer ;
-              AIBuffers : Cardinal ;
-              AOChannels : Cardinal ;
+              uAIBuffers : Cardinal ;
+              uAOChannels : Cardinal ;
               anAOChannels : Array[0..DD132X_SCANLIST_SIZE-1] of Integer ;
               pAOBuffers : PDataBuffer ;
-              AOBuffers : Cardinal ;
-              TerminalCount : TLongLong ;
+              uAOBuffers : Cardinal ;
+              uTerminalCount : Int64 ;//TLongLong ;
               Unused : Array[1..264] of Byte ;
               end ;
 
@@ -278,7 +284,7 @@ TDD132X_IsAcquiring = Function( Device : Integer ) : WordBool ; stdcall ;
 
 // Monitor progress of the acquisition.
 TDD132X_GetAcquisitionPosition = Function( Device : Integer ;
-                                          var SampleCount : TLongLong ;
+                                          var SampleCount : Int64 ;
                                           var Error : Integer ) : WordBool ; stdcall ;
 TDD132X_GetNumSamplesOutput = Function( Device : Integer ;
                                        var SampleCount : longInt ;
@@ -322,11 +328,11 @@ TDD132X_GetCalibrationData = Function( Device : Integer ;
 
 // Diagnostic functions.
 TDD132X_GetLastErrorText = Function( Device : Integer ;
-                                     var Msg : Array of ANSIChar ;
+                                     var Msg : Array of ANSIchar ;
                                      MsgLen : Cardinal ;
                                      var Error : Integer ) : WordBool ; stdcall ;
 TDD132X_SetDebugMsgLevel = Function( Device : Integer ;
-                                    var Msg : Array of ANSIChar ;
+                                    var Msg : Array of ANSIchar ;
                                     Level : Cardinal ;
                                     var Error : Integer ) : WordBool ; stdcall ;
 
@@ -345,13 +351,29 @@ var
    DeviceInitialised : boolean ; { True if hardware has been initialised }
    EmptyFlag : Integer ;
 
-   CyclicADCBuffer : Boolean ;
+//   CyclicADCBuffer : Boolean ;
    FADCSweepDone : Boolean ;
 
-   FADCBuf : Integer ;        // A/D buffer pointer
-   FADCPointer : Integer ;    // A/D sample pointer
    FOutPointer : Integer ;    // A/D sample pointer in O/P buffer
    FNumSamplesRequired : Integer ; // No. of A/D samples to be acquired ;
+   FCircularBuffer : Boolean ;     // TRUE = repeated buffer fill mode
+   AIBuf : PSmallIntArray ;
+   AIFlags : PSmallIntArray ;
+   AIPointer : Integer ;
+   AIBufNumSamples : Integer ;        // Input buffer size (no. samples)
+
+   NumOutChannels : Integer ;          // No. of channels in O/P buffer
+   NumOutPoints : Integer ;            // No. of time points in O/P buffer
+   OutPointer : Integer ;              // Pointer to latest value written to AOBuf
+   AORepeatWaveform : Boolean ;      // TRUE = repeated output DAC/DIG waveform
+   OutValues : PSmallIntArray ;
+
+   AOBuf : PSmallIntArray ;
+   AOPointer : Integer ;
+   AOBufNumSamples : Integer ;        // Output buffer size (no. samples)
+   AONumSamplesOutput : Integer ;
+   DACDefaultValue : Array[0..DD132X_MAX_AO_CHANNELS-1] of SmallInt ;
+   DIGDefaultValue : Integer ;
 
    DeviceInfo : TDD132X_Info ;     // DD132X Device information structure
    CalibrationData : TDD132X_CalibrationData ; // DD132X calibration information
@@ -361,9 +383,9 @@ var
 
    Err : Integer ;                           // Error number returned by Digidata
    OK :Boolean ;                            // Successful operation flag
-   ErrorMsg : Array[0..80] of ANSIChar ;         // Error messages returned by Digidata
-   DACBuffers : Array[0..DD132X_NumBuffers-1] of TDataBuffer ; // D/A data buffer definition records
-   ADCBuffers : Array[0..DD132X_NumBuffers-1] of TDataBuffer ; // A/D sample buffer definition records
+   ErrorMsg : Array[0..80] of ANSIchar ;         // Error messages returned by Digidata
+   AIBufs : Array[0..DD132X_NumBuffers-1] of TDataBuffer ; // D/A data buffer definition records
+   AOBufs : Array[0..DD132X_NumBuffers-1] of TDataBuffer ; // A/D sample buffer definition records
 
 // Address pointers to DLL procedures & functions
 DD132X_FindDevices : TDD132X_FindDevices ;
@@ -426,7 +448,6 @@ begin
 
      { Get type of Digidata 1320 }
 
-
      { Get device model and firmware details }
      Model := TrimChar(DeviceInfo.Name) + ' V' +
               TrimChar(DeviceInfo.ProductVersion) + ' (' +
@@ -454,8 +475,6 @@ begin
      ADCMaxSamplingInterval := 100.0 ;
      FADCMinSamplingInterval := ADCMinSamplingInterval ;
      FADCMaxSamplingInterval := ADCMaxSamplingInterval ;
-
-     ADCBufferLimit := MinInt( [DeviceInfo.InputBufferSize,DD132X_MaxADCSamples] ) ;
 
      Result := DeviceInitialised ;
 
@@ -555,7 +574,6 @@ begin
      end ;
 
 
-
 function  DD132X_GetMaxDACVolts : single ;
 { -----------------------------------------------------------------
   Return the maximum positive value of the D/A output voltage range
@@ -568,11 +586,10 @@ begin
 
 procedure DD132X_InitialiseBoard ;
 { -------------------------------------------
-  Initialise Digidata 1200 interface hardware
+  Initialise Digidata 132X interface hardware
   -------------------------------------------}
 var
-//   OK : Boolean ;
-   i : Integer ;
+   ch : Integer ;
    NumTrys : Integer ;
 begin
 
@@ -602,36 +619,6 @@ begin
         Exit ;
         end ;
 
-     // Create ADC input buffers
-     for i := 0 to High(ADCBuffers) do begin
-         ADCBuffers[i].NumSamples := 0 ;
-         New(ADCBuffers[i].Data) ;
-         New(ADCBuffers[i].DataFlags) ;
-         if i < High(ADCBuffers) then
-            ADCBuffers[i].NextBuffer := @ADCBuffers[i+1].NumSamples
-         else ADCBuffers[i].NextBuffer := @ADCBuffers[0].NumSamples ;
-         if i > 0 then
-            ADCBuffers[i].PreviousBuffer := @ADCBuffers[i-1].NumSamples
-         else ADCBuffers[i].PreviousBuffer := @ADCBuffers[High(ADCBuffers)].NumSamples ;
-         end ;
-     Protocol.pAIBuffers := @ADCBuffers ;
-     Protocol.AIBuffers := 0 ;
-
-     // Create DAC output buffers
-     for i := 0 to High(DACBuffers) do begin
-         DACBuffers[i].NumSamples := 0 ;
-         New(DACBuffers[i].Data) ;
-         New(DACBuffers[i].DataFlags) ;
-         if i < High(DACBuffers) then
-            DACBuffers[i].NextBuffer := @DACBuffers[i+1].NumSamples
-         else DACBuffers[i].NextBuffer := @DACBuffers[0].NumSamples ;
-         if i > 0 then
-            DACBuffers[i].PreviousBuffer := @DACBuffers[i-1].NumSamples
-         else DACBuffers[i].PreviousBuffer := @DACBuffers[High(DACBuffers)].NumSamples ;
-         end ;
-     Protocol.pAOBuffers := @DACBuffers ;
-     Protocol.AOBuffers := 0 ;
-
      DACActive := False ;
      // Set A/D & D/A sampling interval (microseconds)
      Protocol.SampleInterval := Round(DefaultSamplingInterval*SecsToMicrosecs) ;
@@ -640,6 +627,16 @@ begin
      CalibrationData.Length := Sizeof(CalibrationData) ;
      OK := DD132X_GetCalibrationData( Device, CalibrationData, Err ) ;
      if not OK then DD132X_CheckError(Err) ;
+
+     // Set output buffers to default values
+     NumOutChannels := CalibrationData.NumberOfDACs + 1 ;
+     for ch := 0 to CalibrationData.NumberOfDACs-1 do DACDefaultValue[ch] := -CalibrationData.anDACOffset[ch];
+     DIGDefaultValue := 0 ;
+
+     AIBuf := Nil ;
+     AIFlags := Nil ;
+     AOBuf := Nil ;
+     OutValues := Nil ;
 
      DeviceInitialised := True ;
 
@@ -663,127 +660,156 @@ function DD132X_ADCToMemory(
           var dt : Double ;                       { Sampling interval (s) (IN) }
           ADCVoltageRange : Single ;              { A/D input voltage range (V) (IN) }
           TriggerMode : Integer ;                 { A/D sweep trigger mode (IN) }
-          CircularBuffer : Boolean                { Repeated sampling into buffer (IN) }
+          CircularBuffer : Boolean ;               { Repeated sampling into buffer (IN) }
+          ADCChannelInputMap : Array of Integer // Physical A/D input channel map
           ) : Boolean ;                           { Returns TRUE indicating A/D started }
 { -----------------------------
   Start A/D converter sampling
   -----------------------------}
 
 var
-   i : Word ;
-   ch,iBuf,NumBufs : Integer ;
+   i,iPointer,iFlagPointer, iPrev,iNext : Integer ;
+   NumSamplesPerSubBuf : Integer ;
+   ch : Integer ;
 begin
      Result := False ;
      if not DeviceInitialised then DD132X_InitialiseBoard ;
+     if not DeviceInitialised then Exit ;
 
-     if DeviceInitialised then begin
+     // Stop any acquisition in progress
+     if DD132X_IsAcquiring(Device) then begin
+        OK := DD132X_StopAcquisition(Device,Err) ;
+        if not OK then DD132X_CheckError(Err) ;
+        end ;
 
-        // Stop any acquisition in progress
-        if DD132X_IsAcquiring(Device) then begin
-           OK := DD132X_StopAcquisition(Device,Err) ;
-           if not OK then DD132X_CheckError(Err) ;
-           end ;
-
-        { Select type of recording
+     { Select type of recording
           Single sweep = A/D samping terminates when buffer is full
           Cyclic = A/D sampling continues at beginning when buffer is full }
-        if CircularBuffer then CyclicADCBuffer := True
-                          else CyclicADCBuffer := False ;
+     FCircularBuffer := CircularBuffer ;
 
-        // Set A/D sampling interval (in microseconds)
-        Protocol.SampleInterval := Round((dt/NumADCChannels)*1E6) ;
+     // Set A/D sampling interval (in microseconds)
+     Protocol.SampleInterval := Round((dt*1E6)/NumADCChannels) ;
 
-        // Set triggering for A/D sampling
-        if TriggerMode = tmExtTrigger then
-           Protocol.DD132X_Triggering := DD132X_ExternalStart
-        else Protocol.DD132X_Triggering := DD132X_StartImmediately ;
+     // Set triggering for A/D sampling
+     if TriggerMode = tmExtTrigger then Protocol.DD132X_Triggering := DD132X_ExternalStart
+                                   else Protocol.DD132X_Triggering := DD132X_StartImmediately ;
 
-        { Ensure that bit 0 of A/D data word is zero
+     { Ensure that bit 0 of A/D data word is zero
          (by setting it to unused tag input). So that empty flag cannot occur
          in A/D sample stream }
-        Protocol.DD132X_AIDataBits := DD132X_Bit0Tag ;
+     Protocol.DD132X_AIDataBits := DD132X_Bit0Tag ;
 
-        // Set up analogue input channel scan list
-        Protocol.AIChannels := NumADCChannels ;
-        for ch := 0 to NumADCChannels-1 do Protocol.anAIChannels[ch] := ch ;
+     // Set up analogue input channel scan list
+     Protocol.uAIChannels := NumADCChannels ;
+     for ch := 0 to NumADCChannels-1 do Protocol.anAIChannels[ch] := ADCChannelInputMap[ch] ;
 
-        // Set up A/D sample storage buffers
-        if CyclicADCBuffer then begin
-           // Use all buffers for cyclic acquisition
+     // Allocate A/D input buffers
 
-           for iBuf := 0 to High(ADCBuffers) do begin
-               for i := 0 to High(TDACBuf) do
-                   ADCBuffers[iBuf].Data^[i] := EmptyFlag ;
-               ADCBuffers[iBuf].NumSamples := High(TDACBuf)+1 ;
-               end ;
-           Protocol.AIBuffers := High(ADCBuffers)+1 ;
+     // Make sub-buffer contain multiple of both input and output channels
+     NumSamplesPerSubBuf := DD132X_MaxSamplesPerSubBuf*NumADCChannels*NumOutChannels ;
 
-           // Set stop on terminal count and set counter to highest possible value
-           Protocol.Flags := DD132X_PROTOCOL_STOPONTC ;
-           Protocol.TerminalCount.Hi := High(Protocol.TerminalCount.Hi) ;
-           Protocol.TerminalCount.Lo := High(Protocol.TerminalCount.Lo) ;
+//     AIBufNumSamples := (DeviceInfo.InputBufferSize div NumSamplesPerSubBuf)*NumSamplesPerSubBuf ;
+     AIBufNumSamples := (DD132X_BufferSize div NumSamplesPerSubBuf)*NumSamplesPerSubBuf ;
+     if AIBuf <> Nil then FreeMem(AIBuf) ;
+     GetMem( AIBuf, AIBufNumSamples*2 ) ;
+     for i := 0 to AIBufNumSamples-1 do AIBuf^[i] := EmptyFlag ;
+     if AIFlags <> Nil then FreeMem(AIFlags) ;
+     GetMem( AIFlags, AIBufNumSamples*2 ) ;
+     Protocol.pAIBuffers := @AIBufs ;
 
-           // Added 24/10/01 to make circular buffer capture work
-           // after it had stopped when Delphi compiler was upgraded to V5
-           // Not at all obvious why V3->V5 change caused this problem
-           // nor why these terminal count settings fix it.
-           // This may need further investigation!!!
-           Protocol.Flags := 0 ;
-           Protocol.TerminalCount.Hi := 0 ;
-           Protocol.TerminalCount.Lo := 0 ;
-           // ????????????????????????????????
+     iPointer := Cardinal(AIBuf) ;
+     iFlagPointer := Cardinal(AIFlags) ;
+     Protocol.uAIBuffers := Min( AIBufNumSamples div NumSamplesPerSubBuf, High(AIBufs)+1 );
+     for i := 0 to Protocol.uAIBuffers-1 do begin
+        AIBufs[i].pnData := Pointer(iPointer) ;
+        AIBufs[i].uNumSamples := NumSamplesPerSubBuf ;
+        AIBufs[i].uFlags := 0 ;
+        AIBufs[i].psDataFlags := Pointer(iFlagPointer) ;
+        iPointer := iPointer + NumSamplesPerSubBuf*2  ;
+        iFlagPointer := iFlagPointer + NumSamplesPerSubBuf*2  ;
+        end ;
 
-           end
-        else begin
-           // *** Acquire a single sweep only ***
+     // Previous/Next buffer pointers
+     for i := 0 to Protocol.uAIBuffers-1 do begin
+         iPrev := i-1 ;
+         if iPrev < 0 then iPrev := Protocol.uAIBuffers-1 ;
+         AIBufs[i].pPrevBuffer := Pointer( Cardinal(@AIBufs) + (iPrev*SizeOf(TDATABuffer)) ) ;
+         iNext := i+1 ;
+         if iNext >= Protocol.uAIBuffers then iNext := 0 ;
+         AIBufs[i].pNextBuffer := Pointer( Cardinal(@AIBufs) + (iNext*SizeOf(TDATABuffer)) ) ;
+         end ;
 
-           // Fill up with empty flag only as far as needed
-           NumBufs := Min( ((NumADCSamples*NumADCChannels) div DD132X_BufferSize) + 1,
-                           DD132X_NumBuffers ) ;
-           for iBuf := 0 to NumBufs - 1 do begin
-               for i := 0 to High(TDACBuf) do ADCBuffers[iBuf].Data^[i] := EmptyFlag ;
-               ADCBuffers[iBuf].NumSamples := High(TDACBuf)+1 ;
-               end ;
+     // Allocate AO buffer
 
-           // Enable use of all buffers
-           Protocol.AIBuffers := NumBufs ;
 
-           // Stop when all buffers are full
-           Protocol.Flags := 0 ;
-           Protocol.TerminalCount.Hi := 0 ;
-           Protocol.TerminalCount.Lo := 0 ;
+     //AOBufNumSamples := (DeviceInfo.OutputBufferSize div NumSamplesPerSubBuf)*NumSamplesPerSubBuf ;
+     AOBufNumSamples := (DD132X_BufferSize div NumSamplesPerSubBuf)*NumSamplesPerSubBuf ;
+     if AOBuf <> Nil then FreeMem(AOBuf) ;
+     GetMem( AOBuf, AOBufNumSamples*2 ) ;
+     Protocol.pAOBuffers := @AOBufs ;
 
-           end ;
+     iPointer := Cardinal(AOBuf) ;
+     Protocol.uAOBuffers := Min( AOBufNumSamples div NumSamplesPerSubBuf, High(AOBufs)+1 );
+     for i := 0 to Protocol.uAOBuffers-1 do begin
+        AOBufs[i].pnData := Pointer(iPointer) ;
+        AOBufs[i].uNumSamples := NumSamplesPerSubBuf ;
+        AOBufs[i].uFlags := 0 ;
+        AOBufs[i].psDataFlags := Nil ;
+        iPointer := iPointer + NumSamplesPerSubBuf*2  ;
+        end ;
 
-        // Clear any D/A output waveform that might be set up
-        Protocol.AOChannels := 0 ;
-        Protocol.AOBuffers := 0 ;
-        Protocol.pAOBuffers^.NumSamples := 0 ;
+     // Previous/Next buffer pointers
+     for i := 0 to Protocol.uAOBuffers-1 do begin
+         iPrev := i-1 ;
+         if iPrev < 0 then iPrev := Protocol.uAOBuffers-1 ;
+         AOBufs[i].pPrevBuffer := Pointer( Cardinal(@AOBufs) + (iPrev*SizeOf(TDATABuffer)) ) ;
+         iNext := i+1 ;
+         if iNext >= Protocol.uAOBuffers then iNext := 0 ;
+         AOBufs[i].pNextBuffer := Pointer( Cardinal(@AOBufs) + (iNext*SizeOf(TDATABuffer)) ) ;
+         end ;
+
+     // Enable all analog O/P channels and digital channel
+     Protocol.uAOChannels := NumOutChannels ;
+     for ch := 0 to Protocol.uAOChannels-2 do Protocol.anAOChannels[ch] := ch ;
+     Protocol.anAOChannels[Protocol.uAOChannels-1] := DD132X_PROTOCOL_DIGITALOUTPUT ;
+
+     Protocol.uTerminalCount := 0 ;// 100000000 ;//100000 ;
+     // Enable external start of sweep
+     Protocol.Flags := 0 ;
+
+     // Start acquisition if waveform generation not required
+     if TriggerMode <> tmWaveGen then begin
+
+        // Allocate internal output waveform buffer
+        if OutValues <> Nil then FreeMem(OutValues) ;
+        NumOutPoints := 5000*NumOutChannels ;
+        GetMem( OutValues, NumOutPoints*2 ) ;
+
+        // Clear any existing waveform from output buffer
+        DD132X_FillOutputBufferWithDefaultValues ;
+
+        if TriggerMode = tmExtTrigger then Protocol.DD132X_Triggering := DD132X_ExternalStart
+                                      else Protocol.DD132X_Triggering := DD132X_StartImmediately ;
 
         // Download protocol to Digidata interface
         Protocol.Length := SizeOf(Protocol) ;
         OK := DD132X_SetProtocol( Device, Protocol, Err ) ;
         if not OK then DD132X_CheckError(Err) ;
 
-        // Start A/D sampling
-        if OK then begin
-           // Note. Sampling not started in WaveGen trigger mode
-           // D/A waveform generation and A/D sampling started simultaneously
-           // by subsequent call to DD132X_MemoryToDACAndDigitalOut
-           if TriggerMode <> tmWaveGen then begin
-              OK := DD132X_StartAcquisition( Device, Err ) ;
-              if not OK then DD132X_CheckError(Err) ;
-              end
-           else OK := True ;
-           ADCActive := OK ;
-           Result := OK ;
-           end ;
+        // Start A/D conversion
+        OK := DD132X_StartAcquisition( Device, Err ) ;
+        if not OK then DD132X_CheckError(Err) ;
+
+        ADCActive := True ;
+        DACActive := False ;
+
         end ;
 
      // Initialise A/D buffer pointers used by DD132X_GetADCSamples
-     FADCPointer := 0 ;
-     FADCBuf := 0 ;
      FOutPointer := 0 ;
+     AIPointer := 0 ;
+     AOPointer := 0 ;
+     OutPointer := 0 ;
      FNumSamplesRequired := NumADCChannels*NumADCSamples ;
      FADCSweepDone := False ;
 
@@ -819,69 +845,66 @@ procedure DD132X_GetADCSamples(
           var OutBufPointer : Integer       { Latest sample pointer [OUT]}
           ) ;
 var
-   n : Integer ;
+    i,MaxOutPointer,NewPoints,NewSamples,NewAONumSamplesOutput,Err : Integer ;
 begin
 
-     if ADCActive then begin
+     if not ADCActive then exit ;
 
-        if CyclicADCBuffer then begin
+     // Transfer new A/D samples to host buffer
 
-           // ** Continuous circular A/D buffer **
+     // Determine number of samples acquired
+     i := AIPointer + Protocol.uAIChannels - 1 ;
+     NewSamples := 0 ;
+     while AIBuf^[i] <> EmptyFlag do begin
+        i := i + Protocol.uAIChannels ;
+        if i >= AIBufNumSamples then i := Protocol.uAIChannels - 1 ;
+        NewSamples := NewSamples + Protocol.uAIChannels ;
+        end ;
+          //outputdebugstring(pchar(format( 'Newsamples=%d',[NewSamples]))) ;
 
-           n := 0 ;
-           While (ADCBuffers[FADCBuf].Data^[FADCPointer] <> EmptyFlag)
-              and (n < FNumSamplesRequired) do begin
+     if FCircularBuffer then begin
+        // Circular buffer mode
+        for i := 1 to NewSamples do begin
+            OutBuf[FOutPointer] := AIBuf^[AIPointer]  ;
+            AIBuf^[AIPointer] := EmptyFlag ;
+            Inc(AIPointer) ;
+            if AIPointer = AIBufNumSamples then AIPointer := 0 ;
+            Inc(FOutPointer) ;
+            if FOutPointer >= FNumSamplesRequired then FOutPointer := 0 ;
+            end ;
+        end
+     else begin
+        // Single sweep mode
+        for i := 1 to NewSamples do if
+            (FOutPointer < FNumSamplesRequired) then begin
+            OutBuf[FOutPointer] := AIBuf[AIPointer]  ;
+            AIBuf^[AIPointer] := EmptyFlag ;
+            Inc(AIPointer) ;
+            if AIPointer = AIBufNumSamples then AIPointer := 0 ;
+            Inc(FOutPointer) ;
+            end ;
 
-              // Get sample and replace with empty flag
-              OutBuf[FOutPointer] := ADCBuffers[FADCBuf].Data^[FADCPointer] ;
-              ADCBuffers[FADCBuf].Data^[FADCPointer] := EmptyFlag ;
+        end ;
+     OutBufPointer := FOutPointer ;
 
-              // Increment A/D sample pointer and buffer
-              Inc(FADCPointer) ;
-              if FADCPointer > High(TDACBuf) then begin
-                 Inc(FADCBuf) ;
-                 if FADCBuf > High(ADCBuffers) then begin
-                    FADCBuf := 0 ;
-                    // beep(1000,50) for debugging purposes ;
-                    end ;
-                 FADCPointer := 0 ;
+     // Update D/A + Dig output buffer
+     if DACActive then begin
+       // Copy into transfer buffer
+       DD132X_GetNumSamplesOutput( Device, NewAONumSamplesOutput, Err);
+       MaxOutPointer := NumOutPoints - 1 ;
 
-                 end ;
-
-              // Output buffer pointer
-              Inc(FOutPointer) ;
-              if FOutPointer = FNumSamplesRequired then begin
-                 FOutPointer := 0 ;
-                 end ;
-
-              Inc(n) ;
-              end ;
-           OutBufPointer := FOutPointer ;
-           end
-
-        else begin
-
-           //  ** Single sweep **
-
-           While (ADCBuffers[FADCBuf].Data^[FADCPointer] <> EmptyFlag)
-                 and not FADCSweepDone do begin
-              OutBuf[FOutPointer] := ADCBuffers[FADCBuf].Data^[FADCPointer] ;
-              Inc(FADCPointer) ;
-              if FADCPointer > High(TDACBuf) then begin
-                 if FADCBuf < High(DACBuffers) then begin
-                    Inc(FADCBuf) ;
-                    FADCPointer := 0 ;
-                    end
-                 else FADCPointer := High(TDACBuf) ;
-                 end ;
-              Inc(FOutPointer) ;
-              if FOutPointer >= FNumSamplesRequired then begin
-                 FADCSweepDone := True ;
-                 FOutPointer := FOutPointer - 1 ;
-                 end ;
-              end ;
-           OutBufPointer := FOutPointer ;
-           end ;
+       NewPoints := NewAONumSamplesOutput - AONumSamplesOutput ;
+       AONumSamplesOutput :=  NewAONumSamplesOutput ;
+       for i := 0 to NewPoints{*NumOutChannels}-1 do begin
+          AOBuf^[AOPointer] := OutValues^[OutPointer] ;
+          Inc(AOPointer) ;
+          if AOPointer >= AOBufNumSamples then AOPointer := 0 ;
+          Inc(OutPointer) ;
+          if OutPointer > MaxOutPointer then begin
+             if AORepeatWaveform then OutPointer := 0
+                                 else OutPointer := OutPointer - NumOutChannels ;
+             end ;
+          end ;
         end ;
 
      end ;
@@ -896,8 +919,10 @@ procedure DD132X_CheckSamplingInterval(
   clocks ticks, Returns no. of ticks in "Ticks"
   ---------------------------------------------------}
 begin
-        Ticks := Round(SamplingInterval*SecsToMicrosecs) ;
-        SamplingInterval := Ticks/SecsToMicrosecs ;
+  SamplingInterval := Min(Max(SamplingInterval,FADCMinSamplingInterval),
+                           FADCMaxSamplingInterval) ;
+  Ticks := Round(SamplingInterval*SecsToMicrosecs) ;
+  SamplingInterval := Ticks/SecsToMicrosecs ;
 	end ;
 
 
@@ -907,7 +932,8 @@ function  DD132X_MemoryToDACAndDigitalOut(
           NumDACPoints : Integer ;
           var DigValues : Array of SmallInt  ;
           DigitalInUse : Boolean ;
-          ExternalTrigger : Boolean
+          ExternalTrigger : Boolean ;
+          RepeatWaveform  : Boolean
           ) : Boolean ;
 { --------------------------------------------------------------
   Send a voltage waveform stored in DACBuf to the D/A converters
@@ -915,112 +941,96 @@ function  DD132X_MemoryToDACAndDigitalOut(
   spurious digital O/P changes between records
   --------------------------------------------------------------}
 var
-   i,iBuf,j,ch,DACValue,NumSamplesPerBuffer : Integer ;
-   DACNum : Integer ;
-   iDAC : Integer ;
-   NumBuffers : Integer ;
-   DigitalNum : Integer ;
+   i,ch,iTo,iFrom,DigCh,MaxOutPointer : Integer ;
+   t,tstep : single ;
 begin
-    Result := False ;
-    
-    { NOTE. When this routine is called DD123X acquisition would normally be
-      in progress, due to a previous call to DD132X_ADCToMemory,
-      with the A/D sweep waiting for a TTL pulse on the EXT TRIGGER input.
-      This acquisition request is now cancelled, D/A information entered,
-      and a new request made to start acquisition immediately }
 
+    Result := False ;
     if not DeviceInitialised then DD132X_InitialiseBoard ;
     if not DeviceInitialised then Exit ;
 
-    { Stop any acquisition in progress }
-    if DD132X_IsAcquiring(Device) then begin
-       OK := DD132X_StopAcquisition(Device,Err) ;
-       if not OK then DD132X_CheckError(Err) ;
-       end ;
+    // Stop any acquisition in progress
+    if DD132X_IsAcquiring(Device) then DD132X_StopAcquisition(Device,Err) ;
 
-    // Define D/A output channels
-    Protocol.AOChannels := NumDACChannels ;
-    for ch := 0 to Protocol.AOChannels-1 do begin
-        Protocol.anAOChannels[ch] := ch ;
-        end ;
+    // Allocate internal output waveform buffer
+    // Ensure buffer is a multiple of no. out channels
+    NumOutPoints := ((NumDACPoints*Protocol.uAIChannels) div NumOutChannels)*NumOutChannels ;
+    if OutValues <> Nil then FreeMem(OutValues) ;
+    GetMem( OutValues, NumOutPoints*2 ) ;
 
-    // If digital O/P required ensure that at least two D/A channels
-    // are in use. Use Ch.1 for digital O/P
-    DigitalNum := 0 ;
-    if DigitalInUse then begin
-       Protocol.AOChannels := Protocol.AOChannels + 1 ;
-       Protocol.anAOChannels[Protocol.AOChannels-1] := DD132X_PROTOCOL_DIGITALOUTPUT ;
-       DigitalNum := Protocol.AOChannels - 1 ;
-       end ;
-
-    // Clear all buffer output counters
-    for iBuf := 0 to High(DACBuffers) do DACBuffers[iBuf].NumSamples := 0 ;
-
-    // Copy D/A values into output buffer
-    iBuf := 0 ;
-    j := 0 ;
-    NumSamplesPerBuffer := High(TDacBuf)+1 ;
-    NumBuffers := High(DACBuffers) + 1 ;
-    DACNum := 0 ;
-    iDAC := 0 ;
-    for i := 0 to NumSamplesPerBuffer*NumBuffers-1 do begin
-
-        if DigitalInUse and (DACNum = DigitalNum) then begin
-           // Add digital output data (if present) as extra channel after DACs
-           DACBuffers[iBuf].Data^[j] := DigValues[iDAC] ;
+    // Copy D/A & digital values into internal buffer
+    DigCh := NumOutChannels - 1 ;
+    tStep := 1.0 / Protocol.uAIChannels ;
+    ch := 0 ;
+    for iTo := 0 to NumOutPoints-1 do begin
+        iFrom := Round(iTo*tStep) ;
+        if ch < NumDACChannels then begin
+           OutValues[iTo] := Round( DACValues[(iFrom*NumDACChannels)+ch]/CalibrationData.adDACGainRatio[ch])
+                                - CalibrationData.anDACOffset[ch];
            end
-        else begin
-           // Add DAC channel data
-           // Correct for errors in hardware DAC scaling factor
-           DACValue := Round(DACValues[iDAC*NumDACChannels+DACNum]/
-                       CalibrationData.adDACGainRatio[DACNum]) ;
-           // Correct for DAC zero offset and put in O/P buffer
-           DACBuffers[iBuf].Data[j] := DACValue - CalibrationData.anDACOffset[DACNum];
+        else OutValues[iTo] := DACDefaultValue[ch] ;
+
+        if ch = DigCh then begin
+           if DigitalInUse then OutValues^[iTo] := DigValues[iFrom]
+                           else OutValues^[iTo] := DIGDefaultValue ;
            end ;
 
-        // Increment DACBuffer pointers
-        Inc(j) ;
-        if j = NumSamplesPerBuffer then begin
-           DACBuffers[iBuf].NumSamples := NumSamplesPerBuffer ;
-           Inc(iBuf) ;
-           j := 0 ;
-           end ;
-
-        // Increment DAC channel #
-        Inc(DACNum) ;
-        if DACNum = Protocol.AOChannels then begin
-           DACNum := 0 ;
-           if iDAC < (NumDACPoints-1) then Inc(iDAC) ;
-           end ;
+        Inc(ch) ;
+        if ch >= NumOutChannels then ch := 0 ;
+//        t := t + tStep ;
 
         end ;
 
-    if j <> 0 then DACBuffers[iBuf].NumSamples := j ;
-    Protocol.AOBuffers := High(DACBuffers) ;
+    // Download protocol to DD132X and start/restart acquisition
 
     // If ExternalTrigger flag is set make D/A output wait for
     // TTL pulse on Trigger In line
     // otherwise set acquisition sweep triggering to start immediately
-    if ExternalTrigger then
-       Protocol.DD132X_Triggering := DD132X_ExternalStart
-    else Protocol.DD132X_Triggering := DD132X_StartImmediately ;
+    if ExternalTrigger then Protocol.DD132X_Triggering := DD132X_ExternalStart
+                       else Protocol.DD132X_Triggering := DD132X_StartImmediately ;
 
-    // Download protocol to DD132X
-    Protocol.Length := SizeOf(Protocol) ;
+    // Fill buffer with data from new waveform
+    OutPointer := 0 ;
+    MaxOutPointer := NumOutPoints - 1 ;
+    for i := 0 to AOBufNumSamples-1 do begin
+        AOBuf^[i] := OutValues^[OutPointer] ;
+        Inc(OutPointer) ;
+        if OutPointer > MaxOutPointer then begin
+           if RepeatWaveform then OutPointer := 0
+                             else OutPointer := OutPointer - NumOutChannels ;
+           end ;
+        end ;
+
+    if ExternalTrigger then Protocol.DD132X_Triggering := DD132X_ExternalStart
+                       else Protocol.DD132X_Triggering := DD132X_StartImmediately ;
+
+     Protocol.uAOChannels := NumOutChannels ;
+     for ch := 0 to Protocol.uAOChannels-2 do Protocol.anAOChannels[ch] := ch ;
+     Protocol.anAOChannels[Protocol.uAOChannels-1] := DD132X_PROTOCOL_DIGITALOUTPUT ;
+
+    // Load protocol
     OK := DD132X_SetProtocol( Device, Protocol, Err ) ;
     if not OK then DD132X_CheckError(Err) ;
 
-    // Start data acquisition
-    if OK then begin
-       OK := DD132X_StartAcquisition( Device, Err ) ;
-       { Set flag indicating that ADC is running }
-       if OK then DACActive := True
-          else DD132X_CheckError(Err) ;
-       end ;
+    // Fill A/D input buffer with empty flags
+    for i := 0 to AIBufNumSamples-1 do AIBuf^[i] := EmptyFlag ;
 
+    // Start
+    OK := DD132X_StartAcquisition( Device, Err ) ;
+    if not OK then DD132X_CheckError(Err) ;
+    DD132X_GetNumSamplesOutput( Device, AONumSamplesOutput, Err);
+
+    AIPointer := 0 ;
+    AOPointer := 0 ;
+
+    ADCActive := True ;
+
+    AORepeatWaveform := RepeatWaveform ;
+    DACActive := True ;
     Result := DACActive ;
 
     end ;
+
 
 
 function DD132X_GetDACUpdateInterval : double ;
@@ -1028,7 +1038,7 @@ function DD132X_GetDACUpdateInterval : double ;
   Get D/A update interval
   -----------------------}
 begin
-     Result := (Protocol.SampleInterval*Protocol.AIChannels)/SecsToMicrosecs ;
+     Result := (Protocol.SampleInterval*Protocol.uAIChannels)/SecsToMicrosecs ;
      { NOTE. DD132X interfaces only have one clock for both A/D and D/A
        timing. Thus DAC update interval is constrained to be the same
        as A/D sampling interval (set by DD132X_ADC_to_Memory_. }
@@ -1068,34 +1078,54 @@ var
 begin
 
      if not DeviceInitialised then DD132X_InitialiseBoard ;
+     if not DeviceInitialised then exit ;
 
-     if DeviceInitialised then begin
+     // Scale from Volts to binary integer units
+     DACScale := MaxDACValue/FDACVoltageRangeMax ;
 
-        // Scale from Volts to binary integer units
-        DACScale := MaxDACValue/FDACVoltageRangeMax ;
-
-        { Update D/A channels }
-        for ch := 0 to nChannels-1 do begin
-            // Correct for errors in hardware DAC scaling factor
-            DACValue := Round(DACVolts[ch]*DACScale/CalibrationData.adDACGainRatio[ch]) ;
-            // Correct for DAC zero offset
-            DACValue := DACValue - CalibrationData.anDACOffset[ch];
-            // Keep within legitimate limits
-            if DACValue > MaxDACValue then DACValue := MaxDACValue ;
-            if DACValue < MinDACValue then DACValue := MinDACValue ;
-            // Output D/A value
-            SmallDACValue := DACValue ;
-            //outputdebugstring( PChar(format('%d %d',[ch,DACValue]))) ;
+     { Update D/A channels }
+     for ch := 0 to Min(nChannels,DD132X_MAX_AO_CHANNELS)-1 do begin
+         // Correct for errors in hardware DAC scaling factor
+         DACValue := Round(DACVolts[ch]*DACScale/CalibrationData.adDACGainRatio[ch]) ;
+         // Correct for DAC zero offset
+         DACValue := DACValue - CalibrationData.anDACOffset[ch];
+         // Keep within legitimate limits
+         if DACValue > MaxDACValue then DACValue := MaxDACValue ;
+         if DACValue < MinDACValue then DACValue := MinDACValue ;
+         // Output D/A value
+         SmallDACValue := DACValue ;
+         if not ADCActive then begin
             OK := DD132X_PutAOValue( Device, ch, SmallDACValue, Err ) ;
             if not OK then  DD132X_CheckError(Err) ;
             end ;
+         DACDefaultValue[ch] := SmallDACValue ;
 
-        { Update digital values }
+         end ;
+
+     // Set digital outputs
+     if not ADCActive then begin
         OK := DD132X_PutDOValues( Device, DigValue, Err ) ;
-        if not OK then  DD132X_CheckError(Err) ;
-
+        if not OK then DD132X_CheckError(Err) ;
         end ;
+     DIGDefaultValue := DigValue ;
 
+     // Stop/restart acquisition to flush output buffer
+     if ADCActive {DD132X_IsAcquiring(Device)} then begin
+        OK := DD132X_StopAcquisition(Device,Err) ;
+        if not OK then DD132X_CheckError(Err) ;
+        // Fill D/A & digital O/P buffers with default values
+        DD132X_FillOutputBufferWithDefaultValues ;
+        //
+//        Protocol.Length := SizeOf(Protocol) ;
+//        OK := DD132X_SetProtocol( Device, Protocol, Err ) ;
+//        if not OK then DD132X_CheckError(Err) ;
+
+        OK := DD132X_StartAcquisition(Device,Err) ;
+        if not OK then DD132X_CheckError(Err) ;
+        AIPointer := 0 ;
+        AOPointer := 0 ;
+        OutPointer := 0 ;
+        end ;
 
      end ;
 
@@ -1142,43 +1172,37 @@ procedure DD132X_CloseLaboratoryInterface ;
 { -----------------------------------
   Shut down lab. interface operations
   ----------------------------------- }
-var
-   i : Integer ;
 begin
 
-     if DeviceInitialised then begin
+     if not DeviceInitialised then Exit ;
 
-        { Stop any acquisition in progress }
-        if DD132X_IsAcquiring(Device) then begin
-           OK := DD132X_StopAcquisition(Device,Err) ;
-           if not OK then DD132X_CheckError(Err) ;
-           end ;
-
-        { Close connection with Digidata 132X device }
-        DD132X_CloseDevice( Device, Err ) ;
-        if Err <> 0 then DD132X_CheckError(Err) ;
-
-        // Dispose of A/D buffers
-        for i := 0 to High(ADCBuffers) do begin
-            Dispose(ADCBuffers[i].Data) ;
-            Dispose(ADCBuffers[i].DataFlags) ;
-            end ;
-
-        // Dispose of D/A buffers
-        for i := 0 to High(DACBuffers) do begin
-            Dispose(DACBuffers[i].Data) ;
-            Dispose(DACBuffers[i].DataFlags) ;
-            end ;
-
-        // Free DLL libraries
-        if LibraryHnd > 0 then FreeLibrary( LibraryHnd ) ;
-        LibraryLoaded := False ;
-        if AxoUtils32Hnd > 0 then FreeLibrary( AxoUtils32Hnd ) ;
-
-        DeviceInitialised := False ;
-        DACActive := False ;
-        ADCActive := False ;
+     { Stop any acquisition in progress }
+     if DD132X_IsAcquiring(Device) then begin
+        OK := DD132X_StopAcquisition(Device,Err) ;
+        if not OK then DD132X_CheckError(Err) ;
         end ;
+
+     { Close connection with Digidata 132X device }
+     DD132X_CloseDevice( Device, Err ) ;
+     if Err <> 0 then DD132X_CheckError(Err) ;
+
+     // Free DLL libraries
+     if LibraryHnd > 0 then FreeLibrary( LibraryHnd ) ;
+     LibraryLoaded := False ;
+     if AxoUtils32Hnd > 0 then FreeLibrary( AxoUtils32Hnd ) ;
+
+     if OutValues <> Nil then FreeMem( OutValues ) ;
+     OutValues := Nil ;
+     if AOBuf <> Nil then FreeMem( AOBuf ) ;
+     AOBuf := Nil ;
+     if AIBuf <> Nil then FreeMem( AIBuf ) ;
+     AIBuf := Nil ;
+     if AIFlags <> Nil then FreeMem( AIFlags ) ;
+     AIFlags := Nil ;
+
+     DeviceInitialised := False ;
+     DACActive := False ;
+     ADCActive := False ;
 
      end ;
 
@@ -1240,39 +1264,50 @@ var
 begin
      pInput := @Input ;
      Result := '' ;
-     for i := 0 to StrLen(pInput)-1 do Result := Result + Char(Input[i]) ;
+     for i := 0 to StrLen(pInput)-1 do Result := Result + Input[i] ;
      end ;
 
 
-{ -------------------------------------------
-  Return the smallest value in the array 'Buf'
-  -------------------------------------------}
-function MinInt(
-         const Buf : array of LongInt { List of numbers (IN) }
-         ) : LongInt ;                { Returns Minimum of Buf }
+procedure DD132X_FillOutputBufferWithDefaultValues ;
+// --------------------------------------
+// Fill output buffer with default values
+// --------------------------------------
 var
-   i,Min : LongInt ;
+    i,ch,DIGChannel : Integer ;
 begin
-     Min := High(Min) ;
-     for i := 0 to High(Buf) do
-         if Buf[i] < Min then Min := Buf[i] ;
-     Result := Min ;
-     end ;
 
-{ -------------------------------------------
-  Return the largest value in the array 'Buf'
-  -------------------------------------------}
-function MaxInt(
-         const Buf : array of LongInt { List of numbers (IN) }
-         ) : LongInt ;                { Returns Maximum of Buf }
-var
-   i,Max : LongInt ;
-begin
-     Max := -High(Max) ;
-     for i := 0 to High(Buf) do
-         if Buf[i] > Max then Max := Buf[i] ;
-     Result := Max ;
-     end ;
+    // refill input buffer with empty flags
+    for i := 0 to AIBufNumSamples-1 do AIBuf^[i] := Emptyflag ;
+
+    // Circular transfer buffer
+    ch := 0 ;
+    DIGChannel := NumOutChannels - 1 ;
+    for i := 0 to AOBufNumSamples-1 do begin
+        if ch < DIGChannel then begin
+           AOBuf^[i] := DACDefaultValue[ch] ;
+           inc(ch) ;
+           end
+        else begin
+           AOBuf^[i] := DIGDefaultValue ;
+           ch := 0 ;
+           end ;
+        end ;
+
+    // Output buffer
+    ch := 0 ;
+    DIGChannel := NumOutChannels - 1 ;
+    for i := 0 to NumOutPoints-1 do begin
+        if ch < DIGChannel then begin
+           OutValues^[i] := DACDefaultValue[ch] ;
+           inc(ch) ;
+           end
+        else begin
+           OutValues^[i] := DIGDefaultValue ;
+           ch := 0 ;
+           end ;
+        end ;
+
+    end ;
 
 
 initialization

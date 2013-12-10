@@ -101,6 +101,7 @@ unit ScopeDisplay;
   15.11.11 ... JD CopyDataToClipboard now also copies FLINE external line data points
   26.07.12 ... JD time calibration bar in print and clipboard images no longer has excessive digits
   04.09.12 ... JD Vertical tickmarks now computed correctly when Y axis scaling factor is negative
+  13.11.13 ... JD .CopyDataToClipboard Line written limited to number of time points available
   }
 
 interface
@@ -3020,6 +3021,8 @@ procedure TScopeDisplay.CopyDataToClipBoard ;
 { ------------------------------------------------
   Copy the data points on display to the clipboard
   ------------------------------------------------}
+const
+      NumBytesPerNumber = 20 ;
 var
    i,j,ch,BufSize,Line,NumLines : Integer ;
    t : single ;
@@ -3034,11 +3037,11 @@ begin
 
      // Determine size of and allocate string buffer
      // No. of lines in table
-     NumLines := Max( FXMax - FXMin + 1, FLineCount ) ;
+     NumLines := Max( Min(FXMax,NumPoints) - FXMin + 1, FLineCount ) ;
      BufSize := 1 ;
      if FLineCount > 0 then BufSize := BufSize + 2 ;
      for ch := 0 to FNumChannels-1 do if Channel[ch].InUse then BufSize := BufSize + 1 ;
-     BufSize := BufSize*10*NumLines ;
+     BufSize := BufSize*NumBytesPerNumber*NumLines ;
      CopyBuf := StrAlloc( BufSize ) ;
 
      try
