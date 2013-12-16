@@ -4842,7 +4842,7 @@ begin
        s := ChildNode.Text ;
        {$IF CompilerVersion > 7.0} DS := formatsettings.DECIMALSEPARATOR ;
        {$ELSE} DS := DECIMALSEPARATOR ;
-       {$ENDIF}
+       {$IFEND}
        if (DS = '.') then s := ANSIReplaceText(s , ',',DS);
        if (DS = ',') then s := ANSIReplaceText( s, '.',DS);
 

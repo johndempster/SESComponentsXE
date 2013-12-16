@@ -58,6 +58,8 @@ unit SESCam;
  07-11-13 .... JD Andor SDK2 Readout preamp gain and vertical shift speed can now be set by user
  09-12-13 .... JD ITEX.ConfigFileName now ensured to point at program directory (rather than default)
                   C4880 no longered opened if frame grabber not available.
+ 16.12.13 JD   .StartCapture Now returns False if unable to allocate enough frame buffer memory
+                EOutOfMemory exception now trapped and AllocateFrameBuffer returns false
   ================================================================================ }
 {$OPTIMIZATION OFF}
 {$R 'sescam.dcr'}
@@ -221,7 +223,7 @@ type
     // Data Translation Open Layers session
     DTOLSession : TDTOLSession ;
 
-    procedure AllocateFrameBuffer ;
+    function AllocateFrameBuffer : Boolean ;
     procedure DeallocateFrameBuffer ;
     procedure SetFrameLeft( Value : Integer ) ;
     procedure SetFrameRight( Value : Integer ) ;
@@ -262,7 +264,7 @@ type
     procedure OpenCamera( InterfaceType : Integer ) ;
     procedure CloseCamera ;
     procedure ReadCamera ;
-    procedure StartCapture ;
+    function StartCapture : Boolean ;
     procedure StopCapture ;
     procedure GetFrameBufferPointer( var FrameBuf : Pointer ) ;
     procedure GetLatestFrameNumber( var FrameNum : Integer ) ;
@@ -1418,13 +1420,15 @@ begin
      end ;
 
 
-procedure TSESCam.AllocateFrameBuffer ;
+function TSESCam.AllocateFrameBuffer : Boolean ;
 // -----------------------------------------
 // Allocate/reallocate internal frame buffer
 // -----------------------------------------
 begin
 
     // Default checks (in case checks not implemented for camera)
+
+    Result := False ;
 
     FFrameLeft := Min(Max(FFrameLeft,0),FFrameWidthMax-1) ;
     FFrameTop := Min(Max(FFrameTop,0),FFrameHeightMax-1) ;
@@ -1527,7 +1531,8 @@ begin
                                           FFrameWidth,
                                           FFrameHeight,
                                           FFrameInterval,
-                                          FReadoutTime ) ;
+                                          FReadoutTime,
+                                          FTriggerMode ) ;
               end ;
 
           IMAQ : begin
@@ -1570,12 +1575,19 @@ begin
      DeallocateFrameBuffer ;
 
      if FNumBytesInFrameBuffer > 0 then begin
-        GetMem( PFrameBuffer, FNumBytesInFrameBuffer + 4096 ) ;
-        PAllocatedFrameBuffer := PFrameBuffer ;
-        PFrameBuffer := Ptr( (Cardinal(PFrameBuffer) + 7 ) and $FFFFFFF8 ) ;
+        Try
+          GetMem( PFrameBuffer, FNumBytesInFrameBuffer + 4096 ) ;
+          PAllocatedFrameBuffer := PFrameBuffer ;
+          PFrameBuffer := Ptr( (Cardinal(PFrameBuffer) + 7 ) and $FFFFFFF8 ) ;
+        Except
+            on E : EOutOfMemory do begin
+               Exit ;
+               end;
         end ;
+        end;
 
      ImageAreaChanged := False ;
+     Result := True ;
 
      end ;
 
@@ -1592,7 +1604,7 @@ begin
      end ;
 
 
-procedure TSESCam.StartCapture ;
+function TSESCam.StartCapture : Boolean ;
 { --------------------
   Start frame capture
   -------------------- }
@@ -1600,7 +1612,10 @@ var
      ReadoutRate : Integer ;
 begin
 
-     //AllocateFrameBuffer ;
+     Result := False ;
+
+     // Exit if no frame buffer allocated
+     if PFrameBuffer = Nil then Exit ;
 
      if FAmpGain < 0 then FAmpGain := 0 ;
 
@@ -1872,6 +1887,7 @@ begin
        end ;
 
      FCameraRestartRequired := False ;
+     Result := True ;
 
      end ;
 
@@ -2222,7 +2238,8 @@ begin
                                       FFrameWidth,
                                       FFrameHeight,
                                       FFrameInterval,
-                                      FReadoutTime ) ;
+                                      FReadoutTime,
+                                      FTriggerMode ) ;
           end ;
 
        IMAQ : begin

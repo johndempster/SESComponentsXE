@@ -11,7 +11,9 @@ unit HamDCAMUnit;
 // 26/8/11  JD ReadoutSpeed now set using dcamparam_scanmode_speed_slowest as min. speed
 // 30/8/11  JD Latest attempt to get scan speed setting correct
 // 24-7-13 JD Now compiles unders Delphi XE2/3 as well as 7. (not tested)
-
+// 16-12.13 JD Support for Flash 4.0 and 2.8 added. Exposure time in external trigger mode
+//             reduced by readout time to account for rolling shutter
+//             GetCameraGainList now returns 'n/a' if no gain settings.
 
 interface
 
@@ -1612,7 +1614,7 @@ procedure DCAMAPI_CheckError(
           ) ;
 
 procedure DCAMAPI_CheckROIBoundaries(
-          var Session : TDCAMAPISession ;   // Camera session record
+         var Session : TDCAMAPISession ;   // Camera session record
          var ReadoutSpeed : Integer ;         // Readout rate (index no.)
          var FrameLeft : Integer ;            // Left pixel in CCD readout area
          var FrameRight : Integer ;           // Right pixel in CCD eadout area
@@ -1622,7 +1624,8 @@ procedure DCAMAPI_CheckROIBoundaries(
          var FrameWidth : Integer ;          // Image width
          var FrameHeight : Integer ;         // Image height
          var FrameInterval : Double ;        // Time interval between frames (s)
-         var ReadoutTime : Double ) ;        // Frame readout time (s)
+         var ReadoutTime : Double ;          // Frame readout time (s)
+         ExternalTrigger : Integer );        // Trigger mode ;
 
 function DCAMAPI_CheckStepSize( Value : Integer ;
                                 StepSize : Integer ) : Integer ;
@@ -1997,6 +2000,10 @@ var
     Err : Integer ;
 begin
 
+    Session.NumGains := 0 ;
+    CameraGainList.Clear ;
+    CameraGainList.Add( 'n/a') ;
+
     // Get gain information
     Param.HDR.Size := Sizeof(Param) ;
     Param.HDR.id := DCAM_IDPARAM_FEATURE_INQ ;
@@ -2034,9 +2041,11 @@ begin
 
     outputdebugString(PChar(format('Err=%d',[Err])));
     // Set to gains available from list
-    Session.NumGains := 0 ;
-    CameraGainList.Clear ;
+    if (Param.min = -1) and (Param.max = -1) then Exit ;
+
     Gain := Param.Min ;
+    CameraGainList.Clear ;
+    Session.NumGains := 0 ;
     while (Gain <= Param.Max) and (Session.NumGains <= High(Session.Gains)) do begin
        Session.Gains[Session.NumGains] := Gain ;
        CameraGainList.Add( format( 'X%.1f',[Session.Gains[Session.NumGains]+1]));
@@ -2135,7 +2144,8 @@ begin
                                 FrameWidth,
                                 FrameHeight,
                                 InterFrameTimeInterval,
-                                ReadoutTime) ;
+                                ReadoutTime,
+                                ExternalTrigger ) ;
 
     // Set exposure trigger mode
     if ExternalTrigger = camExtTrigger then begin
@@ -2186,18 +2196,26 @@ begin
           end
        else dcam_settriggermode( Session.CamHandle, DCAM_TRIGMODE_EDGE ) ;
        dcam_settriggerpolarity( Session.CamHandle, DCAM_TRIGPOL_POSITIVE ) ;
-       // Subtract readout time for C4880 cameras, since these
-       // camera can only have exposure times as multiples of readout time
        if ANSIContainsText(Session.CameraModel, 'C4880') then begin
-          ExposureTime := ExposureTime - (Session.ReadoutTime+0.001) - AdditionalReadoutTime ;
+          // Subtract readout time for C4880 cameras, since these
+          // camera can only have exposure times as multiples of readout time
+          ExposureTime := InterFrameTimeInterval - Session.ReadoutTime - 0.001 ;
+          end
+       else if ANSIContainsText(Session.CameraModel, 'C11440') then begin
+          // Special handling for Flash 2.8 and 4.0 sCMOS cameras
+          // exposure time reduced to accommodate rolling shutter exposure starts
+          ExposureTime := InterFrameTimeInterval - (Session.ReadoutTime*0.5) - 0.0005 ;
           end
        else begin
            // Make exposure time 90% of frame interval
-           ExposureTime := (InterFrameTimeInterval*0.9) - AdditionalReadoutTime ;
+           ExposureTime := (InterFrameTimeInterval*0.9) ;
            end ;
+       // Subtract any user-defined additional readout time
+       ExposureTime := Max(ExposureTime - AdditionalReadoutTime,1E-4) ;
        dcam_setexposuretime( Session.CAMHandle, ExposureTime ) ;
        end
     else begin
+       // Internal trigger mode
        dcam_settriggermode( Session.CamHandle, DCAM_TRIGMODE_INTERNAL ) ;
        dcam_setexposuretime( Session.CAMHandle, InterFrameTimeInterval ) ;
        dcam_getexposuretime( Session.CAMHandle, InterFrameTimeInterval ) ;
@@ -2223,7 +2241,8 @@ procedure DCAMAPI_CheckROIBoundaries(
          var FrameWidth : Integer ;          // Image width
          var FrameHeight : Integer ;         // Image height
          var FrameInterval : Double ;        // Time interval between frames (s)
-         var ReadoutTime : Double ) ;        // Frame readout time (s)
+         var ReadoutTime : Double ;          // Frame readout time (s)
+         ExternalTrigger : Integer ) ;        // Trigger mode  ;
 // ----------------------------------------------------------
 // Check and set CCD ROI boundaries and return valid settings
 // (Also calculates minimum readout time)
@@ -2351,10 +2370,17 @@ begin
 
     ReadoutTime := ParamFrameReadoutTime.framereadouttime ;
     if ANSIContainsText(Session.CameraModel, 'C4880') then begin
+       // Special handling for C4880
        MultipleofReadoutTime := Max(Round(FrameInterval/(ReadoutTime*2)),1)*(ReadoutTime*2) ;
        if MultipleofReadoutTime < (FrameInterval*0.99) then
           MultipleofReadoutTime := MultipleofReadoutTime + ReadOutTime*2 ;
        FrameInterval := MultipleofReadoutTime ;
+       end
+    else if ANSIContainsText(Session.CameraModel, 'C11440') then begin
+       // Special handling for Flash 2.8 and 4.0 sCMOS cameras
+       // exposure time reduced to accommodate rolling shutter exposure starts
+       if ExternalTrigger = camExtTrigger then ReadoutTime := ReadoutTime*2.0 ;
+       FrameInterval := Max( FrameInterval, ReadoutTime ) ;
        end
     else FrameInterval := Max( FrameInterval, ReadoutTime ) ;
 

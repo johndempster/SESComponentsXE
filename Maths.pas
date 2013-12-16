@@ -411,7 +411,7 @@ begin
      { Correct for use of comma/period as decimal separator }
      {$IF CompilerVersion > 7.0} dsep := formatsettings.DECIMALSEPARATOR ;
      {$ELSE} dsep := DECIMALSEPARATOR ;
-     {$ENDIF}
+     {$IFEND}
      if dsep = '.' then CNum := ANSIReplaceText(CNum ,',',dsep);
      if dsep = ',' then CNum := ANSIReplaceText(CNum, '.',dsep);
 
