@@ -5,6 +5,7 @@ unit HekaUnit;
 // 20.09.13 Tested and working with EPC-10
 //          Support for 2 and 4 channel amplifiers not tested
 //          Digital outputs not supported yet
+// 06.01.14 Updated to latest version of EPCDLL.DLL to obtain ITC-18-USB support
 
 interface
 
@@ -37,6 +38,31 @@ LIH_StatusIdle =       2 ;
 LIH_StatusBusy =       3 ;
 LIH_StatusAdcOverflow = 4 ;
 
+   EPC9_ModeVC                = 0 ;
+   EPC9_ModeCC                = 1 ;
+
+
+// Definitions for EPC9_SetCurrentGainIndex
+   EPC9_Gain_0005             = 0;     // 0.005 pA/mV; low range
+   EPC9_Gain_0010             = 1;     // 0.010 pA/mV; low range
+   EPC9_Gain_0020             = 2;     // 0.020 pA/mV; low range
+   EPC9_Gain_0050             = 3;     // 0.050 pA/mV; low range
+   EPC9_Gain_0100             = 4;     // 0.100 pA/mV; low range
+   EPC9_Gain_0200             = 5;     // 0.200 pA/mV; low range
+                                    // value 6: spaceholder for a menu separation line
+   EPC9_Gain_0500             = 7;     // 0.5 pA/mV; medium range
+   EPC9_Gain_1                = 8;     // 1.0 pA/mV; medium range
+   EPC9_Gain_2                = 9;     // 2.0 pA/mV; medium range
+   EPC9_Gain_5                = 10;    // 5.0 pA/mV; medium range
+   EPC9_Gain_10               = 11;    // 10 pA/mV; medium range
+   EPC9_Gain_20               = 12;    // 20 pA/mV; medium range
+                                    // value 13: spaceholder for a menu separation line
+   EPC9_Gain_50               = 14;    // 50 pA/mV; high range
+   EPC9_Gain_100              = 15;    // 100 pA/mV; high range
+   EPC9_Gain_200              = 16;    // 200 pA/mV; high range
+   EPC9_Gain_500              = 17;    // 500 pA/mV; high range
+   EPC9_Gain_1000             = 18;    // 1000 pA/mV; high range
+   EPC9_Gain_2000             = 19;     // 2000 pA/mV; high range
 
 // defines for EPC9_SetMuxPath:
   EPC9_F2Ext = 0 ;
@@ -52,6 +78,7 @@ LIH_StatusAdcOverflow = 4 ;
   EPC9_CC1pA = 0 ;
   EPC9_CC10pA =          1 ;
   EPC9_CC100pA =         2 ;
+  EPC9_CC1000pA              = 3;
 
 // defines for EPC9_CCTrackTaus:
   EPC9_TauOff =          0 ;
@@ -59,7 +86,7 @@ LIH_StatusAdcOverflow = 4 ;
   EPC9_Tau3 =  2 ;
   EPC9_Tau10 = 3 ;
   EPC9_Tau30 = 4 ;
-  EPC9_Tau100 =          4 ;
+  EPC9_Tau100 = 5 ;
 
   EPC9_RsModeOff =        0 ;
   EPC9_RsMode100us =      1 ;
@@ -67,6 +94,10 @@ LIH_StatusAdcOverflow = 4 ;
   EPC9_RsMode2us =       3 ;
 
   EPC9_Success =         0 ;
+  EPC9_LIHInitFailed         = 1 ;
+  EPC9_FirmwareError         = 2 ;
+  EPC9_NoScaleFile           = 3 ;
+  EPC9_NoCFastFile           = 4 ;
   EPC9_NoScaleFiles =    22 ;
   EPC9_MaxFileLength =   10240 ;
 
@@ -76,6 +107,33 @@ LIH_StatusAdcOverflow = 4 ;
   EPC9_Epc10Ampl =        3 ;
   EPC9_Epc10PlusAmpl =   4 ;
   EPC9_Epc10USB =        5 ;
+
+// Definitions for EPC9_SetF2Response
+   EPC9_F2_I_Bessel           = 0;
+   EPC9_F2_I_Butterworth      = 1;
+   EPC9_F2_Bypass             = 2;
+   EPC9_F2_V_Bessel           = 3;
+   EPC9_F2_V_Butterworth      = 4;
+
+// Definitions for EPC9_SetElectrodeMode
+   EPC9_Two_Electrodes        = 0;
+   EPC9_Three_Electrodes      = 1;
+
+// Definitions for EPC9_HasProperty
+   EPC9_HasCCFastSpeed        = 0;
+   EPC9_HasLowCCRange         = 1;
+   EPC9_HasHighCCRange        = 2;
+   EPC9_HasInternalVmon       = 3;
+   EPC9_HasCCTracking         = 4;
+   EPC9_HasVmonX100           = 5;
+   EPC9_HasCFastExtended      = 6;
+   EPC9_Has3ElectrodeMode     = 7;
+   EPC9_HasBathSense          = 8;
+   EPC9_HasF2Bypass           = 9;
+   EPC9_HasCFastHigh          = 10;
+   EPC9_HasScaleEEPROM        = 11;
+   EPC9_HasVrefX2AndF2Vmon    = 12;
+
 
 EPC8_StrobeBit = 14 ;
 EPC8_DisableBit = 15 ;
@@ -229,6 +287,19 @@ TEPC9_StateType = packed record
 
 PEPC9_StateType = ^TEPC9_StateType ;
 
+TLIH_OptionsType = packed record
+   UseUSB : LongInt ;
+   BoardNumber : LongInt ;
+   FIFOSamples : LongInt ;
+   MaxProbes : LongInt ;
+   DeviceNumber : Array[0..15] of ANSIChar ;
+   SerialNumber : Array[0..15] of ANSIChar ;
+   ExternalScaling : LongInt ;
+   DacScaling : Pointer ;
+   AdcScaling : Pointer ;
+   end ;
+PLIH_OptionsType = ^TLIH_OptionsType ;
+
 TEPC9_GetMuxAdcOffset= function  : LongInt ; stdcall ;
 
 TEPC9_GetStimDacOffset= function  : LongInt ; stdcall ;
@@ -248,6 +319,8 @@ TEPC9_Reset= function : LongInt ; stdcall ;
 TEPC9_ResetTempState= function  : LongInt ; stdcall ;
 
 TEPC9_FlushCache= function  : LongInt ; stdcall ;
+
+TEPC9_FlushThenWait= function( Seconds : Double ) : LongInt ; stdcall ;
 
 TEPC9_GetLastError= function   : LongInt ; stdcall ;
 
@@ -355,11 +428,10 @@ TEPC9_SetLastVHold= function : LongInt ; stdcall ;
 
 TEPC9_InitializeAndCheckForLife= function(
             ErrorMessage : PANSIChar ;
-            var FirstError : Integer ;
-            var LastError : Integer ;
             IAmplifier : Integer ;
-            LoadScaleProc : Pointer ;
-            LoadCFastProc : Pointer ) : LongInt ; stdcall ;
+            PathtoScaleFile : PANSIChar ;
+            pLIH_Options : PLIH_OptionsType ;
+            OptionsSize : LongInt ) : LongInt ; stdcall ;
 
 TEPC9_FinishInitialization= function(
             ForceAmplifier : LongBool ;
@@ -368,10 +440,8 @@ TEPC9_FinishInitialization= function(
 
 TEPC9_LoadScaleFiles= function(
             ErrorMessage : PANSIChar ;
-            var FirstError : Integer ;
-            var LastError : Integer ;
-            LoadScaleProc : Pointer ;
-            LoadCFastProc : Pointer ) : LongInt ; stdcall ;
+           PathtoScaleFile : PANSIChar
+           ) : LongInt ; stdcall ;
 
 TEPC8_EncodeFilter= function( Filter : Double ) : Word ; stdcall ;
 
@@ -404,6 +474,8 @@ TLIH_StartStimAndSample= function(
             pADChannelList : Pointer ;
             var SampleInterval : Double ;
             OutData : Pointer ;
+            InData : Pointer ;
+            var Immediate : LongInt ;
             SetStimEnd : LongInt ;
             ReadContinuously: LongInt) : LongInt ; stdcall ;
 
@@ -471,8 +543,12 @@ TLIH_SetInputRange= function(
             Range : Integer ): LongInt ; stdcall ;
 
 TLIH_InitializeInterface= function(
+            ErrorMessage : pANSIChar ;
             Amplifier : Integer ;
-            ADBoard : Integer ): LongInt ; stdcall ;
+            ADBoard : Integer ;
+            pLIH_Options : Pointer ;
+            OptionsSize : Integer
+            ): LongInt ; stdcall ;
 
 TLIH_Shutdown= function : LongInt ; stdcall ;
 
@@ -748,6 +824,7 @@ var
     EPC9_Reset : TEPC9_Reset ;
     EPC9_ResetTempState : TEPC9_ResetTempState ;
     EPC9_FlushCache : TEPC9_FlushCache ;
+    EPC9_FlushThenWait : TEPC9_FlushThenWait ;
     EPC9_GetLastError : TEPC9_GetLastError ;
     EPC9_Shutdown : TEPC9_Shutdown ;
     EPC9_GetClipping : TEPC9_GetClipping ;
@@ -1054,6 +1131,7 @@ begin
         @EPC9_Shutdown := HEKA_LoadProcedure(LibraryHnd,'EPC9_Shutdown') ;
         @EPC9_GetLastError := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetLastError') ;
         @EPC9_FlushCache := HEKA_LoadProcedure(LibraryHnd,'EPC9_FlushCache') ;
+        @EPC9_FlushThenWait := HEKA_LoadProcedure(LibraryHnd,'EPC9_FlushThenWait') ;
         @EPC9_ResetTempState := HEKA_LoadProcedure(LibraryHnd,'EPC9_ResetTempState') ;
         @EPC9_Reset := HEKA_LoadProcedure(LibraryHnd,'EPC9_Reset') ;
         @EPC9_AutoVpOffset := HEKA_LoadProcedure(LibraryHnd,'EPC9_AutoVpOffset') ;
@@ -1108,7 +1186,9 @@ procedure HEKA_InitialiseBoard ;
 var
    ch,FirstError,LastError,IAmplifier, Err, iBoard : Integer ;
    //LoadScaleProc,LoadCFastProc : Pointer ;
+   Path,ScaleFile,CfastFile : ANSIString ;
    ErrorMsg : Array[0..511] of ANSIChar ;
+   pLIH_Options : PLIH_OptionsType ;
 begin
 
      DeviceInitialised := False ;
@@ -1126,27 +1206,45 @@ begin
 
      if IAmplifier = EPC9_Epc7Ampl then begin
         // Initialise board only
+
+        pLIH_Options := AllocMem(SizeOf(pLIH_Options)) ;
         case InterfaceType of
            HekaITC16 : iBoard := LIH_ITC16Board ;
            HekaITC18 : iBoard := LIH_ITC18Board ;
+           HekaITC18USB : begin
+                          iBoard := LIH_ITC18Board ;
+                          pLIH_Options^.UseUSB := 1 ;
+                          end;
            HekaITC1600 : iBoard := LIH_LIH1600Board ;
            HekaLIH88 : iBoard := LIH_LIH88Board ;
            else iBoard :=  LIH_ITC16Board ;
            end ;
-        LIH_InitializeInterface( IAmplifier, iBoard ) ;
+        LIH_InitializeInterface( ErrorMsg,
+                                 IAmplifier,
+                                 iBoard,
+                                 pLIH_Options,
+                                 SizeOf(pLIH_Options) ) ;
         EPC9Available := False ;
+        FreeMem(pLIH_Options) ;
         end
      else begin
-        // Initialise patch clamp & boarc
+        // Initialise patch clamp & board
+
+        // Check if scaling files are available
+        Path := ANSIString(ExtractFilePath(ParamStr(0))) ;
+
         Err := EPC9_InitializeAndCheckForLife( ErrorMsg,
-                                            FirstError,
-                                            LastError,
-                                            IAmplifier,
-                                            @EPC9_LoadFileProcType,
-                                            @EPC9_LoadFileProcType ) ;
-        EPC9Available := True ;
+                                               IAmplifier,
+                                               PANSIChar(Path),
+                                               Nil,
+                                               0 ) ;
+       if Err <> EPC9_Success then begin
+          ShowMessage( ANSIString(ErrorMsg)) ;
+          EPC9Available := False ;
+          exit ;
+          end
+        else EPC9Available := True ;
         end ;
-     //ShowMessage( ANSIString( ErrorMsg));
 
      // Get board capabilities
      LIH_GetBoardInfo ( SamplingIntervalStepSize,
@@ -1219,7 +1317,7 @@ function HEKA_ADCToMemory(
   -----------------------------}
 var
    i,AcquisitionMode : Word ;
-   SetStimEnd,ReadContinuously,OK : LongInt ;
+   SetStimEnd,ReadContinuously,OK,Immediate : LongInt ;
    AODataBufs : Array[0..LIH_MaxDacChannels-1] of PSmallIntArray ;
 begin
 
@@ -1251,6 +1349,7 @@ begin
         AOPointer := 0 ;
         SetStimEnd := 0 ;
         ReadContinuously := 1 ;
+        Immediate := 0 ;
         OK := LIH_StartStimAndSample ( 1,
                                        NumADCChannels,
                                        NumADCSamples,
@@ -1260,6 +1359,8 @@ begin
                                        @AICHannelList,
                                        SamplingInterval,
                                        @AODataBufs,
+                                       Nil,
+                                       Immediate,
                                        SetStimEnd,
                                        ReadContinuously ) ;
 
@@ -1377,7 +1478,7 @@ const
 var
    i,j,ch,iTo,iFrom,DigCh,MaxOutPointer,NP,NPWrite,AcquisitionMode,NPDACValues : Integer ;
    AODataBufs : Array[0..LIH_MaxDacChannels-1] of PSmallIntArray ;
-   SetStimEnd,ReadContinuously,OK : LongInt ;
+   SetStimEnd,ReadContinuously,OK,Immediate : LongInt ;
 begin
 
     Result := False ;
@@ -1422,6 +1523,7 @@ begin
 
     SetStimEnd := 0 ;
     ReadContinuously := 0 ;
+    Immediate := 0 ;
     AcquisitionMode := LIH_EnableDacOutput ;
     OK := LIH_StartStimAndSample ( 1,//AONumChannels-1,
                                    AINumChannels,
@@ -1432,6 +1534,8 @@ begin
                                    @AICHannelList,
                                    SamplingInterval,
                                    @AODataBufs,
+                                   Nil,
+                                   Immediate,
                                    SetStimEnd,
                                    ReadContinuously ) ;
 
