@@ -119,7 +119,9 @@ unit SESLabIO;
            for CED 1401s, Digidatas 1320 and 1440 and ITC-16 and ITC-18
            Stimulus support for Digidata 132X added
            Long stimuli now work correctly with Digidata 132X
-  06.01.14 Support for ITC-18-USB added to HekaUnit.pas
+  14.01.14 Heka support updated to work with current EPCDLL downloadable from Heka site
+           Support for ITC-18-USB added to HekaUnit.pas
+
   ================================================================================ }
 
 interface
@@ -390,8 +392,8 @@ type
     procedure EPC9SetFilterBandwidth( Num : Integer ; Value : Single ) ;
     function EPC9GetFilterBandwidth( Num : Integer ) : Single ;
 
-    procedure EPC9SetCfast( Num : Integer ; Value : Single ) ;
-    function EPC9GetCfast( Num : Integer ) : Single ;
+    procedure EPC9SetCfast( Value : Single ) ;
+    function EPC9GetCfast : Single ;
     procedure EPC9SetCfastTau( Value : Single ) ;
     function EPC9GetCfastTau : Single ;
     procedure EPC9SetCslowRange( Value : Integer ) ;
@@ -625,7 +627,7 @@ procedure TritonAutoCompensation(
     function GetDBSSamplingRate : Single ;
     function GetDBSNumFramesLost : Integer ;
 
-    procedure GetEPC9State( var pState : PEPC9_StateType ) ;
+    //procedure GetEPC9State( var pState : PEPC9_StateType ) ;
 
     procedure EPC9GetCurrentGain(
           AmpNumber : Integer ;
@@ -709,7 +711,7 @@ procedure TritonAutoCompensation(
                                                   read EPC9GetFilterBandwidth
                                                   write EPC9SetFilterBandwidth ;
 
-    Property EPC9Cfast[Num : Integer] : Single
+    Property EPC9Cfast : Single
                                              read EPC9GetCfast
                                              write EPC9SetCfast ;
 
@@ -4272,14 +4274,6 @@ begin
        end ;
     end ;
 
-procedure TSESLabIO.GetEPC9State( var pState : PEPC9_StateType ) ;
-// ------------------------------------
-// Return pointer to EPC-9 state record
-// ------------------------------------
-begin
-    pState := Heka_GetEPCState ;
-    end;
-
 procedure TSESLabIO.EPC9GetCurrentGain(
           AmpNumber : Integer ;
           var Gain : Single  ;
@@ -4319,14 +4313,14 @@ begin
      Heka_GetFilterBandwidth(Num,Result)  ;
      end;
 
-procedure TSESLabIO.EPC9SetCfast( Num : Integer ; Value : Single ) ;
+procedure TSESLabIO.EPC9SetCfast( Value : Single ) ;
 begin
-    Heka_SetCfast(Num,Value)  ;
+    Heka_SetCfast(Value)  ;
     end;
 
-function TSESLabIO.EPC9GetCfast( Num : Integer ) : Single ;
+function TSESLabIO.EPC9GetCfast : Single ;
 begin
-    Heka_GetCfast(Num,Result)  ;
+    Heka_GetCfast(Result)  ;
     end;
 
 procedure TSESLabIO.EPC9SetCfastTau( Value : Single ) ;
@@ -4371,7 +4365,7 @@ begin
 
 procedure TSESLabIO.EPC9Setrsvalue( Value : Single ) ;
 begin
-     Heka_Setrsvalue(Value)  ;
+     //Heka_Setrsvalue(Value)  ;
      end;
 
 function TSESLabIO.EPC9Getrsvalue : Single ;

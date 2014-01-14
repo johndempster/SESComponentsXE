@@ -5,7 +5,8 @@ unit HekaUnit;
 // 20.09.13 Tested and working with EPC-10
 //          Support for 2 and 4 channel amplifiers not tested
 //          Digital outputs not supported yet
-// 06.01.14 Updated to latest version of EPCDLL.DLL to obtain ITC-18-USB support
+//  14.01.14 Heka support updated to work with current EPCDLL downloadable from Heka site
+//           Support for ITC-18-USB added to HekaUnit.pas
 
 interface
 
@@ -187,106 +188,6 @@ TEPC8_ModeType = (
                       EPC8_ModeCCFast,
                       EPC8_ModeUnknown);
 
-
-
-TEPC9_StateType = packed record
-     StateVersion : Array[0..7] of ANSIChar ;
-     CalibDate : Array[0..15] of ANSIChar ;
-     RealCurrentGain : Double ;
-     RealF2Bandwidth : Double ;
-     F2Frequency : Double ;
-     RsValue : Double ;
-     RsFraction : Double ;
-     GLeak : Double ;
-     CFastAmp1 : Double ;
-     CFastAmp2 : Double ;
-     CFastTau : Double ;
-     CSlow : Double ;
-     GSeries : Double ;
-     StimDacScale : Double ;
-     CCStimScale : Double ;
-     VHold : Double ;
-     LastVHold : Double ;
-     VpOffset : Double ;
-     VLiquidJunction : Double ;
-     CCIHold : Double ;
-     CSlowStimVolts : Double ;
-     CCTrackVHold : Double ;
-     TimeoutLength : Double ;
-     SearchDelay : Double ;
-     MConductance : Double ;
-     MCapacitance : Double ;
-     RsTau : Double ;
-     StimFilterHz : Double ;
-     SerialNumber : Array[0..7] of ANSIChar ;
-     E9Boards : SmallInt ;
-     CSlowCycles : SmallInt ;
-     IMonAdc : SmallInt ;
-     VMonAdc : SmallInt ;
-     MuxAdc : SmallInt ;
-     TstDac : SmallInt ;
-     StimDac : SmallInt ;
-     StimDacOffset : SmallInt ;
-     MaxDigitalBit : SmallInt ;
-     SpareInt1 : SmallInt ;
-     SpareInt2 : SmallInt ;
-     SpareInt3 : SmallInt ;
-     AmplKind : Byte ;
-     IsEpc9N : ByteBool ;
-     ADBoard : Byte ;
-     BoardVersion : ANSIChar ;
-     ActiveE9Board : Byte ;
-     Mode : Byte ;
-     Range : Byte ;
-     F2Response : Byte ;
-     RsOn : ByteBool ;
-     CSlowRange : Byte ;
-     CCRange : Byte ;
-     CCGain : Byte ;
-     CSlowToTstDac : ByteBool ;
-     StimPath : Byte ;
-     CCTrackTau : Byte ;
-     WasClipping : ByteBool ;
-     RepetitiveCSlow : ByteBool ;
-     LastCSlowRange : Byte ;
-     Locked : ByteBool ;
-     CanCCFast : ByteBool ;
-     CanLowCCRange : ByteBool ;
-     CanHighCCRange : ByteBool ;
-     CanCCTracking : ByteBool ;
-     HasVmonPath : ByteBool ;
-     HasNewCCMode : ByteBool ;
-     Selector : ANSIChar ;
-     HoldInverted : ByteBool ;
-     AutoCFast : Byte ;
-     AutoCSlow : Byte ;
-     HasVmonX100 : ByteBool ;
-     TestDacOn : ByteBool ;
-     QMuxAdcOn : ByteBool ;
-     RealImon1Bandwidth : Double ;
-     StimScale : Double ;
-     Gain : Byte ;
-     Filter1 : Byte ;
-     StimFilterOn : ByteBool ;
-     RsSlow : ByteBool ;
-     StateInited : ByteBool ;
-     CCCFastOn : ByteBool ;
-     CCFastSpeed : ByteBool ;
-     F2Source : Byte ;
-     TestRange : Byte ;
-     TestDacPath : Byte ;
-     MuxChannel : Byte ;
-     MuxGain64 : ByteBool ;
-     VmonX100 : ByteBool ;
-     IsQuadro : ByteBool ;
-     F1Mode : Byte ;
-     CSlowNoGLeak : ByteBool ;
-     SelHold : Double ;
-	   Spare : Array[0..63] of ANSIChar ;
-     end ;
-
-PEPC9_StateType = ^TEPC9_StateType ;
-
 TLIH_OptionsType = packed record
    UseUSB : LongInt ;
    BoardNumber : LongInt ;
@@ -298,6 +199,7 @@ TLIH_OptionsType = packed record
    DacScaling : Pointer ;
    AdcScaling : Pointer ;
    end ;
+
 PLIH_OptionsType = ^TLIH_OptionsType ;
 
 TEPC9_GetMuxAdcOffset= function  : LongInt ; stdcall ;
@@ -316,7 +218,7 @@ TEPC9_AutoVpOffset= function : LongInt ; stdcall ;
 
 TEPC9_Reset= function : LongInt ; stdcall ;
 
-TEPC9_ResetTempState= function  : LongInt ; stdcall ;
+//TEPC9_ResetTempState= function  : LongInt ; stdcall ;
 
 TEPC9_FlushCache= function  : LongInt ; stdcall ;
 
@@ -332,27 +234,16 @@ TEPC9_GetIpip= function(Samples : Integer ) : Double ; stdcall ;
 
 TEPC9_GetRMSNoise= function : Double ; stdcall ;
 
-TEPC9_GetStateAdr= function : Pointer ; stdcall ;
-
-TEPC9_GetEpc9NStateAdr= function (BoardIndex : Integer ) : Pointer ; stdcall ;
-
 TEPC9_GetVmon= function (Samples : Integer) : Double ; stdcall ;
 
 TEPC9_SetCCFastSpeed= function(CCSpeed : Boolean ) : LongInt ; stdcall ;
 
 TEPC9_SetCCIHold= function(Amperes : Double) : LongInt ; stdcall ;
 
-TEPC9_SetCCStimScale= function( Siemens: Double) : LongInt ; stdcall ;
-
-TEPC9_SetCFast1= function( Farads: Double) : LongInt ; stdcall ;
-
-TEPC9_SetCFast2= function( Farads: Double) : LongInt ; stdcall ;
-
+TEPC9_SetCFastTot= function( Farads: Double) : LongInt ; stdcall ;
 TEPC9_SetCFastTau= function( Seconds: Double) : LongInt ; stdcall ;
-
-TEPC9_GetCFastTauReal= function : Double ; stdcall ;
-
-TEPC9_SetCFastTauReal= function( Tau: Double) : LongInt ; stdcall ;
+TEPC9_GetCFastTot= function : Double ; stdcall ;
+TEPC9_GetCFastTau= function : LongInt ; stdcall ;
 
 TEPC9_SetCSlow= function( Farads: Double) : LongInt ; stdcall ;
 
@@ -362,7 +253,7 @@ TEPC9_SetCSlowPeak= function( Peak: Double) : LongInt ; stdcall ;
 
 TEPC9_SetCSlowRange= function( Range : Integer ) : LongInt ; stdcall ;
 
-TEPC9_SetCSlowRepetitive= function(Repetitive : LongBool ) : LongInt ; stdcall ;
+//TEPC9_SetCSlowRepetitive= function(Repetitive : LongBool ) : LongInt ; stdcall ;
 
 TEPC9_SetCurrentGain= function( NewGain: Double) : LongInt ; stdcall ;
 
@@ -370,7 +261,7 @@ TEPC9_SetCurrentGainIndex= function( GainIndex : Integer ) : LongInt ; stdcall ;
 
 TEPC9_SetCCGain= function( NewCCGain : Integer ) : LongInt ; stdcall ;
 
-TEPC9_SetE9Board= function( E9Board : Integer ) : LongInt ; stdcall ;
+//TEPC9_SetE9Board= function( E9Board : Integer ) : LongInt ; stdcall ;
 
 TEPC9_GetExtStimPath= function : LongInt ; stdcall ;
 
@@ -398,7 +289,7 @@ TEPC9_SetMode= function(
                Gently : LongBool
                ) : LongInt ; stdcall ;
 
-TEPC9_SetMuxPath= function( MuxPath : Integer ) : LongInt ; stdcall ;
+//TEPC9_SetMuxPath= function( MuxPath : Integer ) : LongInt ; stdcall ;
 
 TEPC9_SetRsFraction= function( Fraction : Double) : LongInt ; stdcall ;
 
@@ -406,7 +297,7 @@ TEPC9_SetRsMode= function( NewRsMode : Integer ) : LongInt ; stdcall ;
 
      TEPC9_GetRsMode= function  : LongInt ; stdcall ;
 
-TEPC9_SetRsValue= function( Ohms : Double ) : LongInt ; stdcall ;
+//TEPC9_SetRsValue= function( Ohms : Double ) : LongInt ; stdcall ;
 
 TEPC9_SetStimFilterOn= function(StimFilterOn : LongBool ) : LongInt ; stdcall ;
 
@@ -424,7 +315,7 @@ TEPC9_SetCCTrackTau= function( Tau : Integer ) : LongInt ; stdcall ;
 
 TEPC9_GetErrorText= function(Msg : PANSIChar ) : LongInt ; stdcall ;
 
-TEPC9_SetLastVHold= function : LongInt ; stdcall ;
+//TEPC9_SetLastVHold= function : LongInt ; stdcall ;
 
 TEPC9_InitializeAndCheckForLife= function(
             ErrorMessage : PANSIChar ;
@@ -433,15 +324,79 @@ TEPC9_InitializeAndCheckForLife= function(
             pLIH_Options : PLIH_OptionsType ;
             OptionsSize : LongInt ) : LongInt ; stdcall ;
 
-TEPC9_FinishInitialization= function(
+{TEPC9_FinishInitialization= function(
             ForceAmplifier : LongBool ;
             Version : ANSIChar ;
-            E9Boards : Integer ) : LongInt ; stdcall ;
+            E9Boards : Integer ) : LongInt ; stdcall ;}
 
 TEPC9_LoadScaleFiles= function(
             ErrorMessage : PANSIChar ;
            PathtoScaleFile : PANSIChar
            ) : LongInt ; stdcall ;
+
+TEPC9_GetMode = function : LongInt ; stdcall ;
+
+TEPC9_GetCurrentGain = function : Double ; stdcall ;
+
+TEPC9_GetCurrentGainIndex = function : LongInt ; stdcall ;
+
+TEPC9_GetVHold = function : Double ; stdcall ;
+
+TEPC9_GetCCIHold = function : Double ; stdcall ;
+
+TEPC9_GetCCGain = function : LongInt ; stdcall ;
+
+TEPC9_GetVLiquidJunction = function : Double ; stdcall ;
+
+TEPC9_GetVpOffset = function : Double ; stdcall ;
+
+TEPC9_GetCSlowRange = function : LongInt ; stdcall ;
+
+TEPC9_GetCSlow = function : Double ; stdcall ;
+
+TEPC9_GetGSeries = function : Double ; stdcall ;
+
+TEPC9_GetRsFraction = function : Double ; stdcall ;
+
+TEPC9_GetGLeak = function : Double ; stdcall ;
+
+TEPC9_GetF1Index = function : LongInt ; stdcall ;
+
+TEPC9_GetF1Bandwidth = function : Double ; stdcall ;
+
+TEPC9_GetF2Bandwidth = function : Double ; stdcall ;
+
+TEPC9_GetF2Butterworth = function : Byte ; stdcall ;
+
+TEPC9_GetStimFilterOn = function : Byte ; stdcall ;
+
+TEPC9_GetCCTrackHold = function : Double ; stdcall ;
+
+TEPC9_GetCCTrackTau = function : LongInt ; stdcall ;
+
+TEPC9_GetVmonX100 = function : Byte ; stdcall ;
+
+TEPC9_GetCCFastSpeed = function : Byte ; stdcall ;
+
+TEPC9_GetCSlowCycles = function : Byte ; stdcall ;
+
+TEPC9_GetCSlowPeak = function : Double ; stdcall ;
+
+TEPC9_GetTimeout = function : Double ; stdcall ;
+
+// EPC9_GetActiveBoard
+// Returns the index of the active amplifier board.
+TEPC9_GetActiveBoard = function : LongInt ; stdcall ;
+
+// EPC9_GetBoards
+// Returns the number of amplifier boards.
+TEPC9_GetBoards = function : LongInt ; stdcall ;
+
+// EPC9_GetSelector
+// Returns the index of the active selector position board.
+TEPC9_GetSelector = function : LongInt ; stdcall ;
+
+
 
 TEPC8_EncodeFilter= function( Filter : Double ) : Word ; stdcall ;
 
@@ -481,10 +436,10 @@ TLIH_StartStimAndSample= function(
 
 TLIH_AvailableStimAndSample= function(var StillRunning : LongBool ) : LongInt ; stdcall ;
 
-TLIH_DoneStimAndSample= function(
+{TLIH_DoneStimAndSample= function(
             AdcSamplesPerChannel : Integer ;
             var StillRunning : Integer
-            ) : LongInt ; stdcall ;
+            ) : LongInt ; stdcall ;}
 
 
 TLIH_ReadStimAndSample= function(
@@ -552,7 +507,7 @@ TLIH_InitializeInterface= function(
 
 TLIH_Shutdown= function : LongInt ; stdcall ;
 
-TLIH_SetBoardNumber= function( BoardNumber : Integer ): LongInt ; stdcall ;
+//TLIH_SetBoardNumber= function( BoardNumber : Integer ): LongInt ; stdcall ;
 
      TLIH_GetBoardType= function : LongInt ; stdcall ;
 
@@ -704,8 +659,8 @@ function EPC9_LoadFileProcType(
           iFilterNum : Integer ;
           var Bandwidth : Single )  ;
 
-    procedure Heka_SetCfast( Num : Integer ; var Value : Single ) ;
-    procedure Heka_GetCfast( Num : Integer ; var Value : Single ) ;
+    procedure Heka_SetCfast( var Value : Single ) ;
+    procedure Heka_GetCfast( var Value : Single ) ;
     procedure Heka_SetCfastTau( var Value : Single ) ;
     procedure Heka_GetCfastTau( var Value : Single ) ;
     procedure Heka_SetCslow( var Value : Single ) ;
@@ -762,6 +717,10 @@ const
 var
    InterfaceType : Integer ;
    EPC9Available : Boolean ;
+   SerialNumber : ANSIString ;
+   DACScaleFactors : Array[0..LIH_MaxDACChannels-1] of Double ;
+   ADCScaleFactors : Array[0..LIH_MaxADCChannels-1] of Double ;
+
    FADCVoltageRangeMax : single ;    // Max. positive A/D input voltage range
    FADCMinValue : Integer ;          // Max. binary A/D sample value
    FADCMaxValue : Integer ;          // Min. binary A/D sample value
@@ -822,7 +781,7 @@ var
     EPC9_AutoSearch : TEPC9_AutoSearch ;
     EPC9_AutoVpOffset : TEPC9_AutoVpOffset ;
     EPC9_Reset : TEPC9_Reset ;
-    EPC9_ResetTempState : TEPC9_ResetTempState ;
+//    EPC9_ResetTempState : TEPC9_ResetTempState ;
     EPC9_FlushCache : TEPC9_FlushCache ;
     EPC9_FlushThenWait : TEPC9_FlushThenWait ;
     EPC9_GetLastError : TEPC9_GetLastError ;
@@ -830,26 +789,25 @@ var
     EPC9_GetClipping : TEPC9_GetClipping ;
     EPC9_GetIpip : TEPC9_GetIpip ;
     EPC9_GetRMSNoise : TEPC9_GetRMSNoise ;
-    EPC9_GetStateAdr : TEPC9_GetStateAdr ;
-    EPC9_GetEpc9NStateAdr : TEPC9_GetEpc9NStateAdr  ;
+//    EPC9_GetStateAdr : TEPC9_GetStateAdr ;
+//    EPC9_GetEpc9NStateAdr : TEPC9_GetEpc9NStateAdr  ;
     EPC9_GetVmon : TEPC9_GetVmon ;
     EPC9_SetCCFastSpeed : TEPC9_SetCCFastSpeed ;
     EPC9_SetCCIHold : TEPC9_SetCCIHold ;
-    EPC9_SetCCStimScale : TEPC9_SetCCStimScale ;
-    EPC9_SetCFast1 : TEPC9_SetCFast1 ;
-    EPC9_SetCFast2 : TEPC9_SetCFast2 ;
+//    EPC9_SetCCStimScale : TEPC9_SetCCStimScale ;
+    EPC9_SetCFastTot : TEPC9_SetCFastTot ;
+    EPC9_GetCFastTot : TEPC9_GetCFastTot ;
     EPC9_SetCFastTau : TEPC9_SetCFastTau ;
-    EPC9_GetCFastTauReal : TEPC9_GetCFastTauReal ;
-    EPC9_SetCFastTauReal : TEPC9_SetCFastTauReal ;
+    EPC9_GetCFastTau : TEPC9_GetCFastTau ;
     EPC9_SetCSlow : TEPC9_SetCSlow ;
     EPC9_SetCSlowCycles : TEPC9_SetCSlowCycles ;
     EPC9_SetCSlowPeak : TEPC9_SetCSlowPeak ;
     EPC9_SetCSlowRange : TEPC9_SetCSlowRange ;
-    EPC9_SetCSlowRepetitive : TEPC9_SetCSlowRepetitive ;
+//    EPC9_SetCSlowRepetitive : TEPC9_SetCSlowRepetitive ;
     EPC9_SetCurrentGain : TEPC9_SetCurrentGain ;
     EPC9_SetCurrentGainIndex : TEPC9_SetCurrentGainIndex ;
     EPC9_SetCCGain : TEPC9_SetCCGain ;
-    EPC9_SetE9Board : TEPC9_SetE9Board ;
+//    EPC9_SetE9Board : TEPC9_SetE9Board ;
     EPC9_GetExtStimPath : TEPC9_GetExtStimPath ;
     EPC9_SetExtStimPath : TEPC9_SetExtStimPath ;
     EPC9_SetF1Index : TEPC9_SetF1Index ;
@@ -859,11 +817,11 @@ var
     EPC9_SetGLeak : TEPC9_SetGLeak ;
     EPC9_SetGSeries : TEPC9_SetGSeries ;
     EPC9_SetMode : TEPC9_SetMode ;
-    EPC9_SetMuxPath : TEPC9_SetMuxPath ;
+//    EPC9_SetMuxPath : TEPC9_SetMuxPath ;
     EPC9_SetRsFraction : TEPC9_SetRsFraction ;
     EPC9_SetRsMode : TEPC9_SetRsMode ;
     EPC9_GetRsMode : TEPC9_GetRsMode ;
-    EPC9_SetRsValue : TEPC9_SetRsValue ;
+//    EPC9_SetRsValue : TEPC9_SetRsValue ;
     EPC9_SetStimFilterOn : TEPC9_SetStimFilterOn ;
     EPC9_SetTimeout : TEPC9_SetTimeout ;
     EPC9_SetVHold : TEPC9_SetVHold ;
@@ -872,11 +830,41 @@ var
     EPC9_SetCCTrackHold : TEPC9_SetCCTrackHold ;
     EPC9_SetCCTrackTau : TEPC9_SetCCTrackTau ;
     EPC9_GetErrorText : TEPC9_GetErrorText ;
-    EPC9_SetLastVHold : TEPC9_SetLastVHold ;
+//    EPC9_SetLastVHold : TEPC9_SetLastVHold ;
     EPC9_InitializeAndCheckForLife : TEPC9_InitializeAndCheckForLife ;
-    EPC9_FinishInitialization : TEPC9_FinishInitialization ;
+//    EPC9_FinishInitialization : TEPC9_FinishInitialization ;
     EPC9_LoadScaleFiles : TEPC9_LoadScaleFiles ;
-    EPC8_EncodeFilter : TEPC8_EncodeFilter ;
+
+     EPC9_GetMode : TEPC9_GetMode ;
+     EPC9_GetCurrentGain : TEPC9_GetCurrentGain ;
+     EPC9_GetCurrentGainIndex : TEPC9_GetCurrentGainIndex ;
+     EPC9_GetVHold : TEPC9_GetVHold ;
+     EPC9_GetCCIHold : TEPC9_GetCCIHold ;
+     EPC9_GetCCGain : TEPC9_GetCCGain ;
+     EPC9_GetVLiquidJunction : TEPC9_GetVLiquidJunction ;
+     EPC9_GetVpOffset : TEPC9_GetVpOffset ;
+     EPC9_GetCSlowRange : TEPC9_GetCSlowRange ;
+     EPC9_GetCSlow : TEPC9_GetCSlow ;
+     EPC9_GetGSeries : TEPC9_GetGSeries ;
+     EPC9_GetRsFraction : TEPC9_GetRsFraction ;
+     EPC9_GetGLeak : TEPC9_GetGLeak ;
+     EPC9_GetF1Index   : TEPC9_GetF1Index ;
+     EPC9_GetF1Bandwidth : TEPC9_GetF1Bandwidth ;
+     EPC9_GetF2Bandwidth : TEPC9_GetF2Bandwidth ;
+     EPC9_GetF2Butterworth  : TEPC9_GetF2Butterworth ;
+     EPC9_GetStimFilterOn  : TEPC9_GetStimFilterOn ;
+     EPC9_GetCCTrackHold : TEPC9_GetCCTrackHold ;
+     EPC9_GetCCTrackTau   : TEPC9_GetCCTrackTau ;
+     EPC9_GetVmonX100  : TEPC9_GetVmonX100 ;
+     EPC9_GetCCFastSpeed  : TEPC9_GetCCFastSpeed ;
+     EPC9_GetCSlowCycles  : TEPC9_GetCSlowCycles ;
+     EPC9_GetCSlowPeak : TEPC9_GetCSlowPeak ;
+     EPC9_GetTimeout : TEPC9_GetTimeout ;
+     EPC9_GetActiveBoard   : TEPC9_GetActiveBoard ;
+     EPC9_GetBoards   : TEPC9_GetBoards ;
+     EPC9_GetSelector   : TEPC9_GetSelector ;
+
+    EPC8_EncodeFilter : TEPC8_EncodeFilter ;
     EPC8_DecodeFilter : TEPC8_DecodeFilter ;
     EPC8_DecodeGain : TEPC8_DecodeGain ;
     EPC8_EncodeGain : TEPC8_EncodeGain ;
@@ -887,7 +875,7 @@ var
     EPC8_SendToEpc8 : TEPC8_SendToEpc8 ;
     LIH_StartStimAndSample : TLIH_StartStimAndSample ;
     LIH_AvailableStimAndSample : TLIH_AvailableStimAndSample  ;
-    LIH_DoneStimAndSample : TLIH_DoneStimAndSample ;
+//    LIH_DoneStimAndSample : TLIH_DoneStimAndSample ;
     LIH_ReadStimAndSample : TLIH_ReadStimAndSample ;
     LIH_AppendToFIFO : TLIH_AppendToFIFO ;
     LIH_Halt : TLIH_Halt ;
@@ -904,7 +892,7 @@ var
     LIH_SetInputRange : TLIH_SetInputRange ;
     LIH_InitializeInterface : TLIH_InitializeInterface ;
     LIH_Shutdown : TLIH_Shutdown ;
-    LIH_SetBoardNumber : TLIH_SetBoardNumber ;
+//    LIH_SetBoardNumber : TLIH_SetBoardNumber ;
     LIH_GetBoardType : TLIH_GetBoardType ;
     LIH_GetErrorText : TLIH_GetErrorText ;
     LIH_GetBoardInfo : TLIH_GetBoardInfo ;
@@ -942,7 +930,6 @@ function  HEKA_GetLabInterfaceInfo(
 var
     iBoardType : Integer ;
     BoardName : String ;
-    EPC9State : PEPC9_StateType ;
 begin
 
      InterfaceType := InterfaceTypeIn ;
@@ -993,30 +980,10 @@ begin
      DACMinUpdateInterval := MinSamplingInterval ;
      DACMinUpdateInterval := MaxSamplingInterval ;
 
-     EPC9_SetCurrentGainIndex(0) ;
-     EPC9State := EPC9_GetStateAdr ;
-     EPC9MinCurrentGain := EPC9State^.RealCurrentGain ;
-
      GentleModeChange := False ;
 
-     { Get device model and firmware details }
-     if EPC9Available then begin
-
-        case EPC9State^.AmplKind of
-          EPC9_Epc9Ampl : Model := 'EPC-9' ;
-          EPC9_Epc10Ampl : Model := 'EPC-10' ;
-          EPC9_Epc10PlusAmpl  : Model := 'EPC-10+' ;
-          EPC9_Epc10USB : Model := 'EPC-10-USB' ;
-          else Model := 'EPC-?' ;
-          end ;
-
-        if EPC9State^.IsEpc9N then Model := Model + ' (EPC9N)' ;
-        if EPC9State^.IsQuadro then Model := Model + ' (Quadro)' ;
-        Model := Model + ' s/n ' + ANSIString(EPC9State^.SerialNumber) ;
-        end
-     else Model := '' ;
-
-     Model := Model + ' Board:' + BoardName ;
+     Model := ' Board:' + BoardName ;
+     if SerialNumber <> '' then Model := Model + ' s/n ' + SerialNumber ;
      Model := Model + ' ' + format( ' (epc.dll V.%d)',[EPC9_DLLVersion]) ;
 
      Result := DeviceInitialised ;
@@ -1051,7 +1018,7 @@ begin
         @LIH_GetBoardInfo := HEKA_LoadProcedure(LibraryHnd,'LIH_GetBoardInfo') ;
         @LIH_GetErrorText := HEKA_LoadProcedure(LibraryHnd,'LIH_GetErrorText') ;
         @LIH_GetBoardType := HEKA_LoadProcedure(LibraryHnd,'LIH_GetBoardType') ;
-        @LIH_SetBoardNumber := HEKA_LoadProcedure(LibraryHnd,'LIH_SetBoardNumber') ;
+//        @LIH_SetBoardNumber := HEKA_LoadProcedure(LibraryHnd,'LIH_SetBoardNumber') ;
         @LIH_Shutdown := HEKA_LoadProcedure(LibraryHnd,'LIH_Shutdown') ;
         @LIH_InitializeInterface := HEKA_LoadProcedure(LibraryHnd,'LIH_InitializeInterface') ;
         @LIH_SetInputRange := HEKA_LoadProcedure(LibraryHnd,'LIH_SetInputRange') ;
@@ -1068,7 +1035,7 @@ begin
         @LIH_Halt := HEKA_LoadProcedure(LibraryHnd,'LIH_Halt') ;
         @LIH_AppendToFIFO := HEKA_LoadProcedure(LibraryHnd,'LIH_AppendToFIFO') ;
         @LIH_ReadStimAndSample := HEKA_LoadProcedure(LibraryHnd,'LIH_ReadStimAndSample') ;
-        @LIH_DoneStimAndSample := HEKA_LoadProcedure(LibraryHnd,'LIH_DoneStimAndSample') ;
+//        @LIH_DoneStimAndSample := HEKA_LoadProcedure(LibraryHnd,'LIH_DoneStimAndSample') ;
         @LIH_StartStimAndSample := HEKA_LoadProcedure(LibraryHnd,'LIH_StartStimAndSample') ;
         @LIH_AvailableStimAndSample := HEKA_LoadProcedure(LibraryHnd,'LIH_AvailableStimAndSample') ;
         @EPC8_SendToEpc8 := HEKA_LoadProcedure(LibraryHnd,'EPC8_SendToEpc8') ;
@@ -1081,9 +1048,9 @@ begin
         @EPC8_DecodeFilter := HEKA_LoadProcedure(LibraryHnd,'EPC8_DecodeFilter') ;
         @EPC8_EncodeFilter := HEKA_LoadProcedure(LibraryHnd,'EPC8_EncodeFilter') ;
         @EPC9_LoadScaleFiles := HEKA_LoadProcedure(LibraryHnd,'EPC9_LoadScaleFiles') ;
-        @EPC9_FinishInitialization := HEKA_LoadProcedure(LibraryHnd,'EPC9_FinishInitialization') ;
+//        @EPC9_FinishInitialization := HEKA_LoadProcedure(LibraryHnd,'EPC9_FinishInitialization') ;
         @EPC9_InitializeAndCheckForLife := HEKA_LoadProcedure(LibraryHnd,'EPC9_InitializeAndCheckForLife') ;
-        @EPC9_SetLastVHold := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetLastVHold') ;
+//        @EPC9_SetLastVHold := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetLastVHold') ;
         @EPC9_GetErrorText := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetErrorText') ;
         @EPC9_SetCCTrackTau := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCCTrackTau') ;
         @EPC9_SetCCTrackHold := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCCTrackHold') ;
@@ -1092,11 +1059,11 @@ begin
         @EPC9_SetVHold := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetVHold') ;
         @EPC9_SetTimeout := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetTimeout') ;
         @EPC9_SetStimFilterOn := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetStimFilterOn') ;
-        @EPC9_SetRsValue := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetRsValue') ;
+//        @EPC9_SetRsValue := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetRsValue') ;
         @EPC9_GetRsMode := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetRsMode') ;
         @EPC9_SetRsMode := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetRsMode') ;
         @EPC9_SetRsFraction := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetRsFraction') ;
-        @EPC9_SetMuxPath := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetMuxPath') ;
+//        @EPC9_SetMuxPath := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetMuxPath') ;
         @EPC9_SetMode := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetMode') ;
         @EPC9_SetGSeries := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetGSeries') ;
         @EPC9_SetGLeak := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetGLeak') ;
@@ -1106,25 +1073,26 @@ begin
         @EPC9_SetF1Index := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetF1Index') ;
         @EPC9_SetExtStimPath := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetExtStimPath') ;
         @EPC9_GetExtStimPath := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetExtStimPath') ;
-        @EPC9_SetE9Board := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetE9Board') ;
+//        @EPC9_SetE9Board := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetE9Board') ;
         @EPC9_SetCCGain := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCCGain') ;
         @EPC9_SetCurrentGainIndex := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCurrentGainIndex') ;
         @EPC9_SetCurrentGain := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCurrentGain') ;
-        @EPC9_SetCSlowRepetitive := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCSlowRepetitive') ;
+//        @EPC9_SetCSlowRepetitive := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCSlowRepetitive') ;
         @EPC9_SetCSlowRange := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCSlowRange') ;
         @EPC9_SetCSlowPeak := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCSlowPeak') ;
         @EPC9_SetCSlowCycles := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCSlowCycles') ;
         @EPC9_SetCSlow := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCSlow') ;
-        @EPC9_SetCFastTauReal := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCFastTauReal') ;
-        @EPC9_GetCFastTauReal := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCFastTauReal') ;
-        @EPC9_SetCFast2 := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCFast2') ;
-        @EPC9_SetCFast1 := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCFast1') ;
-        @EPC9_SetCCStimScale := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCCStimScale') ;
+        @EPC9_SetCFastTot := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCFastTot') ;
+        @EPC9_SetCFastTot := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCFastTot') ;
+        @EPC9_SetCFastTau := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCFastTau') ;
+        @EPC9_SetCFastTau := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCFastTau') ;
+//        @EPC9_SetCCStimScale := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCCStimScale') ;
         @EPC9_SetCCIHold := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCCIHold') ;
+        @EPC9_SetCCGain := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCCGain') ;
         @EPC9_SetCCFastSpeed := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCCFastSpeed') ;
         @EPC9_GetVmon := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetVmon') ;
-        @EPC9_GetEpc9NStateAdr := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetEpc9NStateAdr') ;
-        @EPC9_GetStateAdr := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetStateAdr') ;
+//        @EPC9_GetEpc9NStateAdr := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetEpc9NStateAdr') ;
+///        @EPC9_GetStateAdr := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetStateAdr') ;
         @EPC9_GetRMSNoise := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetRMSNoise') ;
         @EPC9_GetIpip := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetIpip') ;
         @EPC9_GetClipping := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetClipping') ;
@@ -1132,7 +1100,7 @@ begin
         @EPC9_GetLastError := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetLastError') ;
         @EPC9_FlushCache := HEKA_LoadProcedure(LibraryHnd,'EPC9_FlushCache') ;
         @EPC9_FlushThenWait := HEKA_LoadProcedure(LibraryHnd,'EPC9_FlushThenWait') ;
-        @EPC9_ResetTempState := HEKA_LoadProcedure(LibraryHnd,'EPC9_ResetTempState') ;
+//        @EPC9_ResetTempState := HEKA_LoadProcedure(LibraryHnd,'EPC9_ResetTempState') ;
         @EPC9_Reset := HEKA_LoadProcedure(LibraryHnd,'EPC9_Reset') ;
         @EPC9_AutoVpOffset := HEKA_LoadProcedure(LibraryHnd,'EPC9_AutoVpOffset') ;
         @EPC9_AutoSearch := HEKA_LoadProcedure(LibraryHnd,'EPC9_AutoSearch') ;
@@ -1141,7 +1109,37 @@ begin
         @EPC9_AutoCFast := HEKA_LoadProcedure(LibraryHnd,'EPC9_AutoCFast') ;
         @EPC9_GetStimDacOffset := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetStimDacOffset') ;
         @EPC9_GetMuxAdcOffset := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetMuxAdcOffset') ;
-        //@ := HEKA_LoadProcedure(LibraryHnd,'') ;
+
+        @EPC9_GetVHold := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetVHold') ;
+        @EPC9_GetCCIHold := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCCIHold') ;
+        @EPC9_GetVLiquidJunction := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetVLiquidJunction') ;
+        @EPC9_GetVpOffset := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetVpOffset') ;
+        @EPC9_GetCFastTot := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCFastTot') ;
+        @EPC9_GetCFastTau := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCFastTau') ;
+        @EPC9_GetCSlowRange := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCSlowRange') ;
+        @EPC9_GetCSlow := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCSlow') ;
+        @EPC9_GetGSeries := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetGSeries') ;
+        @EPC9_GetRsMode := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetRsMode') ;
+        @EPC9_GetRsFraction := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetRsFraction') ;
+        @EPC9_GetGLeak := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetGLeak') ;
+        @EPC9_GetF1Index := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetF1Index') ;
+        @EPC9_GetF1Bandwidth := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetF1Bandwidth') ;
+        @EPC9_GetF2Bandwidth := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetF2Bandwidth') ;
+        @EPC9_GetF2Butterworth := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetF2Butterworth') ;
+        @EPC9_GetStimFilterOn := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetStimFilterOn') ;
+        @EPC9_GetCCTrackHold := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCCTrackHold') ;
+        @EPC9_GetCCTrackTau := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCCTrackTau') ;
+        @EPC9_GetVmonX100 := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetVmonX100') ;
+        @EPC9_GetCCFastSpeed := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCCFastSpeed') ;
+        @EPC9_GetCSlowCycles := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCSlowCycles') ;
+        @EPC9_GetCSlowPeak := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCSlowPeak') ;
+        @EPC9_GetTimeout := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetTimeout') ;
+        @EPC9_GetActiveBoard := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetActiveBoard') ;
+        @EPC9_GetBoards := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetBoards') ;
+        @EPC9_GetSelector := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetSelector') ;
+        @EPC9_GetMode := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetMode') ;
+        @EPC9_GetCurrentGain := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCurrentGain') ;
+        @EPC9_GetCurrentGainIndex := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCurrentGainIndex') ;
         LibraryLoaded := True ;
         end
      else begin
@@ -1196,6 +1194,11 @@ begin
      if not LibraryLoaded then HEKA_LoadLibrary ;
      if not LibraryLoaded then Exit ;
 
+     // Create options record
+     pLIH_Options := AllocMem(SizeOf(TLIH_OptionsType)) ;
+     pLIH_Options^.DacScaling := @DACScaleFactors ;
+     pLIH_Options^.AdcScaling := @ADCScaleFactors ;
+
      case InterfaceType of
        HekaEPC9 : IAmplifier := EPC9_Epc9Ampl ;
        HekaEPC10 : IAmplifier := EPC9_Epc10Ampl ;
@@ -1206,8 +1209,6 @@ begin
 
      if IAmplifier = EPC9_Epc7Ampl then begin
         // Initialise board only
-
-        pLIH_Options := AllocMem(SizeOf(pLIH_Options)) ;
         case InterfaceType of
            HekaITC16 : iBoard := LIH_ITC16Board ;
            HekaITC18 : iBoard := LIH_ITC18Board ;
@@ -1219,13 +1220,13 @@ begin
            HekaLIH88 : iBoard := LIH_LIH88Board ;
            else iBoard :=  LIH_ITC16Board ;
            end ;
-        LIH_InitializeInterface( ErrorMsg,
+        Err := LIH_InitializeInterface( ErrorMsg,
                                  IAmplifier,
                                  iBoard,
                                  pLIH_Options,
-                                 SizeOf(pLIH_Options) ) ;
+                                 SizeOf(TLIH_OptionsType) ) ;
         EPC9Available := False ;
-        FreeMem(pLIH_Options) ;
+        EPC9MinCurrentGain := 1.0 ;
         end
      else begin
         // Initialise patch clamp & board
@@ -1233,18 +1234,29 @@ begin
         // Check if scaling files are available
         Path := ANSIString(ExtractFilePath(ParamStr(0))) ;
 
+        SerialNumber := '' ;
         Err := EPC9_InitializeAndCheckForLife( ErrorMsg,
                                                IAmplifier,
                                                PANSIChar(Path),
-                                               Nil,
-                                               0 ) ;
-       if Err <> EPC9_Success then begin
+                                               pLIH_Options,
+                                               SizeOf(TLIH_OptionsType) ) ;
+        SerialNumber := ANSIString(pLIH_Options^.SerialNumber) ;
+
+        // Get minimum current gain
+        EPC9_SetCurrentGainIndex(0) ;
+        EPC9MinCurrentGain := EPC9_GetCurrentGain ;
+
+        EPC9Available := True ;
+        end ;
+
+     FreeMem(pLIH_Options) ;
+
+     // Report error and exist
+     if Err <> 0 then begin
           ShowMessage( ANSIString(ErrorMsg)) ;
           EPC9Available := False ;
           exit ;
-          end
-        else EPC9Available := True ;
-        end ;
+          end ;
 
      // Get board capabilities
      LIH_GetBoardInfo ( SamplingIntervalStepSize,
@@ -1764,52 +1776,82 @@ function Heka_GetEPCState : Pointer ;
 // Return address of EPC-9 state record
 // ------------------------------------
 begin
-      Result := EPC9_GetStateAdr ;
+//      Result := EPC9_GetStateAdr ;
       end;
 
 procedure Heka_GetCurrentGain(
           AmpNumber : Integer ;
           var Gain : Single  ;
           var ScaleFactor : Single ) ;
-// ------------------------------------
-// Return address of EPC-9 state record
-// ------------------------------------
-var
-    EPC9State : PEPC9_StateType ;
+// -----------------
+// Get current gain
+// -----------------
 begin
-     EPC9State := EPC9_GetEpc9NStateAdr(AmpNumber) ;
      ScaleFactor := EPC9MinCurrentGain*1E-12 ;  // Convert to mV/pA
-     Gain :=  EPC9State^.RealCurrentGain / EPC9MinCurrentGain ;
+     Gain :=  EPC9_GetCurrentGain / EPC9MinCurrentGain ;
+
      end;
 
 procedure Heka_GetCurrentGainList( List : TStrings ) ;
 // -----------------------------
 // Return list of current gains
 // -----------------------------
-var
-    i,KeepGain : Integer ;
-    EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     EPC9MinCurrentGain := EPC9State^.RealCurrentGain ;
-     KeepGain := EPC9State^.Gain ;
 
      List.Clear ;
-     for i := 0 to 15 do begin
-         EPC9_SetCurrentGainIndex(i) ;
-         List.Add(format('%.4g mV/pA',[EPC9State^.RealCurrentGain*1E-9]));
-         end ;
-
-     EPC9_SetCurrentGainIndex(KeepGain) ;
+     List.Add('   0.005 pA/mV') ;
+     List.Add('   0.010 pA/mV') ;
+     List.Add('   0.020 pA/mV') ;
+     List.Add('   0.050 pA/mV') ;
+     List.Add('   0.100 pA/mV') ;
+     List.Add('   0.200 pA/mV') ;
+     List.Add('   0.5   pA/mV') ;
+     List.Add('   1.0   pA/mV') ;
+     List.Add('   2.0   pA/mV') ;
+     List.Add('   5.0   pA/mV') ;
+     List.Add('  10.0   pA/mV') ;
+     List.Add('  20.0   pA/mV') ;
+     List.Add('  50.0   pA/mV') ;
+     List.Add(' 100.0   pA/mV') ;
+     List.Add(' 200.0   pA/mV') ;
+     List.Add(' 500.0   pA/mV') ;
+     List.Add('1000.0   pA/mV') ;
+     List.Add('2000.0   pA/mV') ;
 
      end ;
+
 
 procedure Heka_SetCurrentGain( iGain : Integer )  ;
 // ----------------------------
 // Set current gain  (by index)
 // ----------------------------
+var
+    EPC9Gain : Integer ;
 begin
      EPC9_SetCurrentGainIndex( iGain ) ;
+   case iGain of
+       0 : EPC9Gain := EPC9_Gain_0005 ;
+       1 : EPC9Gain := EPC9_Gain_0010 ;
+       2 : EPC9Gain := EPC9_Gain_0020 ;
+       3 : EPC9Gain := EPC9_Gain_0050 ;
+       4 : EPC9Gain := EPC9_Gain_0100 ;
+       5 : EPC9Gain := EPC9_Gain_0200 ;
+       6 : EPC9Gain := EPC9_Gain_0500 ;
+       7 : EPC9Gain := EPC9_Gain_1 ;
+       8 : EPC9Gain := EPC9_Gain_2 ;
+       9 : EPC9Gain := EPC9_Gain_5 ;
+       10 : EPC9Gain := EPC9_Gain_10 ;
+       11 : EPC9Gain := EPC9_Gain_20 ;
+       12 : EPC9Gain := EPC9_Gain_50 ;
+       13 : EPC9Gain := EPC9_Gain_100 ;
+       14 : EPC9Gain := EPC9_Gain_200 ;
+       15 : EPC9Gain := EPC9_Gain_500 ;
+       16 : EPC9Gain := EPC9_Gain_1000 ;
+       17 : EPC9Gain := EPC9_Gain_2000 ;
+       else EPC9Gain := EPC9_Gain_0005 ;
+       EPC9_SetCurrentGainIndex( EPC9Gain ) ;
+       end;
+
      end;
 
 procedure Heka_SetFilterMode(
@@ -1834,17 +1876,13 @@ procedure Heka_GetFilterMode(
           iFilterNum : Integer ;
           var iFilterMode : Integer  )  ;
 // ----------------------------
-// Set current filter
+// Get current filter mode
 // ----------------------------
-var
-    EPC9State : PEPC9_StateType ;
 begin
 
-     EPC9State := EPC9_GetStateAdr ;
-
      case iFilterNum of
-          1 : iFilterMode := EPC9State^.Filter1 ;
-          2 : iFilterMode := EPC9State^.F2Response ;
+          1 : iFilterMode := EPC9_GetF1Index ;
+          2 : iFilterMode := EPC9_GetF2Butterworth ;
          end;
 
      end;
@@ -1868,48 +1906,36 @@ procedure Heka_GetFilterBandwidth(
           iFilterNum : Integer ;
           var Bandwidth : Single )  ;
 // ----------------------------
-// Set current filter
+// Set current filter bandwidth
 // ----------------------------
-var
-    EPC9State : PEPC9_StateType ;
 begin
-
-     EPC9State := EPC9_GetStateAdr ;
-
      case iFilterNum of
-          1 : Bandwidth := EPC9State^.RealImon1Bandwidth ;
-          2 : Bandwidth := EPC9State^.RealF2Bandwidth ;
+          1 : Bandwidth := EPC9_GetF1Bandwidth ;
+          2 : Bandwidth := EPC9_GetF2Bandwidth ;
          end;
 
      end;
 
 
-procedure Heka_SetCfast( Num : Integer ; var Value : Single ) ;
+procedure Heka_SetCfast( var Value : Single ) ;
 begin
-     EPC9_SetCFast1( Value ) ;
+     EPC9_SetCFastTot( Value ) ;
      end;
 
-procedure Heka_GetCfast( Num : Integer ; var Value : Single ) ;
-var
-    EPC9State : PEPC9_StateType ;
+procedure Heka_GetCfast( var Value : Single ) ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.CFastAmp1 ;
+     Value := EPC9_GetCFastTot ;
      end;
 
 
 procedure Heka_SetCfastTau( var Value : Single ) ;
 begin
-     EPC9_SetCFastTauReal( Value ) ;
+     EPC9_SetCFastTau(Value) ;
      end;
 
 procedure Heka_GetCfastTau( var Value : Single ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.CFastTau ;
+     Value := EPC9_GetCFastTau ;
      end;
 
 
@@ -1919,11 +1945,8 @@ begin
      end;
 
 procedure Heka_GetCslow( var Value : Single ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.Cslow ;
+     Value := EPC9_GetCslow ;
      end;
 
 procedure Heka_SetCslowRange( var Value : Integer ) ;
@@ -1932,11 +1955,8 @@ begin
      end;
 
 procedure Heka_GetCslowRange( var Value : Integer ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.CslowRange ;
+     Value := EPC9_GetCslowRange ;
      end;
 
 procedure Heka_SetGseries( var Value : Single ) ;
@@ -1946,11 +1966,8 @@ begin
      end;
 
 procedure Heka_GetGseries( var Value : Single ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.Gseries ;
+     Value := EPC9_GetGseries ;
      end;
 
 procedure Heka_SetGleak( var Value : Single ) ;
@@ -1959,25 +1976,18 @@ begin
      end;
 
 procedure Heka_GetGleak( var Value : Single ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.Gleak ;
+     Value := EPC9_GetGleak ;
      end;
 
 procedure Heka_SetRSValue( var Value : Single ) ;
 begin
-     EPC9_SetRSValue( Value ) ;
+     //EPC9_SetRSValue( Value ) ;
      end;
 
 procedure Heka_GetRSValue( var Value : Single ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.RsValue ;
+     //Value := EPC9_GetRsValue ;
      end;
 
 procedure Heka_SetRsFraction( var Value : Single ) ;
@@ -1986,11 +1996,8 @@ begin
      end;
 
 procedure Heka_GetRsFraction( var Value : Single ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.RsFraction ;
+     Value := EPC9_SetRsFraction(Value) ;
      end;
 
 procedure Heka_SetRsMode( var Value : Integer ) ;
@@ -2009,11 +2016,8 @@ begin
      end;
 
 procedure Heka_GetMode( var Value : Integer ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.Mode ;
+     Value := EPC9_GetMode ;
      end;
 
 procedure Heka_SetGentleModeChange( var Value : Boolean ) ;
@@ -2032,11 +2036,8 @@ begin
      end;
 
 procedure Heka_GetVHold( var Value : Single ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.VHold ;
+     Value := EPC9_GetVHold ;
      end;
 
 procedure Heka_SetVLiquidJunction( var Value : Single ) ;
@@ -2045,11 +2046,8 @@ begin
      end;
 
 procedure Heka_GetVLiquidJunction( var Value : Single ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.VLiquidJunction ;
+     Value := EPC9_GetVLiquidJunction ;
      end;
 
 procedure Heka_SetVPOffset( var Value : Single ) ;
@@ -2058,11 +2056,8 @@ begin
      end;
 
 procedure Heka_GetVPOffset( var Value : Single ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.VPOffset ;
+     Value := EPC9_GetVPOffset ;
      end;
 
 procedure Heka_SetCCGain( var Value : Integer ) ;
@@ -2071,11 +2066,8 @@ begin
      end;
 
 procedure Heka_GetCCGain( var Value : Integer ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.CCGain ;
+     Value := EPC9_GetCCGain ;
      end;
 
 procedure Heka_SetCCTrackHold( var Value : Single ) ;
@@ -2084,11 +2076,8 @@ begin
      end;
 
 procedure Heka_GetCCTrackHold( var Value : Single ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.CCTrackVHold ;
+     Value := EPC9_GetCCTrackHold ;
      end;
 
 procedure Heka_SetCCTrackTau( Value : Integer ) ;
@@ -2097,11 +2086,8 @@ begin
      end;
 
 procedure Heka_GetCCTrackTau( var Value : Integer ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.CCTrackTau ;
+     Value := EPC9_GetCCTrackTau ;
      end;
 
 procedure Heka_SetExtStimPath( Value : Integer ) ;
@@ -2120,33 +2106,24 @@ begin
      end;
 
 procedure Heka_GetEnableStimFilter( var Value :  Boolean ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.StimFilterOn ;
+     //Value := GetStimFilterOn ;
      end;
 
 
 procedure Heka_SetAmplifier( Value : Integer ) ;
 begin
-     EPC9_SetE9Board(Value) ;
+//     EPC9_SetE9Board(Value) ;
      end;
 
 procedure Heka_GetAmplifier( var Value : Integer ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.ActiveE9Board ;
+     Value := EPC9_GetActiveBoard ;
      end;
 
 procedure Heka_GetNumAmplifiers( var Value : Integer ) ;
-var
-    EPC9State : PEPC9_StateType ;
 begin
-     EPC9State := EPC9_GetStateAdr ;
-     Value := EPC9State^.E9Boards ;
+     Value := EPC9_GetBoards ;
      end;
 
 
