@@ -7,7 +7,7 @@ unit HekaUnit;
 //          Digital outputs not supported yet
 //  14.01.14 Heka support updated to work with current EPCDLL downloadable from Heka site
 //           Support for ITC-18-USB added to HekaUnit.pas
-
+//  21.01.14 Latest EPCDLL supplied by Hubert used
 interface
 
   uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math, classes ;
@@ -236,14 +236,14 @@ TEPC9_GetRMSNoise= function : Double ; stdcall ;
 
 TEPC9_GetVmon= function (Samples : Integer) : Double ; stdcall ;
 
-TEPC9_SetCCFastSpeed= function(CCSpeed : Boolean ) : LongInt ; stdcall ;
+TEPC9_SetCCFastSpeed= function(CCSpeed : Byte ) : LongInt ; stdcall ;
 
 TEPC9_SetCCIHold= function(Amperes : Double) : LongInt ; stdcall ;
 
 TEPC9_SetCFastTot= function( Farads: Double) : LongInt ; stdcall ;
 TEPC9_SetCFastTau= function( Seconds: Double) : LongInt ; stdcall ;
 TEPC9_GetCFastTot= function : Double ; stdcall ;
-TEPC9_GetCFastTau= function : LongInt ; stdcall ;
+TEPC9_GetCFastTau= function : Double ; stdcall ;
 
 TEPC9_SetCSlow= function( Farads: Double) : LongInt ; stdcall ;
 
@@ -278,16 +278,16 @@ TEPC9_SetF1Bandwidth= function( Bandwidth : Double) : LongInt ; stdcall ;
 
 TEPC9_SetF2Bandwidth= function( Bandwidth : Double) : LongInt ; stdcall ;
 
-TEPC9_SetF2Butterworth= function(SetButterworth : LongBool ) : LongInt ; stdcall ;
+TEPC9_SetF2Butterworth= function(SetButterworth : Byte ) : LongInt ; stdcall ;
 
 TEPC9_SetGLeak= function( Siemens : Double) : LongInt ; stdcall ;
 
 TEPC9_SetGSeries= function( Siemens : Double) : LongInt ; stdcall ;
 
-TEPC9_SetMode= function(
+TEPC9_SetMode= procedure(
                Mode : Integer ;
-               Gently : LongBool
-               ) : LongInt ; stdcall ;
+               Gently : byte
+               )  ; stdcall ;
 
 //TEPC9_SetMuxPath= function( MuxPath : Integer ) : LongInt ; stdcall ;
 
@@ -388,6 +388,8 @@ TEPC9_GetTimeout = function : Double ; stdcall ;
 // Returns the index of the active amplifier board.
 TEPC9_GetActiveBoard = function : LongInt ; stdcall ;
 
+TEPC9_SetActiveBoard = function( BoardNum : LongInt ) : LongInt ; stdcall ;
+
 // EPC9_GetBoards
 // Returns the number of amplifier boards.
 TEPC9_GetBoards = function : LongInt ; stdcall ;
@@ -430,9 +432,9 @@ TLIH_StartStimAndSample= function(
             var SampleInterval : Double ;
             OutData : Pointer ;
             InData : Pointer ;
-            var Immediate : LongInt ;
-            SetStimEnd : LongInt ;
-            ReadContinuously: LongInt) : LongInt ; stdcall ;
+            var Immediate : Byte ;
+            SetStimEnd : Byte ;
+            ReadContinuously: Byte ) : LongInt ; stdcall ;
 
 TLIH_AvailableStimAndSample= function(var StillRunning : LongBool ) : LongInt ; stdcall ;
 
@@ -632,8 +634,6 @@ function EPC9_LoadFileProcType(
    function TrimChar( Input : Array of ANSIChar ) : string ;
    procedure HEKA_CheckError( OK : ByteBool ) ;
 
-   function Heka_GetEPCState : Pointer ;
-
    procedure Heka_GetCurrentGain(
           AmpNumber : Integer ;
           var Gain : Single  ;
@@ -705,6 +705,7 @@ function EPC9_LoadFileProcType(
     procedure Heka_AutoGLeak ;
     procedure Heka_AutoSearch ;
     procedure Heka_AutoVpOffset ;
+    procedure Heka_FlushCache ;
 
 implementation
 
@@ -769,7 +770,7 @@ var
    ScaleData : Array[0..49999] of Byte ;
    EPC9MinCurrentGain : Double ;
 
-   GentleModeChange : LongBool ;  // 1=0 gentle mode change
+   GentleModeChange : Byte ;  // 1=0 gentle mode change
 
    DIGDefaultValue : Integer ;
 
@@ -861,6 +862,7 @@ var
      EPC9_GetCSlowPeak : TEPC9_GetCSlowPeak ;
      EPC9_GetTimeout : TEPC9_GetTimeout ;
      EPC9_GetActiveBoard   : TEPC9_GetActiveBoard ;
+     EPC9_SetActiveBoard   : TEPC9_SetActiveBoard ;
      EPC9_GetBoards   : TEPC9_GetBoards ;
      EPC9_GetSelector   : TEPC9_GetSelector ;
 
@@ -939,7 +941,6 @@ begin
         Result := DeviceInitialised ;
         Exit ;
         end ;
-
      // Get name of interface board
      iBoardType := LIH_GetBoardType ;
      case iBoardType of
@@ -980,7 +981,7 @@ begin
      DACMinUpdateInterval := MinSamplingInterval ;
      DACMinUpdateInterval := MaxSamplingInterval ;
 
-     GentleModeChange := False ;
+     GentleModeChange := 0 ;
 
      Model := ' Board:' + BoardName ;
      if SerialNumber <> '' then Model := Model + ' s/n ' + SerialNumber ;
@@ -1075,6 +1076,7 @@ begin
         @EPC9_GetExtStimPath := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetExtStimPath') ;
 //        @EPC9_SetE9Board := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetE9Board') ;
         @EPC9_SetCCGain := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCCGain') ;
+        @EPC9_GetCCGain := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCCGain') ;
         @EPC9_SetCurrentGainIndex := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCurrentGainIndex') ;
         @EPC9_SetCurrentGain := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCurrentGain') ;
 //        @EPC9_SetCSlowRepetitive := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCSlowRepetitive') ;
@@ -1083,12 +1085,12 @@ begin
         @EPC9_SetCSlowCycles := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCSlowCycles') ;
         @EPC9_SetCSlow := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCSlow') ;
         @EPC9_SetCFastTot := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCFastTot') ;
-        @EPC9_SetCFastTot := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCFastTot') ;
+        @EPC9_GetCFastTot := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCFastTot') ;
         @EPC9_SetCFastTau := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCFastTau') ;
-        @EPC9_SetCFastTau := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCFastTau') ;
+        @EPC9_GetCFastTau := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCFastTau') ;
 //        @EPC9_SetCCStimScale := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCCStimScale') ;
         @EPC9_SetCCIHold := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCCIHold') ;
-        @EPC9_SetCCGain := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCCGain') ;
+
         @EPC9_SetCCFastSpeed := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCCFastSpeed') ;
         @EPC9_GetVmon := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetVmon') ;
 //        @EPC9_GetEpc9NStateAdr := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetEpc9NStateAdr') ;
@@ -1115,7 +1117,7 @@ begin
         @EPC9_GetVLiquidJunction := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetVLiquidJunction') ;
         @EPC9_GetVpOffset := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetVpOffset') ;
         @EPC9_GetCFastTot := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCFastTot') ;
-        @EPC9_GetCFastTau := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCFastTau') ;
+        @EPC9_GetCFastTot := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCFastTot') ;
         @EPC9_GetCSlowRange := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCSlowRange') ;
         @EPC9_GetCSlow := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCSlow') ;
         @EPC9_GetGSeries := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetGSeries') ;
@@ -1135,6 +1137,7 @@ begin
         @EPC9_GetCSlowPeak := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCSlowPeak') ;
         @EPC9_GetTimeout := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetTimeout') ;
         @EPC9_GetActiveBoard := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetActiveBoard') ;
+        @EPC9_SetActiveBoard := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetActiveBoard') ;
         @EPC9_GetBoards := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetBoards') ;
         @EPC9_GetSelector := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetSelector') ;
         @EPC9_GetMode := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetMode') ;
@@ -1243,8 +1246,17 @@ begin
         SerialNumber := ANSIString(pLIH_Options^.SerialNumber) ;
 
         // Get minimum current gain
+        EPC9_SetActiveBoard(0) ;
         EPC9_SetCurrentGainIndex(0) ;
         EPC9MinCurrentGain := EPC9_GetCurrentGain ;
+        EPC9_SetMode(0,0) ;
+        EPC9_SetCFastTot( 0.0 ) ;
+        EPC9_SetCFastTau( 1E-6 ) ;
+        EPC9_SetCSlow( 0.0 ) ;
+        EPC9_SetCCTrackTau(0) ;
+        EPC9_SetCCTrackHold(0.0);
+        EPC9_SetCCFastSpeed(0);
+        //EPC9_SetCSlowTau( 1E-6 ) ;
 
         EPC9Available := True ;
         end ;
@@ -1253,7 +1265,15 @@ begin
 
      // Report error and exist
      if Err <> 0 then begin
-          ShowMessage( ANSIString(ErrorMsg)) ;
+          case Err of
+              EPC9_NoScaleFiles : ShowMessage(
+              'EPC files: SCALE-nnnnnn.epc & CFAST-nnnnnn.epc missing! Copy to ' + path );
+              EPC9_NoScaleFile : ShowMessage(
+              'EPC file: SCALE-nnnnnn.epc missing! Copy to ' + path ) ;
+              EPC9_NoCFastFile : ShowMessage(
+              'EPC file: CFAST-nnnnnn.epc missing! Copy to ' + path ) ;
+          else ShowMessage(ANSIString(ErrorMsg)) ;
+          end;
           EPC9Available := False ;
           exit ;
           end ;
@@ -1300,7 +1320,9 @@ begin
      AIBuf := Nil ;
      AOBuf := Nil ;
 
-    DeviceInitialised := True ;
+     ADCActive := False ;
+     DACActive := False ;
+     DeviceInitialised := True ;
 
      end ;
 
@@ -1329,7 +1351,8 @@ function HEKA_ADCToMemory(
   -----------------------------}
 var
    i,AcquisitionMode : Word ;
-   SetStimEnd,ReadContinuously,OK,Immediate : LongInt ;
+   OK : LongInt ;
+   SetStimEnd,ReadContinuously,Immediate : Byte ;
    AODataBufs : Array[0..LIH_MaxDacChannels-1] of PSmallIntArray ;
 begin
 
@@ -1391,9 +1414,11 @@ function HEKA_StopADC : Boolean ;  { Returns False indicating A/D stopped }
   Reset A/D conversion sub-system
   -------------------------------}
 begin
+
      Result := False ;
      if not DeviceInitialised then HEKA_InitialiseBoard ;
      if not DeviceInitialised then Exit ;
+     if not ADCActive then Exit ;
 
      // Stop any activity
      LIH_Halt ;
@@ -1490,7 +1515,8 @@ const
 var
    i,j,ch,iTo,iFrom,DigCh,MaxOutPointer,NP,NPWrite,AcquisitionMode,NPDACValues : Integer ;
    AODataBufs : Array[0..LIH_MaxDacChannels-1] of PSmallIntArray ;
-   SetStimEnd,ReadContinuously,OK,Immediate : LongInt ;
+   OK : LongInt ;
+   SetStimEnd,ReadContinuously,Immediate :Byte ;
 begin
 
     Result := False ;
@@ -1522,7 +1548,7 @@ begin
     for ch  := 0 to AONumChannels-1 do begin
       GetMem( AODataBufs[ch], NPWrite*2 ) ;
       j := ch ;
-      for i := 0 to NPWrite-1 do begin
+      for i := 0 to (NPWrite div AONumChannels) -1 do begin
           AODataBufs[ch]^[i] := AOBuf^[j] ;
           j := j + AONumChannels ;
           end;
@@ -1531,13 +1557,14 @@ begin
 
     // Start A/D and D/A conversion
 
-    EPC9_FlushCache ;
+    //EPC9_FlushCache ;
 
     SetStimEnd := 0 ;
     ReadContinuously := 0 ;
     Immediate := 0 ;
     AcquisitionMode := LIH_EnableDacOutput ;
-    OK := LIH_StartStimAndSample ( 1,//AONumChannels-1,
+
+    OK := LIH_StartStimAndSample ( AONumChannels,
                                    AINumChannels,
                                    NPWrite,
                                    NPWrite,
@@ -1578,13 +1605,14 @@ function HEKA_StopDAC : Boolean ;
 //  Stop D/A & digital waveforms
 //---------------------------------
 begin
+
      Result := False ;
      if not DeviceInitialised then HEKA_InitialiseBoard ;
      if not DeviceInitialised then Exit ;
-
+     if not DACActive then exit ;
 
      DACActive := False ;
-     ADCActive := False ;
+     //ADCActive := False ;
      Result := DACActive ;
 
      end ;
@@ -1771,14 +1799,6 @@ begin
 
     end;
 
-function Heka_GetEPCState : Pointer ;
-// ------------------------------------
-// Return address of EPC-9 state record
-// ------------------------------------
-begin
-//      Result := EPC9_GetStateAdr ;
-      end;
-
 procedure Heka_GetCurrentGain(
           AmpNumber : Integer ;
           var Gain : Single  ;
@@ -1799,24 +1819,24 @@ procedure Heka_GetCurrentGainList( List : TStrings ) ;
 begin
 
      List.Clear ;
-     List.Add('   0.005 pA/mV') ;
-     List.Add('   0.010 pA/mV') ;
-     List.Add('   0.020 pA/mV') ;
-     List.Add('   0.050 pA/mV') ;
-     List.Add('   0.100 pA/mV') ;
-     List.Add('   0.200 pA/mV') ;
-     List.Add('   0.5   pA/mV') ;
-     List.Add('   1.0   pA/mV') ;
-     List.Add('   2.0   pA/mV') ;
-     List.Add('   5.0   pA/mV') ;
-     List.Add('  10.0   pA/mV') ;
-     List.Add('  20.0   pA/mV') ;
-     List.Add('  50.0   pA/mV') ;
-     List.Add(' 100.0   pA/mV') ;
-     List.Add(' 200.0   pA/mV') ;
-     List.Add(' 500.0   pA/mV') ;
-     List.Add('1000.0   pA/mV') ;
-     List.Add('2000.0   pA/mV') ;
+     List.Add('   0.005 mV/pA') ;
+     List.Add('   0.010 mV/pA') ;
+     List.Add('   0.020 mV/pA') ;
+     List.Add('   0.050 mV/pA') ;
+     List.Add('   0.100 mV/pA') ;
+     List.Add('   0.200 mV/pA') ;
+     List.Add('   0.5   mV/pA') ;
+     List.Add('   1.0   mV/pA') ;
+     List.Add('   2.0   mV/pA') ;
+     List.Add('   5.0   mV/pA') ;
+     List.Add('  10.0   mV/pA') ;
+     List.Add('  20.0   mV/pA') ;
+     List.Add('  50.0   mV/pA') ;
+     List.Add(' 100.0   mV/pA') ;
+     List.Add(' 200.0   mV/pA') ;
+     List.Add(' 500.0   mV/pA') ;
+     List.Add('1000.0   mV/pA') ;
+     List.Add('2000.0   mV/pA') ;
 
      end ;
 
@@ -1864,8 +1884,8 @@ begin
      case iFilterNum of
           1 : EPC9_SetF1Index( iFilterMode ) ;
           2 : begin
-              if iFilterMode = 0 then EPC9_SetF2Butterworth( False )
-                                 else EPC9_SetF2Butterworth( True ) ;
+              if iFilterMode = 0 then EPC9_SetF2Butterworth( 0 )
+                                 else EPC9_SetF2Butterworth( 1 ) ;
               end;
          end;
 
@@ -1919,6 +1939,7 @@ begin
 
 procedure Heka_SetCfast( var Value : Single ) ;
 begin
+//ShowMessage(format('Cfast=%.4g',[Value]));
      EPC9_SetCFastTot( Value ) ;
      end;
 
@@ -1929,8 +1950,13 @@ begin
 
 
 procedure Heka_SetCfastTau( var Value : Single ) ;
+var
+    DValue : Double ;
 begin
-     EPC9_SetCFastTau(Value) ;
+     DValue := Value ;
+     //ShowMessage(format('Cfasttau=%.4g',[DValue]));
+     DValue := Max(DValue,1E-6);
+     EPC9_SetCFastTau(DValue) ;
      end;
 
 procedure Heka_GetCfastTau( var Value : Single ) ;
@@ -2011,6 +2037,7 @@ begin
      end;
 
 procedure Heka_SetMode( var Value : Integer ) ;
+//
 begin
      EPC9_SetMode( Value, GentleModeChange ) ;
      end;
@@ -2022,12 +2049,14 @@ begin
 
 procedure Heka_SetGentleModeChange( var Value : Boolean ) ;
 begin
-     GentleModeChange := Value ;
+     if Value then GentleModeChange := 1
+              else GentleModeChange := 0  ;
      end;
 
 procedure Heka_GetGentleModeChange( var Value : Boolean ) ;
 begin
-     Value := GentleModeChange ;
+     if GentleModeChange = 0 then Value := True
+                             else Value := False ;
      end;
 
 procedure Heka_SetVHold( var Value : Single ) ;
@@ -2113,7 +2142,8 @@ begin
 
 procedure Heka_SetAmplifier( Value : Integer ) ;
 begin
-//     EPC9_SetE9Board(Value) ;
+     Value := 0 ;
+     EPC9_SetActiveBoard(Value);
      end;
 
 procedure Heka_GetAmplifier( var Value : Integer ) ;
@@ -2152,6 +2182,10 @@ begin
      EPC9_AutoVpOffset ;
      end;
 
+procedure Heka_FlushCache ;
+begin
+     EPC9_FlushCache ;
+     end;
 
 
 

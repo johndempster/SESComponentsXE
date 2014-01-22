@@ -644,6 +644,7 @@ procedure TritonAutoCompensation(
     procedure EPC9AutoGLeak ;
     procedure EPC9AutoSearch ;
     procedure EPC9AutoVpOffset ;
+    procedure EPC9FlushCache ;
 
     procedure GetADCVoltageRanges(
               var Ranges : Array of Single ;
@@ -4541,6 +4542,11 @@ begin
 procedure TSESLabIO.EPC9AutoVpOffset ;
 begin
      Heka_AutoVpOffset ;
+     end;
+
+procedure TSESLabIO.EPC9FlushCache ;
+begin
+     Heka_FlushCache ;
      end;
 
 
