@@ -387,6 +387,7 @@ function AndorSDK3_BinFactor( BinFactorList : TStringList ;
 function AndorSDK3_StartCapture(
          var Session : TAndorSDK3Session ;   // Camera session record
          var InterFrameTimeInterval : Double ;      // Frame exposure time
+         AdditionalReadoutTime : Double ; // Additional readout time (s)
          AmpGain : Integer ;              // Camera amplifier gain index
          ExternalTrigger : Integer ;      // Trigger mode
          FrameLeft : Integer ;            // Left pixel in CCD readout area
@@ -1324,6 +1325,7 @@ begin
 function AndorSDK3_StartCapture(
          var Session : TAndorSDK3Session ;   // Camera session record
          var InterFrameTimeInterval : Double ;      // Frame exposure time
+         AdditionalReadoutTime : Double ; // Additional readout time (s)
          AmpGain : Integer ;              // Camera amplifier gain index
          ExternalTrigger : Integer ;      // Trigger mode
          FrameLeft : Integer ;            // Left pixel in CCD readout area
@@ -1443,7 +1445,7 @@ begin
      // that frame rate is updated correctly. Not clear why this is necessary.
      AndorSDK3_SetDouble( Session.CamHandle, 'ExposureTime', TRead ) ;
      if ExternalTrigger = CamFreeRun then ExposureTime := InterFrameTimeInterval
-                                     else ExposureTime := InterFrameTimeInterval - TRead - 3E-4 ;
+                                     else ExposureTime := InterFrameTimeInterval - TRead - AdditionalReadoutTime - 3E-4 ;
 
      //AndorSDK3_SetDouble( Session.CamHandle, 'ExposureTime',  ExposureTime ) ;
      AndorSDK3_SetDouble( Session.CamHandle, 'ExposureTime',  ExposureTime ) ;

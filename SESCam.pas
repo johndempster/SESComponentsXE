@@ -1774,6 +1774,7 @@ begin
           FCameraActive := AndorSDK3_StartCapture(
                            AndorSDK3Session,
                            FFrameInterval,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
                            FAmpGain,
                            FTriggerMode,
                            FFrameLeft,
