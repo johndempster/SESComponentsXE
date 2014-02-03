@@ -62,6 +62,7 @@ unit SESCam;
                 EOutOfMemory exception now trapped and AllocateFrameBuffer returns false
   ================================================================================ }
 {$OPTIMIZATION OFF}
+{$POINTERMATH ON}
 {$R 'sescam.dcr'}
 interface
 
@@ -143,7 +144,7 @@ type
     FFrameInterval : Double ;    // Duration of selected frame time interval (s)
     FFrameIntervalMin : Single ; // Min. time interval between frames (s)
     FFrameIntervalMax : Single ; // Max. time interval between frames (s)
-    FFrameReadoutTime : Double ;
+    //FFrameReadoutTime : Double ;
 
     FReadoutSpeed : Integer ;        // Frame readout speed
     FReadoutTime : Double ;          // Time to read out frame (s)
@@ -165,8 +166,8 @@ type
     FNumFramesInBuffer : Integer ;      // Frame buffer capacity (frames)
     FNumBytesInFrameBuffer : Integer ;  // No. of bytes in frame buffer
     FNumBytesPerFrame : Integer ;       // No. of bytes per frame
-    PFrameBuffer : PByteArray ;         // Pointer to ring buffer to store acquired frames
-    PAllocatedFrameBuffer : PByteArray ;
+    PFrameBuffer : Pointer ;//PByteArray ;         // Pointer to ring buffer to store acquired frames
+    PAllocatedFrameBuffer  : Pointer ;//: PByteArray ;
 
     CameraInfo : TStringList ;
     CameraGainList : TStringList ;
@@ -192,7 +193,7 @@ type
 
     // PVCAM fields
     PVCAMSession : TPVCAMSession ;
-    FFrameBufferHandle : THandle ;
+    //FFrameBufferHandle : THandle ;
 
     // IMAQ 1394 fields
     Session : TIMAQ1394Session ;
@@ -1576,9 +1577,12 @@ begin
 
      if FNumBytesInFrameBuffer > 0 then begin
         Try
-          GetMem( PFrameBuffer, FNumBytesInFrameBuffer + 4096 ) ;
+          PFrameBuffer := GetMemory( NativeInt(FNumBytesInFrameBuffer + 4096) ) ;
           PAllocatedFrameBuffer := PFrameBuffer ;
-          PFrameBuffer := Ptr( (Cardinal(PFrameBuffer) + 7 ) and $FFFFFFF8 ) ;
+
+          PFrameBuffer := Pointer( (NativeUInt(PByte(PFrameBuffer)) + $F) and (not $F)) ;
+          outputdebugstring(pchar(format('%X %X',[NativeUInt(PAllocatedFrameBuffer),NativeUInt(PFrameBuffer)])));
+
         Except
             on E : EOutOfMemory do begin
                Exit ;
@@ -1598,7 +1602,7 @@ procedure TSESCam.DeallocateFrameBuffer ;
 // --------------------------------
 begin
      if PFrameBuffer <> Nil then begin
-        FreeMem( PAllocatedFrameBuffer ) ;
+        FreeMemory( PAllocatedFrameBuffer ) ;
         PFrameBuffer := Nil ;
         end ;
      end ;

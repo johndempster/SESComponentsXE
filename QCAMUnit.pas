@@ -1051,7 +1051,7 @@ var
     Mono8Available : Boolean ;
     CameraType : String ;
 begin
-
+     Result := False ;
      // Load DLL camera control library
      if not QCAMAPI_LoadLibrary then Exit ;
 

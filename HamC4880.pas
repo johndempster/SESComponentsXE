@@ -347,7 +347,7 @@ begin
     RetString := '' ;
     While (LeftStr(RetString,3) <> LeftStr(Command,3)) and (RetString <> 'E3') do
         RetString := ReceiveLine ;
-    if RetString = 'E3' then MessageDlg( ' Error in command '+ Command, mtWarning, [mbOK], 0 ) ;
+    if RetString = 'E3' then ShowMessage( ' Error in command '+ Command ) ;
     Result := RetString ;
     end ;
 
@@ -360,7 +360,7 @@ begin
     TransmitLine( Command ) ;
     Result := ReceiveLine ;
     Result := RightStr( Result, Length(Result) - Length(Command) );
-    if Result = 'E3' then MessageDlg( ' Error in command '+ Command, mtWarning, [mbOK], 0 ) ;
+    if Result = 'E3' then ShowMessage( ' Error in command '+ Command ) ;
     end ;
 
 
@@ -448,7 +448,7 @@ begin
     WriteFile( ComHandle, xBuf, nC, nWritten, {OverlapWrite}Nil ) ;
 
     if nWRitten <> nC then
-       MessageDlg( ' Error writing to COM port ', mtWarning, [mbOK], 0 ) ;
+       ShowMessage( ' Error writing to COM port ' ) ;
      end ;
 
 

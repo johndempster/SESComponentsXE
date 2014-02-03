@@ -3338,9 +3338,15 @@ procedure TXMultiYPlot.AddAnnotation (
 // ------------------------------------
 // Add marker text at bottom of display
 // ------------------------------------
+var
+    pToXValueAsPointer : ^Pointer ;
+    XValueAsPointer : Pointer ;
 begin
 
-    FMarkerText.AddObject( Text, TObject(XValue) ) ;
+    pToXValueAsPointer := @XValue ;
+    XValueAsPointer := pToXValueAsPointer^ ;
+
+    FMarkerText.AddObject( Text, TObject(XValueAsPointer) ) ;
     Invalidate ;
     end ;
 
@@ -3361,14 +3367,21 @@ procedure TXMultiYPlot.DrawAnnotations(
 // ------------------------
 var
     i : Integer ;
+    iAsPointer : Pointer ;
     xPix,xEndPix,yPix : Integer ;
     x : Single ;
+    pXAsSingle : ^Single ;
+    XAsPointer : Pointer ;
 begin
+
 
      // Marker text
      xEndPix := Low(xPix) ;
      for i := 0 to FMarkerText.Count-1 do begin
-         x := Single(FMarkerText.Objects[i]) ;
+         XAsPointer := Pointer(FMarkerText.Objects[i]) ;
+         pXAsSingle := @XAsPointer ;
+         X := pXAsSingle^ ;
+
          if (x >= FXAxis.Lo) and (x <= FXAxis.Hi ) then begin
             // Coord of start/end of label
             xPix := XToCanvasCoord( x ) ;

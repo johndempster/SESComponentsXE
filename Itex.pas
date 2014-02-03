@@ -618,7 +618,7 @@ procedure ITEX_LoadLibrary  ;
   ---------------------------------}
 var
     LibFileName : string ;
-    FileName,Drive : string ;
+    Drive : string ;
     LibraryHnd : THandle ;
 begin
 
@@ -727,7 +727,6 @@ function ITEX_OpenFrameGrabber(
 // -----------------------------------
 var
      dwValue : Cardinal ;
-     NumW,NumH : SmallInt ;
 begin
 
      Result := False ;
@@ -1004,7 +1003,6 @@ procedure ITEX_TimerProc(
   Frame monitor and read polling procedure, called at 20ms intervals
   ----------------------------------------------------------------- }
 var
-    Err : Integer ;
     FramePointer : Pointer ;
     EndPixel : Integer ;
 begin

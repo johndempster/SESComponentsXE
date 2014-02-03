@@ -513,12 +513,12 @@ var
 
    FDACMaxVolts : Single ;
    FDACMinUpdateInterval : Double ;
-   FDACMaxUpdateInterval : Double ;
+   //FDACMaxUpdateInterval : Double ;
    FDACMaxValue : Integer ;
    FDACMinValue : Integer ;
 
    NIDAQLoaded : boolean ; { True if NIDAQ.DLL procedure NI_ loaded }
-   ADCTransferModeInUse : Integer ;
+   //ADCTransferModeInUse : Integer ;
    SSeriesBoard : Boolean ;
    ADCActive : Boolean ;     { A/D sampling inn progress flag }
    ADCTimeBase : SmallInt ;
@@ -529,11 +529,11 @@ var
    DACDigActive : Boolean ;          // TRUE = Combined DAC/digital output active
    DigNumBytes : Integer ;
 
-   PDACBuf : PSmallIntArray ;
+   //PDACBuf : PSmallIntArray ;
    PDigBuf : PSmallIntArray ;
    DACDigNumPoints : Integer ;
    DACDigPointer : Integer ;
-   DACDigNumDACChannels : Integer ;
+   //DACDigNumDACChannels : Integer ;
 
 procedure NI_GetDeviceList(
           var DeviceList : TStringList

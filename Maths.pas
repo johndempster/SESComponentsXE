@@ -898,6 +898,7 @@ var
    i,NearestIndex : Integer ;
 begin
      MinDiff := 1E30 ;
+     NearestIndex := 0 ;
      for i := 0 to nPoints-1 do begin
          if Abs(Buf[i] - TargetValue) <= MinDiff then begin
             NearestIndex := i ;

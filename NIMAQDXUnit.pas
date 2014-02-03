@@ -926,14 +926,8 @@ function IMAQDX_OpenCamera(
 // ---------------------
 var
     Err : Integer ;
-    i,j :Integer ;
-    Supported : Boolean ;
+    i :Integer ;
     s : String ;
-    Description : Array[0..255] of ANSIChar ;
-    InterfaceType : Integer ;
-    ColourSupported : Integer ;
-    BoardType : String ;
-    PixelFormatMax : Cardinal ;
 begin
 
      Result := False ;
@@ -1254,9 +1248,6 @@ procedure IMAQDX_SetPixelFormat(
 // ----------------
 // Set pixel format
 // ----------------
-var
-    Err : Integer ;
-    iValue : Dword ;
 begin
 
     // Set pixel format (if attribute available)
@@ -1320,8 +1311,6 @@ procedure IMAQDX_CheckROIBoundaries( var Session : TIMAQDXSession ;
 // -------------------------------
 // Ensure ROI boundaries are valid
 // -------------------------------
-var
-    Err : Integer ;
 begin
 
       if not Session.CameraOpen then Exit ;
@@ -1412,7 +1401,6 @@ function IMAQDX_StartCapture(
 // Start frame capture
 // -------------------
 var
-    i,Err : Integer ;
     FrameRight,FrameBottom : Integer ;
     TriggerMode,ExpTimeMicroSec : Integer ;
 begin
@@ -1541,11 +1529,8 @@ procedure IMAQDX_GetImage(
 var
     i,j,y,x : Cardinal ;
     Err : Integer ;
-    t0 :Integer ;
-    Status,LatestIndex :Integer ;
-    PFromBuf, PToBuf : Pointer ;
+    PToBuf : Pointer ;
     ActualBufferNumber,LatestFrameCount,LatestFrameTransferred,NumCopied : Cardinal ;
-    AcqInProgress : LongBool ;
 begin
 
     if not Session.AcquisitionInProgress then Exit ;
@@ -1688,9 +1673,6 @@ function IMAQDX_CheckFrameInterval(
 // Check that selected frame interval is valid
 // -------------------------------------------
 //
-var
-    iInterval : Cardinal ;
-
 begin
 
      // Get frame interval (this is a read-only value)
@@ -1699,7 +1681,7 @@ begin
                          IMAQdxAttributeTypeF64,
                          @FrameInterval ) ;
      FrameInterval := FrameInterval*0.001 ;
-
+     Result := 0 ;
      end ;
 
 

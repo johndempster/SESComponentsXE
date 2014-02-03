@@ -201,7 +201,7 @@ begin
 					// replace the Dim Global and extern string pointer with the actual values
                 if (WINRT_COMMAND = WINRT_GLOBAL) or (WINRT_COMMAND = WINRT_EXTERN) then begin
 				    	// copy the content of the string
-                    len := length(string(value));
+              {$IFDEF WIN32} len := length(string(value)); {$IFEND}
                     extraitems := port;
                     p := pointer(value);
                     system.move(p^, value, len + 1);

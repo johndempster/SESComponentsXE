@@ -2648,6 +2648,9 @@ var
    NumMarkers : Integer ;
    MarkerTime : Single ;
    MarkerText : String ;
+   pAsPointer : ^Pointer ;
+   MarkerTimeAsPointer : Pointer ;
+
 begin
 
      Result := False ;
@@ -2720,7 +2723,9 @@ begin
      for i := 0 to NumMarkers-1 do begin
          ReadFloat( Header, format('MKTIM%d=',[i]), MarkerTime ) ;
          ReadString( Header, format('MKTXT%d=',[i]), MarkerText ) ;
-         FMarkerList.AddObject( MarkerText, TObject(MarkerTime) ) ;
+         pAsPointer := @MarkerTime ;
+         MarkerTimeAsPointer := pAsPointer^ ;
+         FMarkerList.AddObject( MarkerText, TObject(MarkerTimeAsPointer) ) ;
          end ;
 
     { Event detector parameters }
@@ -2766,6 +2771,9 @@ var
    NumSamplesInFile : Integer ;
    MarkerTime : Single ;
    MarkerText : String ;
+   pAsSingle : ^Single ;
+   MarkerTimeAsPointer : Pointer ;
+
 begin
 
      Result := False ;
@@ -2807,7 +2815,9 @@ begin
      AppendInt( Header, 'MKN=', FMarkerList.Count ) ;
      FMarkerList.Clear ;
      for i := 0 to FMarkerList.Count-1 do begin
-         MarkerTime := Single(FMarkerList.Objects[i]) ;
+         MarkerTimeAsPointer := Pointer(FMarkerList.Objects[i]) ;
+         pAsSingle := @MarkerTimeAsPointer ;
+         MarkerTime := pAsSingle^ ;
          MarkerText := FMarkerList.Strings[i] ;
          AppendFloat( Header, format('MKTIM%d=',[i]), MarkerTime ) ;
          AppendString( Header, format('MKTXT%d=',[i]), MarkerText ) ;
@@ -5354,6 +5364,9 @@ var
    NumMarkers : Integer ;
    MarkerTime : Single ;
    MarkerText : String ;
+   pAsPointer : ^Pointer ;
+   MarkerTimeAsPointer : Pointer ;
+
 begin
 
      Result := False ;
@@ -5434,8 +5447,12 @@ begin
      FMarkerList.Clear ;
      for i := 0 to NumMarkers-1 do begin
          ReadFloat( Header, format('MKTIM%d=',[i]), MarkerTime ) ;
+
          ReadString( Header, format('MKTXT%d=',[i]), MarkerText ) ;
-         FMarkerList.AddObject( MarkerText, TObject(MarkerTime) ) ;
+
+         pAsPointer := @MarkerTime ;
+         MarkerTimeAsPointer := pAsPointer^ ;
+         FMarkerList.AddObject( MarkerText, TObject(MarkerTimeAsPointer) ) ;
          end ;
 
     { Event detector parameters }
@@ -5481,6 +5498,10 @@ var
    MarkerText : String ;
    CHTVoltageRange : Single ;
    CHTCalibFactor : Single ;
+   pAsSingle : ^Single ;
+   MarkerTimeAsPointer : Pointer ;
+
+
 begin
 
      Result := False ;
@@ -5548,7 +5569,11 @@ begin
      AppendInt( Header, 'MKN=', FMarkerList.Count ) ;
      FMarkerList.Clear ;
      for i := 0 to FMarkerList.Count-1 do begin
-         MarkerTime := Single(FMarkerList.Objects[i]) ;
+
+         MarkerTimeAsPointer := Pointer(FMarkerList.Objects[i]) ;
+         pAsSingle := @MarkerTimeAsPointer ;
+         MarkerTime := pAsSingle^ ;
+
          MarkerText := FMarkerList.Strings[i] ;
          AppendFloat( Header, format('MKTIM%d=',[i]), MarkerTime ) ;
          AppendString( Header, format('MKTXT%d=',[i]), MarkerText ) ;

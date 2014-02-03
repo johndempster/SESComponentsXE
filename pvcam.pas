@@ -839,11 +839,8 @@ var
     FrameRegion : Array[0..10] of TRegion ; // CCD region to be captured
     NumBytesPerPixel : Integer ;            // No. of bytes in image pixel
     NumBytesPerFrame : Cardinal ;           // No. of bytes in image
-    NumBytesPerSequence : Cardinal ;        // No. of bytes in image sequence buffer
     FrameBufferStart : Pointer ;            // Pointer to start of current frame
 
-    CameraStatus : SmallInt ;
-    FrameIntervals : Array[0..100] of Double ;
     ExposureResolution : Double ;
 
 
@@ -865,11 +862,9 @@ function PVCAM_OpenCamera(
 var
      NumCameras : SmallInt ;
      TempName : Array[0..99] of ANSIchar ;
-     OK,OK1 : Boolean ;
-     NumPars,Value : Word ;
-     DBValue,FrameInterval,ReadoutTime : Double ;
+     Value : Word ;
+     FrameInterval,ReadoutTime : Double ;
      i,LongValue : Cardinal ;
-     DWValue : Cardinal ;
      Temperature : SmallInt ;
      Available,CircularBufferSupported,FrameTransferCapable,MultGainEnabled : Word ;
 begin
@@ -1075,7 +1070,6 @@ procedure PVCAM_LoadLibrary  ;
   -------------------------------------}
 var
     LibFileName : string ;
-    VC32LibraryHnd : THandle ;
     ProgDir : String ;
 begin
 
@@ -1161,7 +1155,6 @@ procedure PVCAM_GetCameraReadoutSpeedList(
 // ------------------------------------
 var
     i,Value,LastIndex : Word ;
-    OK : Boolean ;
 begin
 
     if not LibraryLoaded then Exit ;
@@ -1324,13 +1317,10 @@ function PVCAM_CheckFrameInterval(
 // Ensure that inter-frame is valid
 // ---------------------------------
 var
-     Value : Word ;
-     OverHeadFactor : Single ;
      Available : Word ;
-     DBValue : Double ;
      PixelReadoutTime : Word ;
 begin
-
+     Result := False ;
      if not LibraryLoaded then Exit ;
 
      // Set frame capture region
@@ -1420,9 +1410,8 @@ function PVCAM_StartCapture(
 // --------------------------------
 
 var
-    ii,NumFramesIRQ : Integer ;
+    ii : Integer ;
     i,NumFrames : Cardinal ;
-    VCEnable : LongBool ;
     Available : Word ;
     LongValue : DWord ;
     ReadoutTime : Double ;
@@ -1608,7 +1597,7 @@ var
     LatestFramePointer : Pointer ;
     Err : Word ;
 begin
-
+    Result := 0 ;
     if not LibraryLoaded then Exit ;
 
     Err := pl_exp_get_latest_frame( Session.Handle, LatestFramePointer ) ;
@@ -1619,7 +1608,7 @@ begin
        Result := Integer(LatestFramePointer){FrameNum} ;
        end
     else begin
-       MessageDlg( 'PVCAM: Error getting frame #',mtWarning, [mbOK], 0 ) ;
+       ShowMessage( 'PVCAM: Error getting frame #' ) ;
        Result := 0 ;
        end ;
     end ;

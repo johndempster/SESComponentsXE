@@ -1607,7 +1607,6 @@ var
     i,NumCameras : Integer ;
     DeviceInfo : Array[0..MaxDevices] of TOLT_IMGDEVINFO ;
     DeviceAlias,DeviceName : String ;
-    LNGRange : TOLT_LNG_RNG ;
     NewVideoSource,OldVideoSource : Word ;
     SupportFeatures,DeviceType : DWord ;
     FrameInfo : TOLT_FG_FRAME_INFO ;
@@ -1615,6 +1614,7 @@ var
     s : string ;
 begin
 
+     Result := False ;
      Session.CameraOpen := False ;
 
      CameraInfo.Clear ;
@@ -1807,6 +1807,7 @@ function DTOL_GetVideoMode(
 //
 // ----------------------------------------------------------
 begin
+    Result := 0 ;
     end ;
 
 
@@ -1965,8 +1966,6 @@ var
     iFrame,iFrom,iTo,iLine,iPix : Integer ;
     NumNewFrames,FirstNewFrame : Integer ;
     pToBuf,pFromBuf : PByteArray ;
-    JobStatus : DWord ;
-    FrameInfo : TOLT_FG_FRAME_INFO ;
 begin
 
      if not Session.CameraOpen then Exit ;
@@ -2040,7 +2039,7 @@ function DTOL_CheckFrameInterval(
 //
 // ----------------------------------------------------------
 begin
-
+    Result := 1 ;
     if not Session.CameraOpen then Exit ;
 
     if TriggerMode = camFreeRun then begin

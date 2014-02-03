@@ -10,6 +10,7 @@ unit AndorSDK3Unit;
 //          Overlap mode appears to have no effect
 // 23.07.13 Check on number of camera taps in AndorSDK3_OpenCamera() now on ANSI string
 //          rather than widestring (for V7/XE compilation compatibility
+// 31.01.14 Updated to Compile under both 32/64 bits (File handle now THandle)
 
 interface
 
@@ -19,17 +20,28 @@ const
     AndorSDK3AOIHeightSteps = 2 ;
 type
 
+TBigWordArray = Array[0..99999999] of Word ;
+PBigWordArray = ^TBigWordArray ;
+
+TWaitBufferThread = class(TThread)
+  protected
+    // the main body of the thread
+    procedure Execute; override;
+  end;
+
+
 TAndorSDK3Session = record
      CamHandle : Integer ;
      NumBytesPerFrame : Integer ;     // No. of bytes in image
      NumFramesInBuffer : Integer ;    // No. of images in circular transfer buffer
      FramePointer : Integer ;         // Current frame no.
-     PFrameBuffer : PWordArray ;         // Pointer to start of image destination buffer
-     pBuf : Array[0..AndorSDK3MaxBufs-1] of PWordArray ;    // Pointers to internal image buffers
-     pBuf64 : Array[0..AndorSDK3MaxBufs-1] of PWordArray  ;  // Pointer aligned on 8 byte boundary
+     PFrameBuffer : PBigWordArray ;         // Pointer to start of image destination buffer
+     pBuf : Array[0..AndorSDK3MaxBufs-1] of PBigWordArray ;    // Pointers to internal image buffers
+     pBuf64 : Array[0..AndorSDK3MaxBufs-1] of PBigWordArray ;  // Pointer aligned on 8 byte boundary
      NumBytesPerFrameBuffer : Int64 ;                // No. of bytes in image buffer
      NumFramesAcquired : Integer ;
      GetImageInUse : LongBool ;       // GetImage procedure running
+     GetImageFirstCall : LongBool ;
      CapturingImages : LongBool ;     // Image capture in progress
      CameraOpen : LongBool ;          // Camera open for use
      TimeStart : single ;
@@ -93,24 +105,24 @@ TAT_UnregisterFeatureCallback = Function(
 TAT_IsImplemented = Function(
                     CamHandle : Integer ;
                     const Feature : PWideChar ;
-                    var Implemented : LongBool
+                    var Implemented : Integer
                     ) : Integer ; stdcall ;
 TAT_IsReadable = Function(
                  CamHandle : Integer ;
                  const Feature : PWideChar ;
-                 var Readable : LongBool
+                 var Readable : Integer
                  ) : Integer ; stdcall ;
 
 TAT_IsWritable = Function(
                  CamHandle : Integer ;
                  const Feature : PWideChar ;
-                 var Writable : LongBool
+                 var Writable : Integer
                  ) : Integer ; stdcall ;
 
 TAT_IsReadOnly = Function(
                  CamHandle : Integer ;
                  const Feature : PWideChar ;
-                 var ReadOnly : LongBool
+                 var ReadOnly : Integer
                  ) : Integer ; stdcall ;
 
 TAT_SetInt = Function(
@@ -164,13 +176,13 @@ TAT_GetFloatMin = Function(
 TAT_SetBool = Function(
               CamHandle : Integer ;
               const Feature : PWideChar ;
-              Value : LongBool
+              Value : Integer
               ) : Integer ; stdcall ;
 
 TAT_GetBool = Function(
               CamHandle : Integer ;
               const Feature : PWideChar ;
-              var Value : LongBool
+              var Value : Integer
               ) : Integer ; stdcall ;
 
 TAT_SetEnumerated = Function(
@@ -201,14 +213,14 @@ TAT_IsEnumeratedIndexAvailable = Function(
                                  CamHandle : Integer ;
                                  const Feature : PWideChar ;
                                  Index : Integer ;
-                                 var Available : LongBool
+                                 var Available : Integer
                                  ) : Integer ; stdcall ;
 
 TAT_IsEnumeratedIndexImplemented = Function(
                                    CamHandle : Integer ;
                                    const Feature : PWideChar ;
                                    Index : Integer ;
-                                   var Implemented : LongBool
+                                   var Implemented : Integer
                                    ) : Integer ; stdcall ;
 
 TAT_GetEnumeratedString = Function(
@@ -248,14 +260,14 @@ TAT_IsEnumIndexAvailable = Function(
                            CamHandle : Integer ;
                            const Feature : PWideChar ;
                            Index : Integer ;
-                           var Available : LongBool
+                           var Available : Integer
                            ) : Integer ; stdcall ;
 
 TAT_IsEnumIndexImplemented = Function(
                              CamHandle : Integer ;
                              const Feature : PWideChar ;
                              Index : Integer ;
-                             var Implemented : LongBool
+                             var Implemented : Integer
                              ) : Integer ; stdcall ;
 
 TAT_GetEnumStringByIndex = Function(
@@ -309,7 +321,7 @@ TAT_Flush = Function(
 // Function calls
 
 function AndorSDK3_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
 
 function AndorSDK3_CheckDLLExists( DLLName : String ) : Boolean ;
@@ -510,6 +522,7 @@ function  AndorSDK3_SetEnumeratedByIndex(
           Feature : WideString ;                // Feature name
           Value : Integer ) : LongBool ;        // New Index
 
+
 implementation
 
 uses SESCam ;
@@ -571,12 +584,15 @@ const
    AT_HANDLE_SYSTEM = 1 ;
 
 
+
 var
 
 
   LibraryHnd : THandle ;         // DLL library handle
   LibraryLoaded : LongBool ;      // DLL library loaded flag
-
+  ATHandle : Integer ;
+  NumBuffersAcquired : Integer ;
+  BufferErr : Integer ;
   AT_InitialiseLibrary : TAT_InitialiseLibrary ;
   AT_FinaliseLibrary  : TAT_FinaliseLibrary;
   AT_Open : TAT_Open ;
@@ -618,6 +634,26 @@ var
   AT_QueueBuffer :TAT_QueueBuffer ;
   AT_WaitBuffer :TAT_WaitBuffer ;
   AT_Flush :TAT_Flush ;
+  WaitBufferThread : TWaitBufferThread ;
+
+procedure TWaitBufferThread.Execute;
+var
+    NumBytes,Err : Integer ;
+    pRBuf : Pointer ;
+begin
+  // execute codes inside the following block until the thread is terminated
+  while not Terminated do begin
+    repeat
+       Err := AT_WaitBuffer( ATHandle, pRBuf, NumBytes, 10 ) ;
+       if Err = 0 then begin
+          AT_QueueBuffer( ATHandle, pRBuf, NumBytes ) ;
+          Inc(NumBuffersAcquired) ;
+          end ;
+       if (Err <> 0) and (Err <> AT_ERR_TIMEDOUT) then BufferErr := Err ;
+       until Err = AT_ERR_TIMEDOUT ;
+  end;
+end;
+
 
 procedure AndorSDK3_LoadLibrary(
           var Session : TAndorSDK3Session   // Camera session record
@@ -696,7 +732,7 @@ begin
 
 
 function AndorSDK3_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
 // -----------------------------------------
 // Get address of procedure within DLL
@@ -767,9 +803,7 @@ function AndorSDK3_OpenCamera(
 // ---------------------
 var
     Err : Integer ;
-    i,j :Integer ;
-    CCDTemperature : Integer ;
-    ReadoutRate : Single ;
+    i :Integer ;
     CameraIndex : Integer ;
     wsValue : WideString ;
     iValue : Int64 ;
@@ -1090,8 +1124,6 @@ procedure AndorSDK3_CloseCamera(
 // ----------------
 // Shut down camera
 // ----------------
-var
-    Err : Integer ;
 begin
 
     if not Session.CameraOpen then Exit ;
@@ -1129,9 +1161,6 @@ procedure AndorSDK3_GetCameraGainList(
 // --------------------------------------------
 // Get list of available camera amplifier gains
 // --------------------------------------------
-var
-    NumGains : Integer ;
-    wsValue : WideString ;
 begin
 
     CameraGainList.Clear ;
@@ -1149,7 +1178,14 @@ procedure AndorSDK3_GetCameraReadoutSpeedList(
 begin
 
      // Get list of available rates
-     CameraReadoutSpeedList.Assign( Session.ReadoutRateList ) ;
+     CameraReadoutSpeedList.Clear ;
+     CameraReadoutSpeedList.Add('n/a') ;
+     if not Session.CameraOpen then Exit ;
+
+     if Session.ReadoutRateList.Count > 0 then begin
+        CameraReadoutSpeedList.Clear ;
+        CameraReadoutSpeedList.Assign( Session.ReadoutRateList ) ;
+        end ;
 
      end ;
 
@@ -1176,9 +1212,6 @@ procedure AndorSDK3_GetCameraADCList(
 // ---------------------------------
 // Get list of A/D converter options
 // ----------------------------------
-var
-    NumADCs : Integer ;
-    wsValue : WideString ;
 begin
 
      // Get list of available ADCs
@@ -1205,8 +1238,6 @@ procedure AndorSDK3_CheckROIBoundaries(
 const
     MaxTries = 10 ;
 var
-    nCount : Integer ;
-    Done : LongBool ;
     i64Value : Int64 ;
     i,Diff,MinDiff,iNearest,NearestBinFactor,iValue : Integer ;
     AOIWidthSteps : Integer ;
@@ -1287,7 +1318,7 @@ begin
         s := BinFactorList[Index] ;
         Val(LeftStr(LowerCase(s),Pos('x',s)-1),Result,BadCode) ;
         end ;
-     Result := Max(Result,1) ;   
+     Result := Max(Result,1) ;
      end ;
 
 function AndorSDK3_StartCapture(
@@ -1312,15 +1343,14 @@ const
      TimerTickInterval = 20 ; // Timer tick resolution (ms)
 
 var
-    i,Err : Integer ;
-    TrigMode : Integer ;
-    iFrameBuffer : Integer ;
-    NumBytesPerImage,i64Value : Int64 ;
-    Acquiring : LongBool ;
+    i : Integer ;
+    i64Value : Int64 ;
     dValue,ExposureTime,TRead : Double ;
     PixelFormat : WideString ;
+    OverlapMode : LongBool ;
 begin
 
+     Result := False ;
      if not Session.CameraOpen then Exit ;
 
      Session.TimeStart := TimeGetTime*0.001 ;
@@ -1363,10 +1393,10 @@ begin
 
      // Create camera image buffers
      AndorSDK3_CheckError( 'AT_Flush',AT_Flush( Session.CamHandle )) ;
-     iFrameBuffer := Cardinal(PFrameBuffer) ;
+     //iFrameBuffer := Cardinal(PFrameBuffer) ;
      for i := 0 to NumFramesInBuffer-1 do begin
-         Session.pBuf64[i] := Ptr( iFrameBuffer ) ;
-         iFrameBuffer := iFrameBuffer + Session.NumBytesPerFrameBuffer ;
+         Session.pBuf64[i] := PBigWordArray(PByte(PFrameBuffer) + Int64(i)*Int64(Session.NumBytesPerFrameBuffer)) ;
+         //iFrameBuffer := iFrameBuffer + Session.NumBytesPerFrameBuffer ;
          AT_QueueBuffer( Session.CamHandle, Session.pBuf64[i],Session.NumBytesPerFrameBuffer ) ;
          // Fill 2 pixels at end of each image with empty flags
          Session.pBuf64[i]^[Session.ImageEnd] :=  EmptyFlag ;
@@ -1377,7 +1407,7 @@ begin
 
      // Set camera A/D converter
      AndorSDK3_SetEnumerated( Session.CamHandle,'SimplePreAmpGainControl',
-                                     Session.ADConverterList[Session.ADCNum] ) ;
+                              Session.ADConverterList[Session.ADCNum] ) ;
      // Pixel encoding
      if AndorSDK3_PixelDepth(Session.ADConverterList,Session.ADCNum) <= 12 then PixelFormat := 'Mono12'
                                                                            else PixelFormat := 'Mono16' ;
@@ -1390,12 +1420,15 @@ begin
 
      // Set shutter mode
      AndorSDK3_SetEnumerated( Session.CamHandle,'ElectronicShutteringMode',
-                                     Session.ModeList[Session.Mode] ) ;
+                              Session.ModeList[Session.Mode] ) ;
 
      // Set imaging/readout overlap mode (to allow maximum frame rate)
-//     if not AndorSDK3_SetBoolean( Session.CamHandle, 'Overlap', True ) then
-//        ShowMessage('Unable to set camera into Overlap mode');
-      AndorSDK3_SetBoolean( Session.CamHandle, 'Overlap', False ) ;
+     if ExternalTrigger = CamFreeRun then OverLapMode := True
+                                     else OverLapMode := TRue ;
+      AndorSDK3_SetBoolean( Session.CamHandle, 'Overlap', OverLapMode ) ;
+
+      //AndorSDK3_GetBoolean( Session.CamHandle, 'Overlap', OverlapOn ) ;
+      //if OverlapOn then outputdebugstring(pchar('Overlap on'));
 
      // Set to continuous image acquisition
      AndorSDK3_SetEnumerated( Session.CamHandle, 'CycleMode', 'Continuous' ) ;
@@ -1405,29 +1438,35 @@ begin
 
      // Set exposure time
      AndorSDK3_GetDouble( Session.CamHandle, 'ReadoutTime', TRead ) ;
-     ReadoutTime := TRead*2.0 ;
+     ReadoutTime := TRead ;
      // NOTE! Exposure time first to minimum then to required time to ensure that
      // that frame rate is updated correctly. Not clear why this is necessary.
      AndorSDK3_SetDouble( Session.CamHandle, 'ExposureTime', TRead ) ;
-     if ExternalTrigger = CamFreeRun then ExposureTime := InterFrameTimeInterval - TRead
-                                     else ExposureTime := InterFrameTimeInterval - TRead - 2E-4 ;
+     if ExternalTrigger = CamFreeRun then ExposureTime := InterFrameTimeInterval
+                                     else ExposureTime := InterFrameTimeInterval - TRead - 3E-4 ;
+
+     //AndorSDK3_SetDouble( Session.CamHandle, 'ExposureTime',  ExposureTime ) ;
      AndorSDK3_SetDouble( Session.CamHandle, 'ExposureTime',  ExposureTime ) ;
+     AndorSDK3_GetDouble( Session.CamHandle, 'FrameRate',  dValue ) ;
+     //outputdebugstring(pchar(format('ET=%.4g FR=%.4g',[ExposureTime,dValue])));
 
      // Start capture
      AndorSDK3_CheckError( 'AT_Command=AcquisitionStart',
                            AT_Command( Session.CamHandle, 'AcquisitionStart')) ;
-
-     AndorSDK3_GetBoolean( Session.CamHandle, 'CameraAcquiring', Acquiring ) ;
-     if not Acquiring then ShowMessage('Camera not acquiring') ;
-     // Start frame acquisition monitor procedure
 
      Session.FramePointer := 0 ;
      Session.NumFramesAcquired := 0 ;
      Session.NumFramesInBuffer := NumFramesInBuffer ;
      Session.CapturingImages := True ;
      Session.GetImageInUse := False ;
-
+     Session.GetImageFirstCall := True ;
+     ATHandle := Session.CamHandle ;
      Result := True ;
+     NumBuffersAcquired := 0 ;
+     BufferErr := 0 ;
+
+     // Start image queue transfer thread
+     WaitBufferThread := TWaitBufferThread.Create(false);
 
      end;
 
@@ -1494,6 +1533,7 @@ var
     TempWidth,TempHeight : Integer ;
 begin
 
+     Result := False ;
      if not Session.CameraOpen then Exit ;
 
      ANDORSDK3_CheckROIBoundaries( Session,
@@ -1509,8 +1549,9 @@ begin
                                    ) ;
 
      AndorSDK3_GetDouble( Session.CamHandle, 'ReadoutTime', TRead ) ;
-     ReadoutTime := (2*TRead) + 1E-4 ;
+     ReadoutTime := ({2*}TRead) + 1E-4 ;
      FrameInterval := Max(FrameInterval,ReadoutTime) ;
+     Result := True ;
 
      end ;
 
@@ -1522,24 +1563,29 @@ procedure AndorSDK3_GetImage(
 // Transfer images from Andor driverbuffer to main buffer
 // ------------------------------------------------------
 var
-    NumFramesAcquired,MaxFramesPerCall,NumBytes,err : Integer ;
-    PImageBuffer : Pointer ;
-    pBuf : PWordArray ;
-    pRBuf : Pointer ;
-    Done,Acquiring : LongBool ;
+    i,NumFramesAcquired,MaxFramesPerCall : Integer ;
+    pBuf : PBigWordArray ;
+    Done : LongBool ;
 begin
 
     if not Session.CameraOpen then Exit ;
+    if Session.GetImageFirstCall then begin
+       Session.GetImageFirstCall := False ;
+       Exit ;
+       end ;
     if Session.GetImageInUse then Exit ;
     Session.GetImageInUse := True ;
 
     // Transfer acquired buffers into output
     // Wait 1ms when first unacquired buffer encountered
+{    nFrames := 0 ;
     repeat
       Err := AT_WaitBuffer( Session.CamHandle, pRBuf, NumBytes, 1 ) ;
+      Inc(nFrames) ;
       until Err = AT_ERR_TIMEDOUT ;
+      Dec(nFrames) ;}
 
-    Done := False ;
+{    Done := False ;
     NumFramesAcquired := 0 ;
     MaxFramesPerCall := Session.NumFramesInBuffer div 2 ;
     repeat
@@ -1547,7 +1593,7 @@ begin
       pBuf := Session.pBuf64[Session.FramePointer] ;
       if (pBuf^[Session.ImageEnd] <> EmptyFlag) or
          (pBuf^[Session.ImageEnd-1] <> 0) then begin
-         AT_QueueBuffer( Session.CamHandle, pBuf, Session.NumBytesPerFrameBuffer ) ;
+         //AT_QueueBuffer( Session.CamHandle, pBuf, Session.NumBytesPerFrameBuffer ) ;
          Inc(Session.FramePointer) ;
          if Session.FramePointer >= Session.NumFramesInBuffer then Session.FramePointer := 0 ;
          Inc(Session.NumFramesAcquired) ;
@@ -1555,8 +1601,22 @@ begin
          if NumFramesAcquired >= MaxFramesPerCall then Done := True ;
          end
       else Done := True ;
-      until Done ;
-    //outputdebugstring(pchar(format('%d %d %d',[Session.FramePointer,NumFramesAcquired,MaxFramesPerCall])));
+      until Done ;}
+    NumFramesAcquired := 0 ;
+    for i := 1 to NumBuffersAcquired do begin
+
+      // Get pointer to next internal image buffer in list
+      //pBuf := Session.pBuf64[Session.FramePointer] ;
+      //Err := AT_QueueBuffer( Session.CamHandle, pBuf, Session.NumBytesPerFrameBuffer ) ;
+      //outputdebugstring(pchar(format('%d %d',[Session.FramePointer,Err])));
+      Inc(Session.FramePointer) ;
+      if Session.FramePointer >= Session.NumFramesInBuffer then Session.FramePointer := 0 ;
+      Inc(Session.NumFramesAcquired) ;
+      Inc(NumFramesAcquired) ;
+      end ;
+
+    //outputdebugstring(pchar(format('%d %d/%d',[Session.FramePointer,NumFramesAcquired,NumBuffersAcquired])));
+    NumBuffersAcquired := 0 ;
     Session.GetImageInUse := False ;
 
     end ;
@@ -1568,8 +1628,6 @@ procedure AndorSDK3_StopCapture(
 // ------------------
 // Stop frame capture
 // ------------------
-var
-    i,Err : Integer ;
 begin
 
      if not Session.CameraOpen then Exit ;
@@ -1584,6 +1642,8 @@ begin
 
      Session.CapturingImages := False ;
 
+     WaitBufferThread.Destroy ;
+
      end;
 
 
@@ -1594,8 +1654,6 @@ procedure AndorSDK3_CheckError(
 // ------------
 // Report error
 // ------------
-var
-    Report : string ;
 begin
     if ErrNum <> AT_SUCCESS then
        ShowMessage(format('%s Err=%d',[FuncName,ErrNum])) ;
@@ -1610,16 +1668,14 @@ function  AndorSDK3_GetChar(
 // Get current value of a text feature
 // -----------------------------------
 var
-    wcFeature : PWideChar ;
-    Implemented,Readable : LongBool ;
-    MaxLength : Integer ;
+    Implemented,Readable,MaxLength : Integer ;
 begin
     Value := '' ;
     Result := False ;
     AT_IsImplemented( CamHandle, PWideCHar(Feature), Implemented ) ;
-    if not Implemented then Exit ;
+    if Implemented = 0 then Exit ;
     AT_IsReadable( CamHandle, PWideCHar(Feature), Readable ) ;
-    if not Readable then Exit ;
+    if Readable = 0 then Exit ;
 
     AT_GetStringMaxLength( CamHandle, PWideCHar(Feature), MaxLength ) ;
     SetLength( Value, MaxLength ) ;
@@ -1638,15 +1694,14 @@ function  AndorSDK3_GetInt64(
 // Get current value of an integer number feature
 // ----------------------------------------------
 var
-    wcFeature : PWideChar ;
-    Implemented,Readable : LongBool ;
+    Implemented,Readable : Integer ;
 begin
     Value := 0 ;
     Result := False ;
     AT_IsImplemented( CamHandle, PWideCHar(Feature), Implemented ) ;
-    if not Implemented then Exit ;
+    if Implemented = 0 then Exit ;
     AT_IsReadable( CamHandle, PWideCHar(Feature), Readable ) ;
-    if not Readable then Exit ;
+    if Readable = 0 then Exit ;
 
     AT_GetInt( CamHandle, PWideChar(Feature), Value ) ;
 
@@ -1663,14 +1718,12 @@ function  AndorSDK3_SetInt64(
 // Set current value of an integer number feature
 // ----------------------------------------------
 var
-    wcFeature : PWideChar ;
-    Implemented,Writable : LongBool ;
-    Err : Integer ;
+    Implemented,Writable,Err : Integer ;
 begin
 
     Result := False ;
     AT_IsImplemented( CamHandle, PWideCHar(Feature), Implemented ) ;
-    if not Implemented then Exit ;
+    if Implemented = 0 then Exit ;
     AT_IsWritable( CamHandle, PWideCHar(Feature), Writable ) ;
     //if not Writable then Exit ;
 
@@ -1689,15 +1742,14 @@ function  AndorSDK3_GetDouble(
 // Get current value of an double precision number camera feature
 // --------------------------------------------------------------
 var
-    wcFeature : PWideChar ;
-    Implemented,Readable : LongBool ;
+    Implemented,Readable : Integer ;
 begin
     Value := 0 ;
     Result := False ;
     AT_IsImplemented( CamHandle, PWideCHar(Feature), Implemented ) ;
-    if not Implemented then Exit ;
+    if Implemented = 0 then Exit ;
     AT_IsReadable( CamHandle, PWideCHar(Feature), Readable ) ;
-    if not Readable then Exit ;
+    if Readable = 0 then Exit ;
 
     AT_GetFloat( CamHandle, PWideChar(Feature), Value ) ;
 
@@ -1713,15 +1765,14 @@ function  AndorSDK3_SetDouble(
 // Get current value of an double precision number camera feature
 // --------------------------------------------------------------
 var
-    wcFeature : PWideChar ;
-    Implemented,Writable : LongBool ;
+    Implemented,Writable : Integer ;
 begin
 
     Result := False ;
     AT_IsImplemented( CamHandle, PWideCHar(Feature), Implemented ) ;
-    if not Implemented then Exit ;
+    if Implemented = 0 then Exit ;
     AT_IsWritable( CamHandle, PWideCHar(Feature), Writable ) ;
-    if not Writable then Exit ;
+    if Writable = 0 then Exit ;
 
     AT_SetFloat( CamHandle, PWideChar(Feature), Value ) ;
 
@@ -1738,19 +1789,19 @@ function  AndorSDK3_GetBoolean(
 // Get current value of a TRUE/FALSE camera feature
 // -------------------------------------------------
 var
-    wcFeature : PWideChar ;
-    Implemented,Readable : LongBool ;
+    Implemented,Readable : Integer ;
+    iValue : Integer ;
 begin
     Value := False ;
     Result := False ;
     AT_IsImplemented( CamHandle, PWideCHar(Feature), Implemented ) ;
-    if not Implemented then Exit ;
+    if Implemented = 0 then Exit ;
     AT_IsReadable( CamHandle, PWideCHar(Feature), Readable ) ;
-    if not Readable then Exit ;
+    if Readable = 0 then Exit ;
 
-    AT_GetBool( CamHandle, PWideChar(Feature), Value ) ;
-
-    Result := True ;
+    AT_GetBool( CamHandle, PWideChar(Feature), iValue ) ;
+    if iValue = 0 then Result := False
+                  else Result := True ;
 
     end ;
 
@@ -1762,17 +1813,19 @@ function  AndorSDK3_SetBoolean(
 // Get current value of a TRUE/FALSE camera feature
 // -------------------------------------------------
 var
-    Implemented,Writable : LongBool ;
-    Err : Integer ;
+    Implemented,Writable : Integer ;
+    Err,iValue : Integer ;
 begin
 
     Result := False ;
     AT_IsImplemented( CamHandle, PWideCHar(Feature), Implemented ) ;
-    if not Implemented then Exit ;
+    if Implemented = 0 then Exit ;
     AT_IsWritable( CamHandle, PWideCHar(Feature), Writable ) ;
-    if not Writable then Exit ;
+    if Writable = 0 then Exit ;
+    if Value then iValue := 1
+             else iValue := 0 ;
 
-    Err := AT_SetBool( CamHandle, PWideChar(Feature), Value ) ;
+    Err := AT_SetBool( CamHandle, PWideChar(Feature), iValue ) ;
     //if Err <> AT_SUCCESS then ShowMessage('Unable to set '+ Feature) ;
 
     Result := True ;
@@ -1789,8 +1842,7 @@ function  AndorSDK3_GetEnumeratedList(
 // Get current value of a text feature
 // -----------------------------------
 var
-    wcFeature : PWideChar ;
-    Implemented,IndexImplemented,Available : LongBool ;
+    Implemented,IndexImplemented : Integer ;
     i,MaxLength,NumIndices,Err : Integer ;
     Value : WideString ;
 begin
@@ -1800,7 +1852,7 @@ begin
     Result := False ;
 
     AT_IsImplemented( CamHandle, PWideCHar(Feature), Implemented ) ;
-    if not Implemented then Exit ;
+    if Implemented = 0 then Exit ;
 
     // Get number of indices
     Err := AT_GetEnumeratedCount( CamHandle, PWideChar(Feature), NumIndices ) ;
@@ -1809,7 +1861,7 @@ begin
     List.Clear ;
     for i := 0 to NumIndices-1 do begin
         AT_IsEnumeratedIndexImplemented( CamHandle, PWideCHar(Feature), i, IndexImplemented ) ;
-        if IndexImplemented then begin
+        if IndexImplemented <> 0 then begin
            MaxLength := 255 ;
            SetLength( Value, MaxLength ) ;
            AT_GetEnumeratedString( CamHandle, PWideChar(Feature), i, PWideChar(Value), MaxLength ) ;
@@ -1833,15 +1885,14 @@ function  AndorSDK3_GetEnumerated(
 // Get current value of an enumerated feature
 // ------------------------------------------
 var
-    wcFeature : PWideChar ;
-    Implemented,IndexImplemented,Available : LongBool ;
-    Index,MaxLength,NumIndices,Err : Integer ;
+    Implemented : Integer ;
+    Index,MaxLength : Integer ;
 begin
 
     Result := False ;
     Value := '' ;
     AT_IsImplemented( CamHandle, PWideCHar(Feature), Implemented ) ;
-    if not Implemented then Exit ;
+    if Implemented = 0 then Exit ;
 
     AT_GetEnumerated( CamHandle, PWideCHar(Feature), Index ) ;
     MaxLength := 255 ;
@@ -1860,14 +1911,13 @@ function  AndorSDK3_SetEnumerated(
 // Set value of an enumerated camera feature
 // -----------------------------------------
 var
-    wcFeature : PWideChar ;
-    Implemented : LongBool ;
+    Implemented : Integer ;
     Err : Integer ;
 begin
 
     Result := False ;
     AT_IsImplemented( CamHandle, PWideCHar(Feature), Implemented ) ;
-    if not Implemented then Exit ;
+    if Implemented = 0 then Exit ;
     if Value = 'n/a' then Exit ;
     Err := AT_SetEnumeratedString( CamHandle, PWideChar(Feature), PWideChar(Value) ) ;
     if Err = AT_SUCCESS then Result := True ;
@@ -1882,14 +1932,14 @@ function  AndorSDK3_SetEnumeratedByIndex(
 // Set value of an enumerated camera feature
 // -----------------------------------------
 var
-    Implemented,Available : LongBool ;
+    Implemented,Available : Integer ;
 begin
 
     Result := False ;
     AT_IsEnumeratedIndexImplemented( CamHandle, PWideCHar(Feature), Value, Implemented ) ;
-    if not Implemented then Exit ;
+    if Implemented = 0 then Exit ;
     AT_IsEnumeratedIndexAvailable( CamHandle, PWideCHar(Feature), Value, Available ) ;
-    if not Available then Exit ;
+    if Available = 0 then Exit ;
 
     AT_SetEnumerated( CamHandle, PWideChar(Feature), Value ) ;
 

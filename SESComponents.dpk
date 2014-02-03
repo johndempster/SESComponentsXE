@@ -17,25 +17,25 @@ package SESComponents;
 {$ALIGN 8}
 {$ASSERTIONS ON}
 {$BOOLEVAL OFF}
-{$DEBUGINFO ON}
+{$DEBUGINFO OFF}
 {$EXTENDEDSYNTAX ON}
 {$IMPORTEDDATA ON}
 {$IOCHECKS ON}
-{$LOCALSYMBOLS ON}
+{$LOCALSYMBOLS OFF}
 {$LONGSTRINGS ON}
 {$OPENSTRINGS ON}
-{$OPTIMIZATION OFF}
+{$OPTIMIZATION ON}
 {$OVERFLOWCHECKS OFF}
 {$RANGECHECKS OFF}
 {$REFERENCEINFO OFF}
 {$SAFEDIVIDE OFF}
-{$STACKFRAMES ON}
+{$STACKFRAMES OFF}
 {$TYPEDADDRESS OFF}
 {$VARSTRINGCHECKS ON}
 {$WRITEABLECONST ON}
 {$MINENUMSIZE 1}
 {$IMAGEBASE $400000}
-{$DEFINE DEBUG}
+{$DEFINE RELEASE}
 {$ENDIF IMPLICITBUILDING}
 {$DESCRIPTION 'Strathclyde Electrophysiology Software Component Package'}
 {$DESIGNONLY}
@@ -64,7 +64,7 @@ contains
   ADCDataFile in 'ADCDataFile.pas',
   vp500Unit in 'vp500Unit.pas',
   NidaqMXUnit in 'NidaqMXUnit.pas',
-  dd1200Win98 in 'dd1200Win98.pas',
+  dd1200win98 in 'dd1200win98.pas',
   dd1200 in 'dd1200.pas',
   dd1320 in 'dd1320.pas',
   itcmm in 'itcmm.pas',
@@ -97,12 +97,6 @@ contains
   PixelFlyUnit in 'PixelFlyUnit.pas',
   Maths in 'Maths.pas',
   MatrixDisplay in 'MatrixDisplay.pas',
-  MZLib in 'MZLib.pas',
-  GraphicColor in 'GraphicColor.pas',
-  GraphicCompression in 'GraphicCompression.pas',
-  GraphicEx in 'GraphicEx.pas',
-  GraphicStrings in 'GraphicStrings.pas',
-  JPG in 'JPG.pas',
   TVicLib in 'TVicLib.pas',
   AndorSDK3Unit in 'AndorSDK3Unit.pas',
   HekaUnit in 'HekaUnit.pas';

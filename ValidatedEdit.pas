@@ -9,6 +9,7 @@ unit ValidatedEdit;
   25/8/03 .... Out of bounds error with empty edit box fixed
   01/09/5 .... Design-time Value property now retained correctly
   23/7/13 .... Conditional compile for DECIMALSEPARATOR (V7) and formatsettings.DECIMALSEPARATOR (XE2+)
+  31/1/14 .... KeyPress (beep on CR removed)
   }
 
 interface
@@ -220,6 +221,7 @@ begin
      inherited KeyPress( Key ) ;
 
      if Key = chr(13) then begin
+        Key := #0 ;
         ReadEditBox ;
         UpdateEditBox ;
         Invalidate ;
