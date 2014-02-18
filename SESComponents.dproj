@@ -3,7 +3,7 @@
         <ProjectGuid>{6EEDE04C-CAE2-45AF-9447-B9985F88FDEA}</ProjectGuid>
         <MainSource>SESComponents.dpk</MainSource>
         <Base>True</Base>
-        <Config Condition="'$(Config)'==''">Release</Config>
+        <Config Condition="'$(Config)'==''">Debug</Config>
         <TargetedPlatforms>3</TargetedPlatforms>
         <AppType>Package</AppType>
         <FrameworkType>VCL</FrameworkType>
