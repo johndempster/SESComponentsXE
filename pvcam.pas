@@ -1194,7 +1194,7 @@ procedure PVCAM_GetCameraGainList(
 // Get list of available camera gains
 // ------------------------------------
 var
-    i,Value,LastIndex : Word ;
+    i,LastIndex : Word ;
     MultGainEnabled : Boolean ;
 begin
 
@@ -1572,10 +1572,8 @@ function PVCAM_StopCapture(
 //
 // Stop continuous capture into buffer
 // -----------------------------------
-var
-     VCEnable : LongBool ;
 begin
-
+    Result := False ;
     if not LibraryLoaded then Exit ;
 
     // Stop continuous capture
@@ -1585,6 +1583,8 @@ begin
     // Uninitialise frame sequence system
     pl_exp_uninit_seq ;
     PVCAM_DisplayErrorMessage( 'pl_exp_uninit_seq' ) ;
+
+    Result := True ;
 
     end ;
 

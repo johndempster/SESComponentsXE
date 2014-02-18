@@ -1728,8 +1728,8 @@ function  TIDRFile.LoadADC(
 var
      FileOffset : Int64 ;
      NumBytes,NumBytesRead : Integer ;
-     FirstAvailableScan,NumScansAvailable,iShift : Int64 ;
-     i,jFrom,jTo,ch : Integer ;
+     FirstAvailableScan,NumScansAvailable,iShift,jFrom,jTo : Int64 ;
+     i,ch : Integer ;
      TempBuf : pSmallIntArray ;
 begin
 
@@ -1748,9 +1748,9 @@ begin
      // Pad ends of buffer if insufficient scans available
      if (StartScan <> FirstAvailableScan) or
         (NumScansAvailable <> NumScans) then begin
-        iShift := FirstAvailableScan - StartScan ;
+        iShift := Integer(FirstAvailableScan - StartScan) ;
         // Create and copy data to temp buf.
-        GetMem( TempBuf, NumScans*FADCNumChannels*2 ) ;
+        TempBuf := GetMemory( NumScans*FADCNumChannels*2 ) ;
         for i := 0 to NumScans*FADCNumChannels-1 do TempBuf[i] := ADCBuf[i] ;
         // Shift data
         for i := NumScans-1 downto 0 do begin
@@ -1758,7 +1758,7 @@ begin
             jTo := i*FADCNumChannels ;
             for ch := 0 to FADCNumChannels-1 do ADCBuf[jTo+ch] :=  TempBuf[jFrom+ch] ;
             end ;
-        FreeMem(TempBuf) ;
+        FreeMemory(TempBuf) ;
         end ;
 
      Result := NumScans ;

@@ -1565,9 +1565,7 @@ procedure AndorSDK3_GetImage(
 // Transfer images from Andor driverbuffer to main buffer
 // ------------------------------------------------------
 var
-    i,NumFramesAcquired,MaxFramesPerCall : Integer ;
-    pBuf : PBigWordArray ;
-    Done : LongBool ;
+    i,NumFramesAcquired : Integer ;
 begin
 
     if not Session.CameraOpen then Exit ;

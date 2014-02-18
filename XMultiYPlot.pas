@@ -14,6 +14,7 @@ unit XMultiYPlot;
   22.08.07 Floating point error when .Log10(x) presented with 0 prevented
   05.08.08 Plots can be deleted individually
   14.05.09 Memory access violation blocked in .GetPoint when 0 points in line
+  18.02.14 pXY defined as PANSIChar (to compile correctly under Delphi XEn)
  }
 
 interface
@@ -84,7 +85,7 @@ type
               MarkerStyle : TMarkerStyle ;
               LineStyle : TPenStyle ;
               LineType : TLineType ;
-              XYBuf : PChar ;
+              XYBuf : PANSIChar ;
               end ;
 
     { Axis tick list object }
@@ -740,7 +741,7 @@ procedure TXMultiYPlot.AddPoint(
   Add a new point to end of line
   ------------------------------}
 var
-   pXY : pChar ;
+   pXY : pANSIChar ;
 begin
      if FLines[LineIndex].XYBuf <> Nil then begin
         pXY := FLines[LineIndex].XYBuf
@@ -789,7 +790,7 @@ procedure TXMultiYPlot.AddBin(
   Add a new bin to end of histogram
   --------------------------------- }
 var
-   pXY : pChar ;
+   pXY : pANSIChar ;
 begin
      if FLines[LineIndex].XYBuf <> Nil then begin
         pXY := FLines[LineIndex].XYBuf
@@ -1003,7 +1004,7 @@ function TXMultiYPlot.FindNearestIndex(
 var
    Nearest,i : Integer ;
    Diff,MinDiff,X : single ;
-   pXY : pChar ;
+   pXY : pANSIChar ;
 begin
      X := VertCursors[iCursor].Position ;
      MinDiff := MaxSingle ;
@@ -1043,7 +1044,7 @@ procedure TXMultiYPlot.GetPoint(
   Get the x,y data values for a selected point on a line
   ------------------------------------------------------ }
 var
-   pXY : pChar ;
+   pXY : pANSIChar ;
 begin
 
      LineIndex := IntLimitTo( LineIndex, 0, High(FLines) ) ;
@@ -1069,7 +1070,7 @@ procedure TXMultiYPlot.GetBin(
   Get the data values for a selected histogram bin
   ------------------------------------------------------ }
 var
-   pXY : pChar ;
+   pXY : pANSIChar ;
 begin
      LineIndex := IntLimitTo( LineIndex, 0, High(FLines) ) ;
      if (FLines[LineIndex].XYBuf <> Nil) and
@@ -1234,7 +1235,8 @@ var
    x,y,BinLo,BinMid,BinHi,Sum : Single ;
    BinY : Array[0..MaxLines] of Single ;
    YScale : Array[0..MaxLines] of Single ;
-   pXY,CopyBuf : pChar ;
+   CopyBuf : pChar ;
+   pXY : pANSIChar ;
    First,Histogram : Boolean ;
 begin
 
@@ -1491,7 +1493,7 @@ procedure TXMultiYPlot.DefineAxis(
 var
    R,Max,Min,MinPositive,Sign,Range,Start,Step,YSum,YScale : Single ;
    L,i,NumPoints : Integer ;
-   pXY : pChar ;
+   pXY : pANSIChar ;
 begin
 
      { Find max./min. range of data }
@@ -1713,7 +1715,7 @@ var
    SavePen : TPen ;
    SaveBrush : TBrush ;
    MarkerColor : TColor ;
-   pXY : pChar ;
+   pXY : pANSIChar ;
 begin
 
      { Create  objects }
@@ -1819,7 +1821,7 @@ var
    x, y : single ;
    OutOfRange, LineBreak : Boolean ;
    SavePen : TPen ;
-   pXY : pChar ;
+   pXY : pANSIChar ;
 begin
      { Create objects }
      SavePen := TPen.Create ;
@@ -1893,7 +1895,7 @@ var
    BinLo,BinHi,BinY,YScale,Sum : single ;
    SavePen : TPen ;
    SaveBrush : TBrush ;
-   pXY : pChar ;
+   pXY : pANSIChar ;
    FirstBin, OffYAxis : boolean ;
 begin
      { Create objects }
@@ -2618,7 +2620,7 @@ procedure TXMultiYPlot.SortByX(
 var
    Current,Last : Integer ;
    Temp : TXY ;
-   pXY,pXYp1 : PChar ;
+   pXY,pXYp1 : PANSIChar ;
 begin
      if (Line >= 0) and (Line <= High(FLines)) then begin
         if FLines[Line].LineType = ltLine then begin

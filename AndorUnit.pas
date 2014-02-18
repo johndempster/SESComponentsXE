@@ -952,8 +952,6 @@ procedure Andor_LoadLibrary(
   ---------------------------------------------}
 
 var
-
-    ProgramDirectory : String ;
     WinDir : Array[0..255] of Char ;
     SysDrive : String ;
 begin
@@ -1102,7 +1100,7 @@ function Andor_GetDLLAddress(
 begin
     Result := GetProcAddress(Handle,PChar(ProcName)) ;
     if Result = Nil then
-       MessageDlg('atmcd32d.dll: ' + ProcName + ' not found',mtWarning,[mbOK],0) ;
+       ShowMessage('atmcd32d.dll: ' + ProcName + ' not found') ;
     end ;
 
 
@@ -1124,20 +1122,11 @@ var
     Err : Integer ;
     cBuf : Array[0..79] of ANSIChar ;
     s,ss : String ;
-    i,j :Integer ;
-    CCDTemperature : Integer ;
-    CCDXSize : Integer ;
-    CCDYSize : Integer ;
-    ActualXSize : Integer ;
-    ActualYSize : Integer ;
-    c : Char ;
+    i :Integer ;
     SerialNumber : SmallInt ;
-    NumDevices : Integer ;
     PixelHeight : Single ;
-    NumVSSpeeds : Integer ;
     NumHSSpeeds : Integer ;
     ShiftTime : Single ;
-    FWSmall, FHSmall : Integer ;
     ReadoutRate : Single ;
     NumADChannels : Integer ;
     NumAmps : Integer ;
@@ -1619,9 +1608,6 @@ procedure Andor_CheckROIBoundaries(
 // -------------------------------------------------------------
 const
     MaxTries = 10 ;
-var
-    nCount : Integer ;
-    Done : Boolean ;
 begin
 
     { Done := False ;
@@ -1700,7 +1686,6 @@ const
      TimerTickInterval = 20 ; // Timer tick resolution (ms)
 
 var
-    Err : Integer ;
     t0 : Integer ;
     CycleTime : Single ;
     ExposureTime : Single ;
@@ -1916,7 +1901,7 @@ var
     CycleTime : Single ;
     Status : Integer ;
 begin
-
+     Result := False ;
      if not Session.CameraOpen then Exit ;
 
      // Exit if camera is acquiring
@@ -1973,6 +1958,8 @@ begin
 
      if FrameInterval < ReadoutTime then FrameInterval:= ReadoutTime ;
 
+     Result := True ;
+
      end ;
 
 
@@ -1983,18 +1970,15 @@ procedure Andor_GetImage(
 // Transfer images from Andor driverbuffer to main buffer
 // ------------------------------------------------------
 var
-    i, j : Integer ;
+    j : Integer ;
     PImageBuffer : Pointer ;
-    NumAccumulations : Integer ;
     FirstImageNum : Integer ;
     LastImageNum : Integer ;
     ImageNum : Integer ;
     NumImages : Integer ;
     FirstValidImageNum : Integer ;
     LastValidImageNum : Integer ;
-    Status : Integer ;
     Err : Integer ;
-    Framerate : single ;
 begin
 
     // Get range of new images in circular buffer
@@ -2037,10 +2021,6 @@ procedure Andor_StopCapture(
 // ------------------
 // Stop frame capture
 // ------------------
-var
-    Err : Integer ;
-    iBuf : Integer ;
-    BufStatus : Integer ;
 begin
 
      if not Session.CapturingImages then Exit ;

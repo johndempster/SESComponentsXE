@@ -542,7 +542,6 @@ var
     Mode              : Integer ;
     HBin              : Integer ;
     VBin              : Integer ;
-    width,height      : integer;
     CamStatus         : Integer;
     ReadoutTime,
     rot               : Double ;

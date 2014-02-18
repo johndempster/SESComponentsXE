@@ -26,14 +26,16 @@ unit XYPlotDisplay;
  22.06.10 ... vertical cursor labels can now be positioned at top or bottom of cursor line.
               LabelPosition parameter added to .AddVerticalCursor()
  10.08.12 ... Automatic axes now set integer tick spacing
-              square root axis starts from zero 
+              square root axis starts from zero
+ 18.02.14 ... pXY now all defined as Pointer (not PCHAR)
+              Integer() -> NativeInt()
  }
 
 interface
 
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
-  Clipbrd, printers, math, strutils ;
+  Clipbrd, printers, math, strutils, Types ;
 
 const
      MaxLines = 100 ;
@@ -692,7 +694,7 @@ var
 begin
      if FLines[LineIndex].XYBuf <> Nil then begin
         if FLines[LineIndex].NumPoints < FMaxPointsPerLine then begin
-           pXY := Pointer( Integer(FLines[LineIndex].XYBuf)
+           pXY := Pointer( NativeInt(FLines[LineIndex].XYBuf)
                            + FLines[LineIndex].NumPoints*SizeOf(TXY)) ;
            TXYPointer(pXY)^.x := x ;
            TXYPointer(pXY)^.y := y ;
@@ -733,7 +735,7 @@ var
    pXY : Pointer ;
 begin
      if FLines[LineIndex].XYBuf <> Nil then begin
-        pXY := Pointer( Integer(FLines[LineIndex].XYBuf)
+        pXY := Pointer( NativeInt(FLines[LineIndex].XYBuf)
                         + FLines[LineIndex].NumPoints*SizeOf(THist))  ;
         THistPointer(pXY)^.Lo := Lo ;
         THistPointer(pXY)^.Mid := Mid ;
@@ -1106,7 +1108,7 @@ begin
      if FLines[LineIndex].LineType = ltHistogram then begin
         { Find nearest histogram bin }
         for i := 0 to FLines[LineIndex].NumPoints-1 do begin
-            pXY := Pointer( Integer(FLines[LineIndex].XYBuf) + SizeOf(THist)*i ) ;
+            pXY := Pointer( NativeInt(FLines[LineIndex].XYBuf) + SizeOf(THist)*i ) ;
             Diff := Abs(X - THistPointer(pXY)^.Mid) ;
             if  Diff < MinDiff then begin
                Nearest := i ;
@@ -1117,7 +1119,7 @@ begin
      else begin
         { Find nearest X,Y data point on a line }
         for i := 0 to FLines[LineIndex].NumPoints-1 do begin
-            pXY := Pointer( Integer(FLines[LineIndex].XYBuf) + SizeOf(TXY)*i ) ;
+            pXY := Pointer( NativeInt(FLines[LineIndex].XYBuf) + SizeOf(TXY)*i ) ;
             Diff := Abs(X - TXYPointer(pXY)^.x) ;
             if  Diff < MinDiff then begin
                Nearest := i ;
@@ -1137,13 +1139,13 @@ procedure TXYPlotDisplay.GetPoint(
   Get the x,y data values for a selected point on a line
   ------------------------------------------------------ }
 var
-   pXY : pChar ;
+   pXY : Pointer ;
 begin
      LineIndex := IntLimitTo( LineIndex, 0, High(FLines) ) ;
      if (FLines[LineIndex].XYBuf <> Nil) and
         (FLines[LineIndex].LineType = ltLine) then begin
         BufIndex := IntLimitTo( BufIndex, 0, Flines[LineIndex].NumPoints-1 ) ;
-        pXY := Pointer( Integer(FLines[LineIndex].XYBuf) + SizeOf(TXY)*BufIndex ) ;
+        pXY := Pointer( NativeInt(FLines[LineIndex].XYBuf) + SizeOf(TXY)*BufIndex ) ;
         x := TXYPointer(pXY)^.x ;
         y := TXYPointer(pXY)^.y ;
         end
@@ -1168,7 +1170,7 @@ begin
      if (FLines[LineIndex].XYBuf <> Nil) and
         (FLines[LineIndex].LineType = ltLine) then begin
         BufIndex := IntLimitTo( BufIndex, 0, Flines[LineIndex].NumPoints-1 ) ;
-        pXY := Pointer( Integer(FLines[LineIndex].XYBuf) + SizeOf(TXY)*BufIndex ) ;
+        pXY := Pointer( NativeInt(FLines[LineIndex].XYBuf) + SizeOf(TXY)*BufIndex ) ;
         TXYPointer(pXY)^.x := x ;
         TXYPointer(pXY)^.y := y;
         end ;
@@ -1190,7 +1192,7 @@ begin
      if (FLines[LineIndex].XYBuf <> Nil) and
         (FLines[LineIndex].LineType = ltHistogram) then begin
         BufIndex := IntLimitTo( BufIndex, 0, Flines[LineIndex].NumPoints-1 ) ;
-        pXY := Pointer( Integer(FLines[LineIndex].XYBuf) + SizeOf(THist)*BufIndex ) ;
+        pXY := Pointer( NativeInt(FLines[LineIndex].XYBuf) + SizeOf(THist)*BufIndex ) ;
         Lo := THistPointer(pXY)^.Lo ;
         Mid := THistPointer(pXY)^.Mid ;
         Hi := THistPointer(pXY)^.Hi ;
@@ -1425,7 +1427,7 @@ begin
             if FHistogramPercentage then begin
                Sum := 0.0 ;
                for i := 0 to FLines[L].NumPoints-1 do begin
-                   pXY := Pointer( Integer(FLines[L].XYBuf) + (i*SizeOf(THist)) )  ;
+                   pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(THist)) )  ;
                    Sum := Sum + THistPointer(pXY)^.y ;
                    end ;
                YScale[L] := 100.0 / Sum ;
@@ -1448,7 +1450,7 @@ begin
                    { Add an X,Y line point }
                    if (i < FLines[L].NumPoints) then begin
                       { Get x,y point from buffer }
-                      pXY := Pointer( Integer(FLines[L].XYBuf) + (i*SizeOf(TXY)) ) ;
+                      pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(TXY)) ) ;
                       x := TXYPointer(pXY)^.x ;
                       y := TXYPointer(pXY)^.y ;
                       StrCat( CopyBuf, PChar(format('%.5g'#9'%.5g',[x,y]))) ;
@@ -1458,7 +1460,7 @@ begin
                 else begin
                    { Add a histogram bin }
                    if (i < FLines[L].NumPoints) then begin
-                      pXY := Pointer( Integer(FLines[L].XYBuf) + (i*SizeOf(THist)))  ;
+                      pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(THist)))  ;
                       BinLo := THistPointer(pXY)^.Lo ;
                       BinMid := THistPointer(pXY)^.Mid ;
                       BinHi := THistPointer(pXY)^.Hi ;
@@ -1609,7 +1611,7 @@ procedure TXYPlotDisplay.DefineAxis(
 var
    R,Max,Min,MinPositive,Range,YSum,YScale : Single ;
    L,i : Integer ;
-   pXY : pChar ;
+   pXY : Pointer ;
 begin
 
      { Find max./min. range of data }
@@ -1622,7 +1624,7 @@ begin
          if (FLines[L].LineType = ltHistogram) and FHistogramPercentage then begin
             YScale := 0.0 ;
             For i := 0 To FLines[L].NumPoints-1 do begin
-                pXY := Pointer( Integer(FLines[L].XYBuf) + i*SizeOf(THist))  ;
+                pXY := Pointer( NativeInt(FLines[L].XYBuf) + i*SizeOf(THist))  ;
                 YScale := YScale + THistPointer(pXY)^.y ;
                 end ;
             YScale := 100.0 / YScale ;
@@ -1633,7 +1635,7 @@ begin
          For i := 0 To FLines[L].NumPoints-1 do begin
              if FLines[L].LineType = ltHistogram then begin
                  { Histogram data }
-                 pXY := Pointer( Integer(FLines[L].XYBuf) + i*SizeOf(THist))  ;
+                 pXY := Pointer( NativeInt(FLines[L].XYBuf) + i*SizeOf(THist))  ;
                  If AxisType = 'X' Then begin
                     { X axis }
                     R := THistPointer(pXY)^.Lo ;
@@ -1656,7 +1658,7 @@ begin
                  end
              else begin
                  { X/Y data }
-                 pXY := Pointer( Integer(FLines[L].XYBuf) + i*SizeOf(TXY))  ;
+                 pXY := Pointer( NativeInt(FLines[L].XYBuf) + i*SizeOf(TXY))  ;
                  If AxisType = 'X' Then R := TXYPointer(pXY)^.x
                                    else R := TXYPointer(pXY)^.y ;
                  end ;
@@ -1754,7 +1756,7 @@ var
    SavePen : TPen ;
    SaveBrush : TBrush ;
    MarkerColor : TColor ;
-   pXY : pChar ;
+   pXY : Pointer ;
 begin
 
      { Create  objects }
@@ -1796,7 +1798,7 @@ begin
 
             if FLines[L].MarkerStyle <> msNone then begin
                for i := 0 to FLines[L].NumPoints-1 do begin
-                   pXY := Pointer( Integer(FLines[L].XYBuf) + (i*SizeOf(TXY)))  ;
+                   pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(TXY)))  ;
                    x := TXYPointer(pXY)^.x ;
                    y := TXYPointer(pXY)^.y ;
                    if (FXAxis.Lo <= x) and (x <= FXAxis.Hi) and
@@ -1880,7 +1882,7 @@ var
    x, y : single ;
    OutOfRange, LineBreak : Boolean ;
    SavePen : TPen ;
-   pXY : pChar ;
+   pXY : Pointer ;
 begin
      { Create objects }
      SavePen := TPen.Create ;
@@ -1908,7 +1910,7 @@ begin
                { Plot line }
                for i := 0 to FLines[L].NumPoints-1 do begin
                    { Get point from buffer }
-                   pXY := Pointer( Integer(FLines[L].XYBuf) + (i*SizeOf(TXY)))  ;
+                   pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(TXY)))  ;
                    x := TXYPointer(pXY)^.x ;
                    y := TXYPointer(pXY)^.y ;
                    { Check that point is on plot }
@@ -1947,7 +1949,7 @@ var
    BinLo,BinHi,BinY,YScale,Sum : single ;
    SavePen : TPen ;
    SaveBrush : TBrush ;
-   pXY : pChar ;
+   pXY : Pointer ;
    FirstBin, OffYAxis : boolean ;
 begin
      { Create objects }
@@ -1982,7 +1984,7 @@ begin
             if FHistogramPercentage then begin
                Sum := 0.0 ;
                for i := 0 to FLines[L].NumPoints-1 do begin
-                   pXY := Pointer( Integer(FLines[L].XYBuf) + (i*SizeOf(THist)))  ;
+                   pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(THist)))  ;
                    Sum := Sum + THistPointer(pXY)^.y ;
                    end ;
                YScale := 100.0 / Sum ;
@@ -1993,7 +1995,7 @@ begin
             BinY := 0.0 ;
             for i := 0 to FLines[L].NumPoints-1 do begin
 
-                pXY := Pointer( Integer(FLines[L].XYBuf) + (i*SizeOf(THist)))  ;
+                pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(THist)))  ;
                 BinLo := THistPointer(pXY)^.Lo ;
                 BinHi := THistPointer(pXY)^.Hi ;
 
@@ -2667,14 +2669,14 @@ procedure TXYPlotDisplay.SortByX(
 var
    Current,Last : Integer ;
    Temp : TXY ;
-   pXY,pXYp1 : PChar ;
+   pXY,pXYp1 : Pointer ;
 begin
      if (Line >= 0) and (Line <= High(FLines)) then begin
         if FLines[Line].LineType = ltLine then begin
            for Last := FLines[Line].NumPoints-1 DownTo 1 do begin
                for Current := 0 to Last-1 do begin
-                   pXY := Pointer( Integer(FLines[Line].XYBuf) + (Current*SizeOf(TXY)))  ;
-                   pXYp1 := Pointer( Integer(FLines[Line].XYBuf) + ((Current+1)*SizeOf(TXY)))  ;
+                   pXY := Pointer( NativeInt(FLines[Line].XYBuf) + (Current*SizeOf(TXY)))  ;
+                   pXYp1 := Pointer( NativeInt(FLines[Line].XYBuf) + ((Current+1)*SizeOf(TXY)))  ;
                    if TXYPointer(pXY)^.x >  TXYPointer(pXYp1)^.x then begin
                       Temp := TXYPointer(pXY)^ ;
                       TXYPointer(pXY)^ := TXYPointer(pXYp1)^ ;

@@ -1812,16 +1812,12 @@ const
 var
     cBuf : Array[0..BufSize] of ANSIChar ;
     iBuf : Array[0..BufSize] of Integer ;
-    iValue,iMax,iMin : Integer ;
+    iMax,iMin : Integer ;
     dwValue : DWord ;
     s : String ;
-    InqParam : TDCAM_PARAM_FEATURE_INQ ;
-    CameraAttrib : TDCAM_PARAM_PROPERTYATTR ;
-    iProp : Integer ;
-    Done : Boolean ;
-    Err,iErr : Integer ;
+    Err : Integer ;
 begin
-
+     Result := False ;
      // Load DLL camera control library
      if not DCAMAPI_LoadLibrary then Exit ;
 
@@ -2112,13 +2108,12 @@ function DCAMAPI_StartCapture(
          ) : Boolean ;
 var
     i,Err : Integer ;
-    BufPointers : Array[0..999] of Pointer ;
     FrameWidth,FrameHeight : Integer ;
     ReadoutTime : Double ;
     Param : TDCAM_PARAM_FEATURE ;
     ExposureTime : Double ;
 begin
-
+    Result := False ;
     if not Session.CameraOpen then Exit ;
 
     // Enable/disable EMCDD function (if camera supports it)
@@ -2248,12 +2243,11 @@ procedure DCAMAPI_CheckROIBoundaries(
 // (Also calculates minimum readout time)
 // -----------------------------------------------------------
 var
-    i,Err : Integer ;
+    i : Integer ;
     ParamSubArrayInq : TDCAM_PARAM_SUBARRAY_INQ ;
     ParamSubArray : TDCAM_PARAM_SUBARRAY ;
     ParamFrameReadoutTime : TDCAM_PARAM_FRAME_READOUT_TIME_INQ ;
     ReadoutSpeedParam : TDCAM_PARAM_SCANMODE ;
-    NumBytes : cardinal ;
     Changed : Boolean ;
     MultipleofReadoutTime : Single ;
 begin
@@ -2415,6 +2409,7 @@ function DCAMAPI_CheckFrameInterval(
           Var FrameInterval : Double ;
           Var ReadoutTime : Double) : Boolean ;
 begin
+    Result := False ;
     end ;
 
 
@@ -2469,7 +2464,7 @@ procedure DCAMAPI_SetProperty(
 // Set camera property
 // -------------------
 var
-   iProp,Err : Integer ;
+   iProp : Integer ;
    Done : Boolean ;
 begin
 
