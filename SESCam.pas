@@ -1162,7 +1162,7 @@ begin
           if FCameraAvailable then begin
 
              CameraGainList.Clear ;
-             IMAQDX_GetCameraGainList( CameraGainList ) ;
+             IMAQDX_GetCameraGainList( IMAQDXSession, CameraGainList ) ;
 
              // Get camera readout speed options
              CameraModeList.Clear ;
@@ -2323,7 +2323,7 @@ begin
            end ;
 
         IMAQDX : begin
-           Result :=  16 ;
+           Result :=  64 ;
            end ;
 
         QCAM : begin

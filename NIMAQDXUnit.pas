@@ -11,6 +11,8 @@ unit NIMAQDXUnit;
 // JD 15.05.13 IMAQDX_SetVideoMode() Top/left of AOI set to 0,0 and biining to 1
 //             to ensure that maximum of AOI width and height correctly reported
 // 24-7-13 JD Now compiles unders Delphi XE2/3 as well as 7. (tested)
+// 25-2-14 JD Camera gain and exposure time can now be set
+//         Enum type variables now set correctly.
 
 interface
 
@@ -25,7 +27,7 @@ const
     IMAQdxErrorSuccess = 0;                   // Success
     IMAQdxErrorSystemMemoryFull = $BFF69000 ;   // Not enough memory
     IMAQdxErrorInternal=1;                        // Internal error
-    IMAQdxErrorInvalidParameter=2;                // Invalid parameter
+    IMAQdxErrorInvalidParameter=2;                // Invalid parameter                                     enumer
     IMAQdxErrorInvalidPointer=3;                  // Invalid pointer
     IMAQdxErrorInvalidInterface=4;                // Invalid camera session
     IMAQdxErrorInvalidRegistryKey=5;              // Invalid registry key
@@ -378,6 +380,7 @@ Type
     AttrBitsPerPixel : Integer ;
     AttrVideoMode : Integer ;
     AttrExposureTime : Integer ;
+    AttrExposureMode : Integer ;
     AttrLastBufferNumber : Integer ;
     AttrLastBufferCount : Integer ;
     AttrAcqInProgress : Integer ;
@@ -385,6 +388,10 @@ Type
     AttrTriggerSelector : Integer ;
     AttrTriggerSource : Integer ;
     AttrTriggerActivation : Integer ;
+    AttrGain : Integer ;
+    AttrGainMode : Integer ;
+    GainMin : Integer ;
+    GainMax : Integer ;
     AOIAvailable : Boolean ;
     end ;
 
@@ -507,18 +514,30 @@ Type
          ValueType : Cardinal ;
          pValue : Pointer ) : Integer ; stdcall ; //
 
-     TIMAQdxSetAttribute= function(
+     TIMAQdxSetAttributeI32= function(
          SessionID : Integer ;
          Name : PANSIChar ;
          ValueType : Cardinal ;
          Value : Integer ) : Integer ; cdecl ; //
 
+     TIMAQdxSetAttributeI64= function(
+         SessionID : Integer ;
+         Name : PANSIChar ;
+         ValueType : Cardinal ;
+         Value : Int64 ) : Integer ; cdecl ; //
+
+
+     TIMAQdxSetAttributeF64= function(
+         SessionID : Integer ;
+         Name : PANSIChar ;
+         ValueType : Cardinal ;
+         Value : double ) : Integer ; cdecl ; //
+
      TIMAQdxSetAttributeEnum= function(
          SessionID : Integer ;
          Name : PANSIChar ;
          ValueType : Cardinal ;
-         Value : Cardinal ) : Integer ; cdecl ; //
-
+         Value : TIMAQdxEnumItem ) : Integer ; cdecl ; //
 
      TIMAQdxGetAttributeMinimum= function(
          SessionID : Integer ;
@@ -721,7 +740,8 @@ procedure IMAQDX_GetImage(
           var Session : TIMAQDXSession
           ) ;
 
-procedure IMAQDX_GetCameraGainList( CameraGainList : TStringList ) ;
+procedure IMAQDX_GetCameraGainList( var Session : TIMAQDXSession ;
+                                    CameraGainList : TStringList ) ;
 
 procedure IMAQDX_GetCameraVideoModeList(
           var Session : TIMAQDXSession ;
@@ -764,11 +784,42 @@ function IMAQDX_FindAttribute(
           var Session : TIMAQDXSession ;
           Name : ANSIString ) : Integer ;
 
-procedure IMAQDX_SetAttribute(
+procedure IMAQDX_SetAttributeI32(
           var Session : TIMAQDXSession ;
           Attribute : Integer ;
           Value : Integer
           ) ;
+
+procedure IMAQDX_SetAttributeF64(
+          var Session : TIMAQDXSession ;
+          Attribute : Integer ;
+          Value : Double
+          ) ;
+
+procedure IMAQDX_SetAttributeEnum(
+          var Session : TIMAQDXSession ;
+          Attribute : Integer ;
+          Value : String
+          ) ;
+
+procedure IMAQDX_GetAttrRangeF64(
+          var Session : TIMAQDXSession ;
+          iAttr : Integer ;
+          var DMin : Double ;
+          var DMax : Double ) ;
+
+procedure IMAQDX_GetAttrRangeI64(
+          var Session : TIMAQDXSession ;
+          iAttr : Integer ;
+          var iMin : Int64 ;
+          var iMax : Int64 ) ;
+
+procedure IMAQDX_GetAttrRangeU32(
+          var Session : TIMAQDXSession ;
+          iAttr : Integer ;
+          var uMin : LongWord ;
+          var uMax : LongWord ) ;
+
 
 var
 
@@ -790,8 +841,10 @@ var
      IMAQdxEnumerateVideoModes : TIMAQdxEnumerateVideoModes ;
      IMAQdxEnumerateAttributes : TIMAQdxEnumerateAttributes ;
      IMAQdxGetAttribute : TIMAQdxGetAttribute ;
-     IMAQdxSetAttribute : TIMAQdxSetAttribute ;
-     IMAQdxSetAttributeEnum : TIMAQdxSetAttributeEnum ;     
+     IMAQdxSetAttributeI32 : TIMAQdxSetAttributeI32 ;
+     IMAQdxSetAttributeI64 : TIMAQdxSetAttributeI64 ;
+     IMAQdxSetAttributeF64 : TIMAQdxSetAttributeF64 ;
+     IMAQdxSetAttributeEnum : TIMAQdxSetAttributeEnum ;
      IMAQdxGetAttributeMinimum : TIMAQdxGetAttributeMinimum ;
      IMAQdxGetAttributeMaximum : TIMAQdxGetAttributeMaximum ;
      IMAQdxGetAttributeIncrement : TIMAQdxGetAttributeIncrement ;
@@ -866,7 +919,9 @@ begin
         @IMAQdxGetAttributeIncrement := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxGetAttributeIncrement') ;
         @IMAQdxGetAttributeMaximum := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxGetAttributeMaximum') ;
         @IMAQdxGetAttributeMinimum := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxGetAttributeMinimum') ;
-        @IMAQdxSetAttribute := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxSetAttribute') ;
+        @IMAQdxSetAttributeI32 := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxSetAttribute') ;
+        @IMAQdxSetAttributeI64 := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxSetAttribute') ;
+        @IMAQdxSetAttributeF64 := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxSetAttribute') ;
         @IMAQdxSetAttributeEnum := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxSetAttribute') ;
         @IMAQdxGetAttribute := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxGetAttribute') ;
         @IMAQdxEnumerateAttributes := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxEnumerateAttributes') ;
@@ -926,8 +981,14 @@ function IMAQDX_OpenCamera(
 // ---------------------
 var
     Err : Integer ;
-    i :Integer ;
+    i,j  :Integer ;
+    NumValues : Cardinal ;
     s : String ;
+    List : Array[0..100] of TIMAQdxEnumItem ;
+    Attrib : TIMAQdxEnumItem ;
+    DMin,DMax : Double ;
+    iMin,iMax : Int64 ;
+    uMin,uMax : LongWord ;
 begin
 
      Result := False ;
@@ -953,10 +1014,9 @@ begin
      CameraInfo.Add( 'URL: ' + IMAQDX_CharArrayToString(Session.CameraInfo[0].CameraAttributeURL)) ;
 
      // Open camera
-     Err := IMAQdxOpenCamera (
-             Session.CameraInfo[0].InterfaceName,
-             IMAQdxCameraControlModeController,
-             Session.ID) ;
+     Err := IMAQdxOpenCamera ( Session.CameraInfo[0].InterfaceName,
+                               IMAQdxCameraControlModeController,
+                               Session.ID) ;
      IMAQDX_CheckError( Err ) ;
      if Err = 0 then Session.CameraOpen := True
      else begin
@@ -994,6 +1054,9 @@ begin
      Session.AttrBitsPerPixel  := IMAQDX_FindAttribute( Session, 'BitsPerPixel' ) ;
      Session.AttrPixelSize  := IMAQDX_FindAttribute( Session, 'PixelSize' ) ;
      Session.AttrExposureTime  := IMAQDX_FindAttribute( Session, 'ExposureTimeRaw' ) ;
+     if Session.AttrExposureTime < 0 then
+        Session.AttrExposureTime  := IMAQDX_FindAttribute( Session, 'CameraAttributes::Exposure::Value' ) ;
+     Session.AttrExposureMode  := IMAQDX_FindAttribute( Session, 'CameraAttributes::Exposure::Mode' ) ;
      Session.AttrAcqInProgress  := IMAQDX_FindAttribute( Session, 'StatusInformation::AcqInProgress' ) ;
      Session.AttrLastBufferNumber  := IMAQDX_FindAttribute( Session, 'StatusInformation::LastBufferNumber' ) ;
      Session.AttrLastBufferCount  := IMAQDX_FindAttribute( Session, 'StatusInformation::LastBufferCount' ) ;
@@ -1001,21 +1064,24 @@ begin
      Session.AttrTriggerSelector := IMAQDX_FindAttribute( Session, 'AcquisitionTrigger::TriggerSelector');
      Session.AttrTriggerSource := IMAQDX_FindAttribute( Session, 'AcquisitionTrigger::TriggerSource');
      Session.AttrTriggerActivation := IMAQDX_FindAttribute( Session, 'AcquisitionTrigger::TriggerActivation');
+     Session.AttrGain := IMAQDX_FindAttribute( Session, 'CameraAttributes::Gain::Value') ;
+     Session.AttrGainMode := IMAQDX_FindAttribute( Session, 'CameraAttributes::Gain::Mode') ;
+
      // Area of interest supported by camera
      if (Session.AttrXOffset >= 0) and (Session.AttrYOffset >= 0) then Session.AOIAvailable := True
                                                                   else Session.AOIAvailable := False ;
 
-     // Get no. of video modes
+     // Get list of video modes
      if Session.AttrVideoMode >= 0 then begin
-        IMAQdxGetAttributeMaximum( Session.id,
-                                   Session.Attributes[Session.AttrVideoMode].Name,
-                                   IMAQdxAttributeTypeU32,
-                                   @Session.NumVideoModes ) ;
 
-        IMAQdxEnumerateAttributeValues( Session.id,
-                                        Session.Attributes[Session.AttrVideoMode].Name,
-                                        @Session.VideoModes,
-                                        Session.NumVideoModes ) ;
+        IMAQdxEnumerateAttributeValues(  Session.id,
+                                         Session.Attributes[Session.AttrVideoMode].Name,
+                                         Nil,
+                                         Session.NumVideoModes) ;
+        IMAQdxEnumerateAttributeValues(  Session.id,
+                                         Session.Attributes[Session.AttrVideoMode].Name,
+                                         @Session.VideoModes,
+                                         Session.NumVideoModes) ;
 
         end
      else begin
@@ -1025,30 +1091,45 @@ begin
         Session.NumVideoModes := 0 ;
         end ;
 
-
      // Pixel binning
      if (Session.AttrXBin >= 0) and (Session.AttrYBin >= 0) then begin
         // Set binning to 1X1 during opening of camera
-        IMAQdxSetAttribute( Session.id,
-                            Session.Attributes[Session.AttrXBin].Name,
-                            IMAQdxAttributeTypeU32,
-                            1) ;
-        IMAQdxSetAttribute( Session.id,
-                            Session.Attributes[Session.AttrYBin].Name,
-                            IMAQdxAttributeTypeU32,
-                            1) ;
+        IMAQdxSetAttributeI32( Session.id,
+                               Session.Attributes[Session.AttrXBin].Name,
+                               Session.Attributes[Session.AttrXBin].iType,
+                               1) ;
+        IMAQdxSetAttributeI32( Session.id,
+                               Session.Attributes[Session.AttrYBin].Name,
+                               Session.Attributes[Session.AttrYBin].iType,
+                               1) ;
         // Get maximum pixel binning
         IMAQdxGetAttributeMaximum( Session.id,
                                    Session.Attributes[Session.AttrXBin].Name,
-                                   IMAQdxAttributeTypeU32,
+                                   Session.Attributes[Session.AttrXBin].iType,
                                    @BinFactorMax ) ;
         end
      else BinFactorMax := 1 ;
 
+    // Camera gain
+    if Session.AttrGain >= 0 then begin
+        // Get minimum gain
+        IMAQdxGetAttributeMinimum( Session.id,
+                                   Session.Attributes[Session.AttrGain].Name,
+                                   Session.Attributes[Session.AttrGain].iType,
+                                   @Session.GainMin ) ;
+        // Get maximum gain
+        IMAQdxGetAttributeMaximum( Session.id,
+                                   Session.Attributes[Session.AttrGain].Name,
+                                   Session.Attributes[Session.AttrGain].iType,
+                                   @Session.GainMax ) ;
+        end
+    else begin
+        Session.GainMin := 1 ;
+        Session.GainMax := 1 ;
+        end ;
 
      // Pixel depth
      if Session.AttrBitsPerPixel >= 0 then begin
-        CameraInfo.Add('Bits per pixel:') ;
         IMAQdxEnumerateAttributeValues( Session.id,
                                         Session.Attributes[Session.AttrBitsPerPixel].Name,
                                         Nil,
@@ -1057,9 +1138,11 @@ begin
                                         Session.Attributes[Session.AttrBitsPerPixel].Name,
                                         @Session.PixelSettings,
                                         Session.NumPixelSettings ) ;
-        for i := 0 to Session.NumPixelSettings-1 do begin
-            CameraInfo.Add( IMAQDX_CharArrayToString(Session.PixelSettings[i].Name)) ;
-            end ;
+        IMAQdx_SetAttributeEnum( Session, Session.AttrBitsPerPixel, Session.PixelSettings[0].Name ) ;
+        IMAQdxGetAttribute( Session.id,
+                             Session.Attributes[Session.AttrBitsPerPixel].Name,
+                             Session.Attributes[Session.AttrBitsPerPixel].iType,
+                             @Attrib) ;
         end
      else   CameraInfo.Add('Bits per pixel attribute not available!') ;
 
@@ -1074,22 +1157,8 @@ begin
                           Session.GreyLevelMin,
                           Session.GreyLevelMax ) ;
 
-     if Session.NumVideoModes > 1 then CameraInfo.Add( format('Video Mode: %s',[Session.VideoModes[Session.VideoMode].Name])) ;
-     CameraInfo.Add( format('Pixel Format: %s',[Session.PixelFormats[Session.PixelFormat].Name])) ;
-
      CameraInfo.Add( format('CCD: Width %d, Height %d, Pixel depth %d',
                              [Session.FrameWidthMax,Session.FrameHeightMax,Session.PixelDepth]));
-
-
-     CameraInfo.Add( 'Video Modes: ') ;
-     for i := 0 to Session.NumVideoModes-1 do begin
-         CameraInfo.Add( IMAQDX_CharArrayToString(Session.VideoModes[i].Name)) ;
-         end ;
-
-     CameraInfo.Add('Pixel formats:') ;
-     for i := 0 to Session.NumPixelFormats-1 do begin
-         CameraInfo.Add(Session.PixelFormats[i].Name) ;
-         end ;
 
      // List camera attributes
      CameraInfo.Add('Camera Attributes:') ;
@@ -1097,7 +1166,54 @@ begin
          s := IMAQDX_CharArrayToString( Session.Attributes[i].Name) ;
          if Session.Attributes[i].Readable then s := s + ' R' ;
          if Session.Attributes[i].Writable then s := s + 'W' ;
-         CameraInfo.Add( s ) ;
+         case Session.Attributes[i].iType of
+
+             IMAQdxAttributeTypeU32 : begin
+                IMAQdx_GetAttrRangeU32( Session, i, uMin, uMax ) ;
+                s := s + format(' U32 %6d - %6d',[uMin,uMax]) ;
+                end;
+
+             IMAQdxAttributeTypeI64 : begin
+                IMAQdx_GetAttrRangeI64( Session, i, iMin, iMax ) ;
+                s := s + format(' I64 %6d - %6d',[iMin,iMax]) ;
+                end;
+
+
+             IMAQdxAttributeTypeF64 : begin
+                  IMAQdx_GetAttrRangeF64( Session, i, DMin, DMax ) ;
+                  s := s + format(' F64 %.4g - %.4g',[DMin,DMax]) ;
+                end;
+
+             IMAQdxAttributeTypeString : s := s + ' S' ;
+
+             IMAQdxAttributeTypeEnum : begin
+                 s := s + ' En: ' ;
+                 IMAQdxEnumerateAttributeValues(  Session.id,
+                                                  Session.Attributes[i].Name,
+                                                  Nil,
+                                                  NumValues) ;
+                 IMAQdxEnumerateAttributeValues(  Session.id,
+                                                  Session.Attributes[i].Name,
+                                                  @List,
+                                                  NumValues ) ;
+                 if NumValues < 4 then begin
+                    for j := 0 to NumValues-1 do
+                     s := s + format('%d=%s,',[List[j].Value,ANSIString(List[j].Name)]);
+                     end
+                 else begin
+                     CameraInfo.Add( s ) ;
+                     for j := 0 to NumValues-1 do begin
+                         s := format('%d=%s,',[List[j].Value,ANSIString(List[j].Name)]);
+                         CameraInfo.Add( s ) ;
+                         end;
+                     s := '' ;
+                     end;
+                 end;
+             IMAQdxAttributeTypeBool : s := s + ' B' ;
+             IMAQdxAttributeTypeCommand : s := s + ' COM' ;
+             else s := s + '??' ;
+             end;
+         if s <> '' then CameraInfo.Add( s ) ;
          end ;
 
      // Clear flags
@@ -1115,6 +1231,68 @@ begin
      Result := True ;
 
      end ;
+
+procedure IMAQDX_GetAttrRangeF64(
+          var Session : TIMAQDXSession ;
+          iAttr : Integer ;
+          var DMin : Double ;
+          var DMax : Double ) ;
+// -------------------------------------------------------------
+// Get upper and lower limits of range of F64 attribute settings
+// -------------------------------------------------------------
+begin
+
+     IMAQdxGetAttributeMinimum( Session.id,
+                                Session.Attributes[iAttr].Name,
+                                Session.Attributes[iAttr].iType,
+                                @DMin ) ;
+     IMAQdxGetAttributeMaximum( Session.id,
+                                Session.Attributes[iAttr].Name,
+                                Session.Attributes[iAttr].iType,
+                                @DMax ) ;
+     end;
+
+
+procedure IMAQDX_GetAttrRangeI64(
+          var Session : TIMAQDXSession ;
+          iAttr : Integer ;
+          var iMin : Int64 ;
+          var iMax : Int64 ) ;
+// -------------------------------------------------------------
+// Get upper and lower limits of range of I64 attribute settings
+// -------------------------------------------------------------
+begin
+
+     IMAQdxGetAttributeMinimum( Session.id,
+                                Session.Attributes[iAttr].Name,
+                                Session.Attributes[iAttr].iType,
+                                @iMin ) ;
+     IMAQdxGetAttributeMaximum( Session.id,
+                                Session.Attributes[iAttr].Name,
+                                Session.Attributes[iAttr].iType,
+                                @iMax ) ;
+     end;
+
+
+procedure IMAQDX_GetAttrRangeU32(
+          var Session : TIMAQDXSession ;
+          iAttr : Integer ;
+          var uMin : LongWord ;
+          var uMax : LongWord ) ;
+// -------------------------------------------------------------
+// Get upper and lower limits of range of I64 attribute settings
+// -------------------------------------------------------------
+begin
+
+     IMAQdxGetAttributeMinimum( Session.id,
+                                Session.Attributes[iAttr].Name,
+                                Session.Attributes[iAttr].iType,
+                                @uMin ) ;
+     IMAQdxGetAttributeMaximum( Session.id,
+                                Session.Attributes[iAttr].Name,
+                                Session.Attributes[iAttr].iType,
+                                @uMax ) ;
+     end;
 
 
 function IMAQDX_FindAttribute(
@@ -1157,25 +1335,24 @@ var
 begin
 
       // Set mode (if available)
-      if Session.AttrVideoMode >= 0 then
-         Err := IMAQdxSetAttribute( Session.id,
-                             Session.Attributes[Session.AttrVideoMode].Name,
-                             IMAQdxAttributeTypeU32,
-                             VideoMode) ;
-
+      if Session.AttrVideoMode >= 0 then begin
+         IMAQdx_SetAttributeEnum( Session,
+                                  Session.AttrVideoMode,
+                                  Session.VideoModes[VideoMode].Name ) ;
+         end ;
    //      If Err <> 0 then ShowMessage('Video mode error') ;
 
       // Set top-left of AOI to 0,0 and binning to 1
       // to ensure that maximum of AOI width and heght correctly reported
 
       if Session.AttrXOffset >= 0 then
-         IMAQdx_SetAttribute( Session,Session.AttrXOffset, 0 ) ;
+         IMAQdx_SetAttributeI32( Session,Session.AttrXOffset, 0 ) ;
       if Session.AttrYOffset >= 0 then
-         IMAQdx_SetAttribute( Session,Session.AttrYOffset, 0 ) ;
+         IMAQdx_SetAttributeI32( Session,Session.AttrYOffset, 0 ) ;
       if Session.AttrXBin >= 0 then
-         IMAQdx_SetAttribute( Session,Session.AttrXBin, 1 ) ;
+         IMAQdx_SetAttributeI32( Session,Session.AttrXBin, 1 ) ;
       if Session.AttrYBin >= 0 then
-         IMAQdx_SetAttribute( Session,Session.AttrYBin, 1 ) ;
+         IMAQdx_SetAttributeI32( Session,Session.AttrYBin, 1 ) ;
 
      // Max. Image width
      if Session.AttrWidth >= 0 then begin
@@ -1252,9 +1429,9 @@ begin
 
     // Set pixel format (if attribute available)
     if Session.AttrPixelFormat < 0 then PixelFormat := 0 ;
-    IMAQdx_SetAttribute( Session,
-                         Session.AttrPixelFormat,
-                         Session.PixelFormats[Session.PixelFormat].Value ) ;
+    IMAQdx_SetAttributeEnum( Session,
+                             Session.AttrPixelFormat,
+                             Session.PixelFormats[Session.PixelFormat].Name ) ;
 
      PixelFormat := Min(PixelFormat,Session.NumPixelFormats-1);
      Session.PixelFormat := PixelFormat ;
@@ -1326,24 +1503,24 @@ begin
       FFrameBottom := FFrameBottom div FBinFactor ;
 
       // Set horizontal binning
-      IMAQdx_SetAttribute( Session,Session.AttrXBin, FBinFactor ) ;
+      IMAQdx_SetAttributeI32( Session,Session.AttrXBin, FBinFactor ) ;
 
       // Set vertical binning
-      IMAQdx_SetAttribute( Session,Session.AttrYBin, FBinFactor ) ;
+      IMAQdx_SetAttributeI32( Session,Session.AttrYBin, FBinFactor ) ;
 
       // Left edge of CCD readout area
-      IMAQdx_SetAttribute( Session,Session.AttrXOffset, FFrameLeft ) ;
+      IMAQdx_SetAttributeI32( Session,Session.AttrXOffset, FFrameLeft ) ;
 
       // Set top edge of CCD readout areas
-      IMAQdx_SetAttribute( Session,Session.AttrYOffset, FFrameTop ) ;
+      IMAQdx_SetAttributeI32( Session,Session.AttrYOffset, FFrameTop ) ;
 
       // Set width of CCD readout areas
       FFrameWidth := FFrameRight - FFrameLeft + 1 ;
-      IMAQdx_SetAttribute( Session,Session.AttrWidth, FFrameWidth ) ;
+      IMAQdx_SetAttributeI32( Session,Session.AttrWidth, FFrameWidth ) ;
 
       // Set height of CCD readout areas
       FFrameHeight := FFrameBottom - FFrameTop + 1 ;
-      IMAQdx_SetAttribute( Session,Session.AttrHeight, FFrameHeight ) ;
+      IMAQdx_SetAttributeI32( Session,Session.AttrHeight, FFrameHeight ) ;
 
      FFrameRight := (FFrameLeft + FFrameWidth)*FBinFactor -1;
      FFrameBottom := (FFrameTop + FFrameHeight)*FBinFactor -1;
@@ -1403,12 +1580,30 @@ function IMAQDX_StartCapture(
 var
     FrameRight,FrameBottom : Integer ;
     TriggerMode,ExpTimeMicroSec : Integer ;
+    iValue : Int64 ;
 begin
 
       // Stop any acquisition which is in progress
       if Session.AcquisitionInProgress then begin
           IMAQDX_StopCapture( Session ) ;
           end ;
+
+      // Set camera gain
+      if Session.AttrGain >= 0 then begin
+         // Set gain mode to manual
+         IMAQdx_SetAttributeEnum( Session, Session.AttrGainMode, 'manual' ) ;
+         // set gain
+         IMAQdxSetAttributeI64( Session.id,
+                                Session.Attributes[Session.AttrGain].Name,
+                                Session.Attributes[Session.AttrGain].iType,
+                                Int64(Session.GainMin + AmpGain));
+
+         IMAQdxGetAttribute( Session.id,
+                             Session.Attributes[Session.AttrGain].Name,
+                             Session.Attributes[Session.AttrGain].iType,
+                             @iValue) ;
+         outputdebugstring(pchar(format('%d',[iValue])));
+         end;
 
       // Set AOI boundaries
       FrameRight := FrameLeft + FrameWidth - 1 ;
@@ -1423,13 +1618,15 @@ begin
                                  FrameHeight) ;
 
       // Set exposure time
-      IMAQdx_SetAttribute( Session,Session.AttrExposureTime, Round(ExposureTime*1E6) ) ;
+      IMAQdx_SetAttributeEnum( Session, Session.AttrExposureMode, 'manual' ) ;
+      IMAQdx_SetAttributeF64( Session, Session.AttrExposureTime, ExposureTime ) ;
       if Session.AttrExposureTime >= 0 then begin
+
          IMAQdxGetAttribute( Session.id,
                              Session.Attributes[Session.AttrExposureTime].Name,
-                             IMAQdxAttributeTypeU32,
-                             @ExpTimeMicroSec) ;
-         ExposureTime := ExpTimeMicroSec*1E-6 ;
+                             Session.Attributes[Session.AttrExposureTime].iType,
+                             @ExposureTime) ;
+         //ExposureTime := 0.1;//ExpTimeMicroSec ;
          end ;
 
       // Allocate camera buffer
@@ -1442,7 +1639,7 @@ begin
       IMAQDX_CheckError( IMAQdxConfigureAcquisition( Session.ID,
                                                      1,
                                                      NumFramesInBuffer)) ;
-                                                     
+
       Session.NumFramesInBuffer := NumFramesInBuffer ;
       Session.FrameBufPointer := PFrameBuffer ;
       Session.NumBytesPerFrame := NumBytesPerFrame ;
@@ -1457,15 +1654,15 @@ begin
      if ExternalTrigger = CamFreeRun then begin
         // Free run trigger mode
         TriggerMode := 0 ;
-        IMAQdx_SetAttribute( Session,Session.AttrTriggerMode, TriggerMode ) ;
+        IMAQdx_SetAttributeI32( Session,Session.AttrTriggerMode, TriggerMode ) ;
         end
      else begin
         // External trigger
         TriggerMode := 1 ;
-        IMAQdx_SetAttribute( Session,Session.AttrTriggerMode, TriggerMode ) ;
-        IMAQdx_SetAttribute( Session,Session.AttrTriggerSelector, 1 ) ;   // Trigger frame
-        IMAQdx_SetAttribute( Session,Session.AttrTriggerSource, 1 ) ;     // Line 1
-        IMAQdx_SetAttribute( Session,Session.AttrTriggerActivation, 0 ) ; //Rising Edge
+        IMAQdx_SetAttributeI32( Session,Session.AttrTriggerMode, TriggerMode ) ;
+        IMAQdx_SetAttributeI32( Session,Session.AttrTriggerSelector, 1 ) ;   // Trigger frame
+        IMAQdx_SetAttributeI32( Session,Session.AttrTriggerSource, 1 ) ;     // Line 1
+        IMAQdx_SetAttributeI32( Session,Session.AttrTriggerActivation, 0 ) ; //Rising Edge
         end ;
 
      // Start acquisition
@@ -1477,7 +1674,7 @@ begin
      end;
 
 
-procedure IMAQDX_SetAttribute(
+procedure IMAQDX_SetAttributeI32(
           var Session : TIMAQDXSession ;           // Camera session #
           Attribute : Integer ;
           Value : Integer
@@ -1490,12 +1687,72 @@ begin
       if Attribute < 0 then Exit ;
       if not Session.Attributes[Attribute].Writable then Exit ;
 
-      IMAQdxSetAttribute( Session.id,
-                          Session.Attributes[Attribute].Name,
-                          IMAQdxAttributeTypeU32,
-                          Value) ;
+      IMAQdxSetAttributeI32( Session.id,
+                             Session.Attributes[Attribute].Name,
+                             Session.Attributes[Attribute].iType,
+                             Value) ;
 
       end ;
+
+procedure IMAQDX_SetAttributeF64(
+          var Session : TIMAQDXSession ;           // Camera session #
+          Attribute : Integer ;
+          Value : Double
+          ) ;
+// -------------
+// Set attribute
+// -------------
+begin
+
+      if Attribute < 0 then Exit ;
+      if not Session.Attributes[Attribute].Writable then Exit ;
+
+      IMAQdxSetAttributeF64( Session.id,
+                             Session.Attributes[Attribute].Name,
+                             Session.Attributes[Attribute].iType,
+                             Value) ;
+
+      end ;
+
+
+procedure IMAQDX_SetAttributeEnum(
+          var Session : TIMAQDXSession ;           // Camera session #
+          Attribute : Integer ;
+          Value : string
+          ) ;
+// -----------------------
+// Set enum type attribute
+// -----------------------
+var
+    List : Array[0..100] of TIMAQdxEnumItem ;
+    i,nList : Cardinal ;
+begin
+
+      if Attribute < 0 then Exit ;
+      if not Session.Attributes[Attribute].Writable then Exit ;
+
+      // Get list of attribute values
+      IMAQdxEnumerateAttributeValues(  Session.id,
+                                       Session.Attributes[Attribute].Name,
+                                       Nil,
+                                       nList) ;
+      IMAQdxEnumerateAttributeValues(  Session.id,
+                                       Session.Attributes[Attribute].Name,
+                                       @List,
+                                       nList) ;
+
+      // Find and set required value in list
+      for i := 0 to nList-1 do
+         if ANSIContainsText(ANSIString(List[i].Name),ANSIString(Value)) then begin
+            IMAQdxSetAttributeEnum( Session.id,
+                                    Session.Attributes[Attribute].Name,
+                                    Session.Attributes[Attribute].iType,
+                                    List[i]) ;
+            end ;
+
+      end ;
+
+
 
 procedure IMAQDX_StopCapture(
           var Session : TIMAQDXSession            // Camera session #
@@ -1530,7 +1787,8 @@ var
     i,j,y,x : Cardinal ;
     Err : Integer ;
     PToBuf : Pointer ;
-    ActualBufferNumber,LatestFrameCount,LatestFrameTransferred,NumCopied : Cardinal ;
+    ActualBufferNumber,NumCopied,LatestFrameTransferred : Cardinal ;
+    LatestFrameCount : Int64 ;
 begin
 
     if not Session.AcquisitionInProgress then Exit ;
@@ -1541,14 +1799,14 @@ begin
     // If no buffers yet .. exit
     IMAQdxGetAttribute( Session.ID,
                         Session.Attributes[Session.AttrLastBufferCount].Name,
-                        IMAQdxAttributeTypeU32,
+                        Session.Attributes[Session.AttrLastBufferCount].iType,
                         @LatestFrameCount ) ;
     if LatestFrameCount <= 0 then Exit ;
 
     // Get latest buffer
     IMAQdxGetAttribute( Session.ID,
                         Session.Attributes[Session.AttrLastBufferNumber].Name,
-                        IMAQdxAttributeTypeU32,
+                        Session.Attributes[Session.AttrLastBufferNumber].iType,
                         @LatestFrameTransferred ) ;
 
 //    outputdebugstring(pchar(format('%d %d',[LatestFrameTransferred,LatestFrameCount])));
@@ -1617,15 +1875,21 @@ begin
     end ;
 
 
-procedure IMAQDX_GetCameraGainList( CameraGainList : TStringList ) ;
+procedure IMAQDX_GetCameraGainList(
+          var Session : TIMAQDXSession ;
+          CameraGainList : TStringList ) ;
 // --------------------------------------------
 // Get list of available camera amplifier gains
 // --------------------------------------------
 var
     i : Integer ;
 begin
+
     CameraGainList.Clear ;
-    for i := 1 to 1 do CameraGainList.Add( format( '%d',[i] )) ;
+
+    for i  := Session.GainMin to Session.GainMax do begin
+        CameraGainList.Add( format( '%d',[i] )) ;
+        end;
     end ;
 
 
