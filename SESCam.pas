@@ -2816,6 +2816,15 @@ begin
                                  FGreyLevelMin,
                                  FGreyLevelMax ) ;
          end ;
+
+       IMAQDX : begin
+          IMAQDX_SetPixelFormat( IMAQDXSession,
+                                 FCameraADC,
+                                 IMAQDXSession.NumBytesPerComponent,
+                                 IMAQDXSession.PixelDepth ) ;
+
+          end ;
+
        end ;
 
     end ;
