@@ -13,8 +13,9 @@ unit NIMAQDXUnit;
 // 24-7-13 JD Now compiles unders Delphi XE2/3 as well as 7. (tested)
 // 25-2-14 JD Camera gain and exposure time can now be set
 //         Enum type variables now set correctly.
-// 26-2-14 Now handles variable I32/I64/F64 attributes
-//         Basler aca-1300 now working agaib
+// 26-2-14 Now handles variable I32/I64/F64 attributes. Basler aca-1300 now working again
+// 28-2-14 AdditionReadOutTime option added to StartCap. Note external trigger not tested
+
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, math, strutils ;
@@ -712,7 +713,9 @@ procedure IMAQDX_SetPixelFormat(
           var Session : TIMAQDXSession ;
           var PixelFormat : Integer ;               // Video mode
           var NumBytesPerComponent : Integer ; // Returns bytes/pixel
-          var PixelDepth : Integer         // Returns no. bits/pixel
+          var PixelDepth : Integer ;        // Returns no. bits/pixel
+          var GreyLevelMin : Integer ;      // Min. grey level
+          var GreyLevelMax : Integer        // Max. grey level
           ) ;
 
 
@@ -722,6 +725,7 @@ procedure IMAQDX_SetPixelFormat(
 function IMAQDX_StartCapture(
          var Session : TIMAQDXSession ;
          var ExposureTime : Double ;
+         AdditionalReadoutTime : Double ;
          AmpGain : Integer ;
          ExternalTrigger : Integer ;
          FrameLeft : Integer ;
@@ -905,6 +909,8 @@ var
     LibFileName : String ;
 begin
 
+     if LibraryLoaded then Exit ;
+
      { Load interface DLL library }
      LibFileName := 'NIIMAQDX.DLL' ;
      LibraryHnd := LoadLibrary( PChar(LibFileName));
@@ -1034,6 +1040,17 @@ begin
      Err := IMAQdxOpenCamera ( Session.CameraInfo[0].InterfaceName,
                                IMAQdxCameraControlModeController,
                                Session.ID) ;
+
+     // -----------------------------------------------------------------------
+     // Camera closed and re-opened to avoid "attribute out range" error
+     // when IMAQdxConfigureAcquisition() called after program has been restarted
+     // when using a GIGE camera. Not known why this occurs.
+     IMAQdxCloseCamera( Session.ID ) ;
+     Err := IMAQdxOpenCamera ( Session.CameraInfo[0].InterfaceName,
+                               IMAQdxCameraControlModeController,
+                               Session.ID) ;
+     // -----------------------------------------------------------------------
+
      IMAQDX_CheckError( Err ) ;
      if Err = 0 then Session.CameraOpen := True
      else begin
@@ -1210,7 +1227,7 @@ begin
          if s <> '' then CameraInfo.Add( s ) ;
          end ;
 
-     IMAQdx_SetAttributeI32( Session,Session.AttrPacketSize, 2000 ) ;
+     IMAQdx_SetAttributeI32( Session,Session.AttrPacketSize, 8000 ) ;
 
      // Clear flags
      Session.AcquisitionInProgress := False ;
@@ -1597,7 +1614,9 @@ begin
      IMAQDX_SetPixelFormat( Session,
                             PixelFormat,
                             NumBytesPerComponent,
-                            PixelDepth ) ;
+                            PixelDepth,
+                            GreyLevelMin,
+                            GreyLevelMax ) ;
 
    //      If Err <> 0 then ShowMessage('Video mode error') ;
 
@@ -1616,10 +1635,6 @@ begin
      FrameHeightMax := Session.FrameHeightMax ;
 
 
-     GreyLevelMin := 0 ;
-     GreyLevelMax := 1 ;
-     for i := 1 to PixelDepth do  GreyLevelMax := GreyLevelMax*2 ;
-     GreyLevelMax := GreyLevelMax - 1 ;
      end ;
 
 
@@ -1647,13 +1662,16 @@ procedure IMAQDX_SetPixelFormat(
           var Session : TIMAQDXSession ;
           var PixelFormat : Integer ;               // Video mode
           var NumBytesPerComponent : Integer ; // Returns bytes/pixel
-          var PixelDepth : Integer         // Returns no. bits/pixel
+          var PixelDepth : Integer ;        // Returns no. bits/pixel
+          var GreyLevelMin : Integer ;      // Min. grey level
+          var GreyLevelMax : Integer        // Max. grey level
           ) ;
 // ----------------
 // Set pixel format
 // ----------------
 var
   Attrib  : TIMAQdxEnumItem ;
+  i : Integer ;
 begin
 
     // Set pixel format (if attribute available)
@@ -1702,6 +1720,11 @@ begin
      if PixelDepth <= 8 then Session.NumBytesPerComponent := 1
                         else Session.NumBytesPerComponent := 2 ;
      NumBytesPerComponent := Session.NumBytesPerComponent ;
+
+     GreyLevelMin := 0 ;
+     GreyLevelMax := 1 ;
+     for i := 1 to PixelDepth do  GreyLevelMax := GreyLevelMax*2 ;
+     GreyLevelMax := GreyLevelMax - 1 ;
 
      end ;
 
@@ -1773,14 +1796,10 @@ begin
      if not LibraryLoaded then Exit ;
 
      // Stop any acquisition which is in progress
-     if Session.AcquisitionInProgress then begin
-       IMAQdxStopAcquisition( Session.ID ) ;
-       IMAQDX_CheckError(IMAQdxUnconfigureAcquisition(Session.ID)) ;
-       Session.AcquisitionInProgress := false ;
-       end ;
+     IMAQDX_StopCapture( Session ) ;
 
-    // Close camers
-    IMAQdxCloseCamera( Session.ID ) ;
+    // Close camera
+    IMAQDX_CheckError(IMAQdxCloseCamera( Session.ID )) ;
     Session.CameraOpen := False ;
 
     // Unload library
@@ -1793,6 +1812,7 @@ begin
 function IMAQDX_StartCapture(
          var Session : TIMAQDXSession ;          // Camera session #
          var ExposureTime : Double ;      // Frame exposure time
+         AdditionalReadoutTime : Double ;  // Additional readout time
          AmpGain : Integer ;              // Camera amplifier gain index
          ExternalTrigger : Integer ;      // Trigger mode
          FrameLeft : Integer ;            // Left pixel in CCD readout area
@@ -1847,9 +1867,25 @@ begin
       if ANSIContainsText( ANSIString(ExpUnits), 'us') then ExpScale := 1E6
       else if ANSIContainsText( ANSIString(ExpUnits), 'ms') then ExpScale := 1E3
       else ExpScale := 1.0 ;
-      IMAQdx_SetAttributeF64( Session, Session.AttrExposureTime, ExposureTime*ExpScale ) ;
-      IMAQdx_GetAttributeF64( Session, Session.AttrExposureTime,ExposureTime);
-      ExposureTime := ExposureTime/ExpScale ;
+
+     // Internal/external triggering of frame capture
+     if ExternalTrigger = CamFreeRun then begin
+        // Free run trigger mode
+        IMAQdx_SetAttributeEnum( Session,Session.AttrTriggerMode, 'off' ) ;
+        // Set exposure
+        IMAQdx_SetAttributeF64( Session, Session.AttrExposureTime, ExposureTime*ExpScale ) ;
+        IMAQdx_GetAttributeF64( Session, Session.AttrExposureTime,ExposureTime);
+        ExposureTime := ExposureTime/ExpScale ;
+        end
+     else begin
+        // External trigger
+        ExposureTime := ExposureTime - AdditionalReadoutTime ;
+        IMAQdx_SetAttributeF64( Session, Session.AttrExposureTime, ExposureTime*ExpScale ) ;
+        IMAQdx_SetAttributeEnum( Session,Session.AttrTriggerMode, 'on' ) ;
+        IMAQdx_SetAttributeEnum( Session,Session.AttrTriggerSelector, 'frame start' ) ;   // Trigger frame
+        IMAQdx_SetAttributeEnum( Session,Session.AttrTriggerSource, 'line 1' ) ;     // Line 1
+        IMAQdx_SetAttributeEnum( Session,Session.AttrTriggerActivation, 'rising edge' ) ; //Rising Edge
+        end ;
 
       // Allocate camera buffer
       if Session.Buf <> Nil then FreeMem(Session.Buf) ;
@@ -1871,21 +1907,6 @@ begin
       Session.FrameWidth := FrameWidth ;
       Session.FrameLeft := FrameLeft ;
       Session.FrameTop := FrameTop ;
-
-     // Internal/external triggering of frame capture
-     if ExternalTrigger = CamFreeRun then begin
-        // Free run trigger mode
-        TriggerMode := 0 ;
-        IMAQdx_SetAttributeEnum( Session,Session.AttrTriggerMode, 'off' ) ;
-        end
-     else begin
-        // External trigger
-        TriggerMode := 1 ;
-        IMAQdx_SetAttributeEnum( Session,Session.AttrTriggerMode, 'on' ) ;
-        IMAQdx_SetAttributeEnum( Session,Session.AttrTriggerSelector, 'frame start' ) ;   // Trigger frame
-        IMAQdx_SetAttributeEnum( Session,Session.AttrTriggerSource, 'line 1' ) ;     // Line 1
-        IMAQdx_SetAttributeEnum( Session,Session.AttrTriggerActivation, 'rising edge' ) ; //Rising Edge
-        end ;
 
      // Start acquisition
      IMAQDX_CheckError(IMAQdxStartAcquisition(Session.id));
@@ -2267,5 +2288,7 @@ begin
           end ;
       end ;
 
+initialization
+    LibraryLoaded := false ;
 
 end.

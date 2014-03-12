@@ -233,6 +233,8 @@ type
     procedure SetBinFactor( Value : Integer ) ;
     function GetFrameWidth : Integer ;
     function GetFrameHeight : Integer ;
+    function GetNumPixelsPerFrame : Integer ;
+    function GetNumBytesPerFrame : Integer ;
     procedure SetReadOutSpeed( Value : Integer ) ;
     procedure SetNumFramesInBuffer( Value : Integer ) ;
     function GetMaxFramesInBuffer : Integer ;
@@ -253,6 +255,7 @@ type
     procedure SetCameraADC( Value : Integer ) ;
     procedure SetADCGain( Value : Integer ) ;
     procedure SetCCDVerticalShiftSpeed( Value : Integer ) ;
+
 
   protected
     { Protected declarations }
@@ -322,6 +325,9 @@ type
     Property TriggerType : Integer Read FTriggerType ;
     Property AmpGain : Integer Read FAmpGain Write FAmpGain ;
     Property NumBytesPerPixel : Integer Read FNumBytesPerPixel ;
+    Property NumPixelsPerFrame : Integer Read GetNumPixelsPerFrame ;
+    Property NumBytesPerFrame : Integer Read GetNumBytesPerFrame ;
+
     Property NumFramesInBuffer : Integer Read FNumFramesInBuffer Write SetNumFramesInBuffer ;
     Property MaxFramesInBuffer : Integer Read GetMaxFramesInBuffer ;
 
@@ -1857,6 +1863,7 @@ begin
           FCameraActive := IMAQDX_StartCapture(
                            IMAQDXSession,
                            FFrameInterval,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
                            FAmpGain,
                            FTriggerMode,
                            FFrameLeft,
@@ -2091,6 +2098,23 @@ begin
 
      end ;
 
+function TSESCam.GetNumPixelsPerFrame : Integer ;
+// --------------------------
+// Get pixel height of camera image
+// ---------------------------
+begin
+     if (not FCameraActive) and ImageAreaChanged then AllocateFrameBuffer ;
+     Result := FFrameHeight*FFrameWidth ;
+     end ;
+
+function TSESCam.GetNumBytesPerFrame : Integer ;
+// --------------------------
+// Get pixel height of camera image
+// ---------------------------
+begin
+     if (not FCameraActive) and ImageAreaChanged then AllocateFrameBuffer ;
+     Result := FFrameHeight*FFrameWidth*FNumBytesPerPixel ;
+     end ;
 
 procedure TSESCam.SetReadOutSpeed( Value : Integer ) ;
 // -------------------------------
@@ -2114,6 +2138,9 @@ begin
           AndorSDK3Session.ReadoutSpeed := FReadoutSpeed ;
           end ;
        end ;
+
+     ImageAreaChanged := True ;
+
      end ;
 
 
@@ -2788,6 +2815,8 @@ begin
 
        end ;
 
+    ImageAreaChanged := True ;
+
     end ;
 
 
@@ -2821,11 +2850,15 @@ begin
           IMAQDX_SetPixelFormat( IMAQDXSession,
                                  FCameraADC,
                                  IMAQDXSession.NumBytesPerComponent,
-                                 IMAQDXSession.PixelDepth ) ;
+                                 FPixelDepth,
+                                 FGreyLevelMin,
+                                 FGreyLevelMax ) ;
 
           end ;
 
        end ;
+
+    ImageAreaChanged := True ;
 
     end ;
 

@@ -389,8 +389,8 @@ type
 
     procedure EPC9SetFilterMode( Num : Integer ; Value : Integer ) ;
     function EPC9GetFilterMode( Num : Integer ) : Integer ;
-    procedure EPC9SetFilterBandwidth( Num : Integer ; Value : Single ) ;
-    function EPC9GetFilterBandwidth( Num : Integer ) : Single ;
+    procedure EPC9SetFilter2Bandwidth( Value : Single ) ;
+    function EPC9GetFilter2Bandwidth : Single ;
 
     procedure EPC9SetCfast( Value : Single ) ;
     function EPC9GetCfast : Single ;
@@ -644,6 +644,7 @@ procedure TritonAutoCompensation(
     procedure EPC9AutoGLeak ;
     procedure EPC9AutoSearch ;
     procedure EPC9AutoVpOffset ;
+    procedure EPC9AutoRSComp ;
     procedure EPC9FlushCache ;
 
     procedure GetADCVoltageRanges(
@@ -708,9 +709,9 @@ procedure TritonAutoCompensation(
                                              read EPC9GetFilterMode
                                              write EPC9SetFilterMode ;
 
-    Property EPC9FilterBandwidth[Num : Integer] : Single
-                                                  read EPC9GetFilterBandwidth
-                                                  write EPC9SetFilterBandwidth ;
+    Property EPC9Filter2Bandwidth : Single
+                                    read EPC9GetFilter2Bandwidth
+                                    write EPC9SetFilter2Bandwidth ;
 
     Property EPC9Cfast : Single
                                              read EPC9GetCfast
@@ -4304,14 +4305,14 @@ begin
     Heka_GetFilterMode(Num,Result)  ;
     end;
 
-procedure TSESLabIO.EPC9SetFilterBandwidth( Num : Integer ; Value : Single ) ;
+procedure TSESLabIO.EPC9SetFilter2Bandwidth( Value : Single ) ;
 begin
-     Heka_SetFilterBandwidth(Num,Value)  ;
+     Heka_SetFilter2Bandwidth(Value)  ;
      end;
 
-function TSESLabIO.EPC9GetFilterBandwidth( Num : Integer ) : Single ;
+function TSESLabIO.EPC9GetFilter2Bandwidth : Single ;
 begin
-     Heka_GetFilterBandwidth(Num,Result)  ;
+     Heka_GetFilter2Bandwidth(Result)  ;
      end;
 
 procedure TSESLabIO.EPC9SetCfast( Value : Single ) ;
@@ -4542,6 +4543,11 @@ begin
 procedure TSESLabIO.EPC9AutoVpOffset ;
 begin
      Heka_AutoVpOffset ;
+     end;
+
+procedure TSESLabIO.EPC9AutoRSComp ;
+begin
+     Heka_AutoRSComp ;
      end;
 
 procedure TSESLabIO.EPC9FlushCache ;

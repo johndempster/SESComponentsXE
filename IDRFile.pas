@@ -1172,9 +1172,9 @@ begin
 
      ReadInt( Header, 'FH=', FFrameHeight ) ;
 
-
-     ReadInt( Header, 'NBPP=', FNumBytesPerPixel ) ;
      FNumBytesPerPixel := 2 ;
+     ReadInt( Header, 'NBPP=', FNumBytesPerPixel ) ;
+
      ReadInt( Header, 'NF=', FNumFrames ) ;
 
 

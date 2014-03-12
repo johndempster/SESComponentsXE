@@ -8,6 +8,9 @@ unit HekaUnit;
 //  14.01.14 Heka support updated to work with current EPCDLL downloadable from Heka site
 //           Support for ITC-18-USB added to HekaUnit.pas
 //  21.01.14 Latest EPCDLL supplied by Hubert used
+//  11.03.14 _GetRSFraction now works correctly
+//           Only Filter 2 bandwidth can now be changed
+//           Filter 2 response now set by EPC9_SetF23Response
 interface
 
   uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math, classes ;
@@ -216,6 +219,8 @@ TEPC9_AutoSearch= function : LongInt ; stdcall ;
 
 TEPC9_AutoVpOffset= function : LongInt ; stdcall ;
 
+TEPC9_AutoRsComp= function : LongInt ; stdcall ;
+
 TEPC9_Reset= function : LongInt ; stdcall ;
 
 //TEPC9_ResetTempState= function  : LongInt ; stdcall ;
@@ -274,11 +279,9 @@ TEPC9_SetExtStimPath= function(
 TEPC9_SetF1Index= function(
                   Filter1 : Integer ) : LongInt ; stdcall ;
 
-TEPC9_SetF1Bandwidth= function( Bandwidth : Double) : LongInt ; stdcall ;
+TEPC9_SetF2Response= function( Response : Integer ) : LongInt ; stdcall ;
 
 TEPC9_SetF2Bandwidth= function( Bandwidth : Double) : LongInt ; stdcall ;
-
-TEPC9_SetF2Butterworth= function(SetButterworth : Byte ) : LongInt ; stdcall ;
 
 TEPC9_SetGLeak= function( Siemens : Double) : LongInt ; stdcall ;
 
@@ -362,11 +365,9 @@ TEPC9_GetGLeak = function : Double ; stdcall ;
 
 TEPC9_GetF1Index = function : LongInt ; stdcall ;
 
-TEPC9_GetF1Bandwidth = function : Double ; stdcall ;
+TEPC9_GetF2Response = function : Integer ; stdcall ;
 
 TEPC9_GetF2Bandwidth = function : Double ; stdcall ;
-
-TEPC9_GetF2Butterworth = function : Byte ; stdcall ;
 
 TEPC9_GetStimFilterOn = function : Byte ; stdcall ;
 
@@ -651,13 +652,11 @@ function EPC9_LoadFileProcType(
           iFilterNum : Integer ;
           var iFilterMode : Integer )  ;
 
-   procedure Heka_SetFilterBandwidth(
-          iFilterNum : Integer ;
-          Bandwidth : Single )  ;
+   procedure Heka_SetFilter2Bandwidth(
+             Bandwidth : Single )  ;
 
-   procedure Heka_GetFilterBandwidth(
-          iFilterNum : Integer ;
-          var Bandwidth : Single )  ;
+   procedure Heka_GetFilter2Bandwidth(
+             var Bandwidth : Single )  ;
 
     procedure Heka_SetCfast( var Value : Single ) ;
     procedure Heka_GetCfast( var Value : Single ) ;
@@ -705,6 +704,7 @@ function EPC9_LoadFileProcType(
     procedure Heka_AutoGLeak ;
     procedure Heka_AutoSearch ;
     procedure Heka_AutoVpOffset ;
+    procedure Heka_AutoRsComp ;
     procedure Heka_FlushCache ;
 
 implementation
@@ -781,6 +781,7 @@ var
     EPC9_AutoGLeak : TEPC9_AutoGLeak;
     EPC9_AutoSearch : TEPC9_AutoSearch ;
     EPC9_AutoVpOffset : TEPC9_AutoVpOffset ;
+    EPC9_AutoRsComp : TEPC9_AutoRsComp ;
     EPC9_Reset : TEPC9_Reset ;
 //    EPC9_ResetTempState : TEPC9_ResetTempState ;
     EPC9_FlushCache : TEPC9_FlushCache ;
@@ -812,9 +813,8 @@ var
     EPC9_GetExtStimPath : TEPC9_GetExtStimPath ;
     EPC9_SetExtStimPath : TEPC9_SetExtStimPath ;
     EPC9_SetF1Index : TEPC9_SetF1Index ;
-    EPC9_SetF1Bandwidth : TEPC9_SetF1Bandwidth ;
+    EPC9_SetF2Response : TEPC9_SetF2Response ;
     EPC9_SetF2Bandwidth : TEPC9_SetF2Bandwidth ;
-    EPC9_SetF2Butterworth : TEPC9_SetF2Butterworth ;
     EPC9_SetGLeak : TEPC9_SetGLeak ;
     EPC9_SetGSeries : TEPC9_SetGSeries ;
     EPC9_SetMode : TEPC9_SetMode ;
@@ -850,9 +850,8 @@ var
      EPC9_GetRsFraction : TEPC9_GetRsFraction ;
      EPC9_GetGLeak : TEPC9_GetGLeak ;
      EPC9_GetF1Index   : TEPC9_GetF1Index ;
-     EPC9_GetF1Bandwidth : TEPC9_GetF1Bandwidth ;
+     EPC9_GetF2Response : TEPC9_GetF2Response ;
      EPC9_GetF2Bandwidth : TEPC9_GetF2Bandwidth ;
-     EPC9_GetF2Butterworth  : TEPC9_GetF2Butterworth ;
      EPC9_GetStimFilterOn  : TEPC9_GetStimFilterOn ;
      EPC9_GetCCTrackHold : TEPC9_GetCCTrackHold ;
      EPC9_GetCCTrackTau   : TEPC9_GetCCTrackTau ;
@@ -1068,9 +1067,8 @@ begin
         @EPC9_SetMode := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetMode') ;
         @EPC9_SetGSeries := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetGSeries') ;
         @EPC9_SetGLeak := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetGLeak') ;
-        @EPC9_SetF2Butterworth := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetF2Butterworth') ;
+        @EPC9_SetF2Response := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetF2Response') ;
         @EPC9_SetF2Bandwidth := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetF2Bandwidth') ;
-        @EPC9_SetF1Bandwidth := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetF1Bandwidth') ;
         @EPC9_SetF1Index := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetF1Index') ;
         @EPC9_SetExtStimPath := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetExtStimPath') ;
         @EPC9_GetExtStimPath := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetExtStimPath') ;
@@ -1088,13 +1086,10 @@ begin
         @EPC9_GetCFastTot := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCFastTot') ;
         @EPC9_SetCFastTau := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCFastTau') ;
         @EPC9_GetCFastTau := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCFastTau') ;
-//        @EPC9_SetCCStimScale := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCCStimScale') ;
         @EPC9_SetCCIHold := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCCIHold') ;
 
         @EPC9_SetCCFastSpeed := HEKA_LoadProcedure(LibraryHnd,'EPC9_SetCCFastSpeed') ;
         @EPC9_GetVmon := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetVmon') ;
-//        @EPC9_GetEpc9NStateAdr := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetEpc9NStateAdr') ;
-///        @EPC9_GetStateAdr := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetStateAdr') ;
         @EPC9_GetRMSNoise := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetRMSNoise') ;
         @EPC9_GetIpip := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetIpip') ;
         @EPC9_GetClipping := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetClipping') ;
@@ -1102,9 +1097,9 @@ begin
         @EPC9_GetLastError := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetLastError') ;
         @EPC9_FlushCache := HEKA_LoadProcedure(LibraryHnd,'EPC9_FlushCache') ;
         @EPC9_FlushThenWait := HEKA_LoadProcedure(LibraryHnd,'EPC9_FlushThenWait') ;
-//        @EPC9_ResetTempState := HEKA_LoadProcedure(LibraryHnd,'EPC9_ResetTempState') ;
         @EPC9_Reset := HEKA_LoadProcedure(LibraryHnd,'EPC9_Reset') ;
         @EPC9_AutoVpOffset := HEKA_LoadProcedure(LibraryHnd,'EPC9_AutoVpOffset') ;
+        @EPC9_AutoRsComp := HEKA_LoadProcedure(LibraryHnd,'EPC9_AutoRsComp') ;
         @EPC9_AutoSearch := HEKA_LoadProcedure(LibraryHnd,'EPC9_AutoSearch') ;
         @EPC9_AutoGLeak := HEKA_LoadProcedure(LibraryHnd,'EPC9_AutoGLeak') ;
         @EPC9_AutoCSlow := HEKA_LoadProcedure(LibraryHnd,'EPC9_AutoCSlow') ;
@@ -1125,9 +1120,8 @@ begin
         @EPC9_GetRsFraction := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetRsFraction') ;
         @EPC9_GetGLeak := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetGLeak') ;
         @EPC9_GetF1Index := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetF1Index') ;
-        @EPC9_GetF1Bandwidth := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetF1Bandwidth') ;
+        @EPC9_GetF2Response := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetF2Response') ;
         @EPC9_GetF2Bandwidth := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetF2Bandwidth') ;
-        @EPC9_GetF2Butterworth := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetF2Butterworth') ;
         @EPC9_GetStimFilterOn := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetStimFilterOn') ;
         @EPC9_GetCCTrackHold := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCCTrackHold') ;
         @EPC9_GetCCTrackTau := HEKA_LoadProcedure(LibraryHnd,'EPC9_GetCCTrackTau') ;
@@ -1185,9 +1179,8 @@ procedure HEKA_InitialiseBoard ;
   Initialise Digidata 1200 interface hardware
   -------------------------------------------}
 var
-   ch,FirstError,LastError,IAmplifier, Err, iBoard : Integer ;
-   //LoadScaleProc,LoadCFastProc : Pointer ;
-   Path,ScaleFile,CfastFile : ANSIString ;
+   ch,IAmplifier, Err, iBoard : Integer ;
+   Path : ANSIString ;
    ErrorMsg : Array[0..511] of ANSIChar ;
    pLIH_Options : PLIH_OptionsType ;
 begin
@@ -1848,7 +1841,10 @@ procedure Heka_SetCurrentGain( iGain : Integer )  ;
 var
     EPC9Gain : Integer ;
 begin
-     EPC9_SetCurrentGainIndex( iGain ) ;
+
+   if not DeviceInitialised then Exit ;
+
+   EPC9_SetCurrentGainIndex( iGain ) ;
    case iGain of
        0 : EPC9Gain := EPC9_Gain_0005 ;
        1 : EPC9Gain := EPC9_Gain_0010 ;
@@ -1881,12 +1877,12 @@ procedure Heka_SetFilterMode(
 // Set current filter mode
 // ----------------------------
 begin
+
+     if not DeviceInitialised then Exit ;
+
      case iFilterNum of
           1 : EPC9_SetF1Index( iFilterMode ) ;
-          2 : begin
-              if iFilterMode = 0 then EPC9_SetF2Butterworth( 0 )
-                                 else EPC9_SetF2Butterworth( 1 ) ;
-              end;
+          2 : EPC9_SetF2Response( iFilterMode ) ;
          end;
 
      end;
@@ -1900,51 +1896,48 @@ procedure Heka_GetFilterMode(
 // ----------------------------
 begin
 
+     if not DeviceInitialised then Exit ;
+
      case iFilterNum of
           1 : iFilterMode := EPC9_GetF1Index ;
-          2 : iFilterMode := EPC9_GetF2Butterworth ;
+          2 : iFilterMode := EPC9_GetF2Response ;
          end;
 
      end;
 
-procedure Heka_SetFilterBandwidth(
-          iFilterNum : Integer ;
+procedure Heka_SetFilter2Bandwidth(
           Bandwidth : Single )  ;
 // ----------------------------
 // Set current filter bandwidth
 // ----------------------------
 begin
-     case iFilterNum of
-          1 : EPC9_SetF1Bandwidth( Bandwidth ) ;
-          2 : EPC9_SetF2Bandwidth( Bandwidth ) ;
-         end;
-
+     if not DeviceInitialised then Exit ;
+     EPC9_SetF2Bandwidth( Bandwidth ) ;
      end;
 
 
-procedure Heka_GetFilterBandwidth(
-          iFilterNum : Integer ;
+procedure Heka_GetFilter2Bandwidth(
           var Bandwidth : Single )  ;
 // ----------------------------
 // Set current filter bandwidth
 // ----------------------------
 begin
-     case iFilterNum of
-          1 : Bandwidth := EPC9_GetF1Bandwidth ;
-          2 : Bandwidth := EPC9_GetF2Bandwidth ;
-         end;
+
+     if not DeviceInitialised then Exit ;
+     Bandwidth := EPC9_GetF2Bandwidth ;
 
      end;
 
 
 procedure Heka_SetCfast( var Value : Single ) ;
 begin
-//ShowMessage(format('Cfast=%.4g',[Value]));
+     if not DeviceInitialised then Exit ;
      EPC9_SetCFastTot( Value ) ;
      end;
 
 procedure Heka_GetCfast( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetCFastTot ;
      end;
 
@@ -1953,56 +1946,65 @@ procedure Heka_SetCfastTau( var Value : Single ) ;
 var
     DValue : Double ;
 begin
+     if not DeviceInitialised then Exit ;
      DValue := Value ;
-     //ShowMessage(format('Cfasttau=%.4g',[DValue]));
      DValue := Max(DValue,1E-6);
      EPC9_SetCFastTau(DValue) ;
      end;
 
 procedure Heka_GetCfastTau( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetCFastTau ;
      end;
 
 
 procedure Heka_SetCslow( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_SetCSlow( Value ) ;
      end;
 
 procedure Heka_GetCslow( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetCslow ;
      end;
 
 procedure Heka_SetCslowRange( var Value : Integer ) ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_SetCSlowRange( Value ) ;
      end;
 
 procedure Heka_GetCslowRange( var Value : Integer ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetCslowRange ;
      end;
 
 procedure Heka_SetGseries( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := Max(Value,1E-10) ;
      EPC9_SetGseries( Value ) ;
      end;
 
 procedure Heka_GetGseries( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetGseries ;
      end;
 
 procedure Heka_SetGleak( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_SetGleak( Value ) ;
      end;
 
 procedure Heka_GetGleak( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetGleak ;
      end;
 
@@ -2018,119 +2020,142 @@ begin
 
 procedure Heka_SetRsFraction( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_SetRsFraction( Value ) ;
      end;
 
 procedure Heka_GetRsFraction( var Value : Single ) ;
 begin
-     Value := EPC9_SetRsFraction(Value) ;
+     if not DeviceInitialised then Exit ;
+     Value := EPC9_GetRsFraction ;
      end;
 
 procedure Heka_SetRsMode( var Value : Integer ) ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_SetRsMode( Value ) ;
      end;
 
 procedure Heka_GetRsMode( var Value : Integer ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetRsMode ;
      end;
 
 procedure Heka_SetMode( var Value : Integer ) ;
 //
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_SetMode( Value, GentleModeChange ) ;
      end;
 
 procedure Heka_GetMode( var Value : Integer ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetMode ;
      end;
 
 procedure Heka_SetGentleModeChange( var Value : Boolean ) ;
 begin
+     if not DeviceInitialised then Exit ;
      if Value then GentleModeChange := 1
               else GentleModeChange := 0  ;
      end;
 
 procedure Heka_GetGentleModeChange( var Value : Boolean ) ;
 begin
+     if not DeviceInitialised then Exit ;
      if GentleModeChange = 0 then Value := True
                              else Value := False ;
      end;
 
 procedure Heka_SetVHold( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_SetVHold( Value ) ;
      end;
 
 procedure Heka_GetVHold( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetVHold ;
      end;
 
 procedure Heka_SetVLiquidJunction( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_SetVLiquidJunction( Value ) ;
      end;
 
 procedure Heka_GetVLiquidJunction( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetVLiquidJunction ;
      end;
 
 procedure Heka_SetVPOffset( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_SetVPOffset( Value ) ;
      end;
 
 procedure Heka_GetVPOffset( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetVPOffset ;
      end;
 
 procedure Heka_SetCCGain( var Value : Integer ) ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_SetCCGain( Value ) ;
      end;
 
 procedure Heka_GetCCGain( var Value : Integer ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetCCGain ;
      end;
 
 procedure Heka_SetCCTrackHold( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_SetCCTrackHold( Value ) ;
      end;
 
 procedure Heka_GetCCTrackHold( var Value : Single ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetCCTrackHold ;
      end;
 
 procedure Heka_SetCCTrackTau( Value : Integer ) ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_SetCCTrackTau( Value ) ;
      end;
 
 procedure Heka_GetCCTrackTau( var Value : Integer ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetCCTrackTau ;
      end;
 
 procedure Heka_SetExtStimPath( Value : Integer ) ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_SetExtStimPath( 10.0, Value ) ;
      end;
 
 procedure Heka_GetExtStimPath( var Value : Integer ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetExtStimPath ;
      end;
 
 procedure Heka_SetEnableStimFilter( Value : Boolean ) ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_SetStimFilterOn( Value ) ;
      end;
 
@@ -2143,47 +2168,62 @@ begin
 procedure Heka_SetAmplifier( Value : Integer ) ;
 begin
      Value := 0 ;
+     if not DeviceInitialised then Exit ;
      EPC9_SetActiveBoard(Value);
      end;
 
 procedure Heka_GetAmplifier( var Value : Integer ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetActiveBoard ;
      end;
 
 procedure Heka_GetNumAmplifiers( var Value : Integer ) ;
 begin
+     if not DeviceInitialised then Exit ;
      Value := EPC9_GetBoards ;
      end;
 
 
 procedure Heka_AutoCFast ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_AutoCFast ;
      end;
 
 procedure Heka_AutoCSlow ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_AutoCSlow ;
      end;
 
 procedure Heka_AutoGLeak ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_AutoGLeak ;
      end;
 
 procedure Heka_AutoSearch ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_AutoSearch ;
      end;
 
 procedure Heka_AutoVpOffset ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_AutoVpOffset ;
+     end;
+
+procedure Heka_AutoRsComp ;
+begin
+     if not DeviceInitialised then Exit ;
+     EPC9_AutoRsComp ;
      end;
 
 procedure Heka_FlushCache ;
 begin
+     if not DeviceInitialised then Exit ;
      EPC9_FlushCache ;
      end;
 
