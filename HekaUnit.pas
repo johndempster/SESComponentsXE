@@ -11,6 +11,7 @@ unit HekaUnit;
 //  11.03.14 _GetRSFraction now works correctly
 //           Only Filter 2 bandwidth can now be changed
 //           Filter 2 response now set by EPC9_SetF23Response
+// 12.03.14 LIH_Setdigital disabled causing access violation on startup
 interface
 
   uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math, classes ;
@@ -1179,7 +1180,7 @@ procedure HEKA_InitialiseBoard ;
   Initialise Digidata 1200 interface hardware
   -------------------------------------------}
 var
-   ch,IAmplifier, Err, iBoard : Integer ;
+   ch,IAmplifier, Err, iBoard,i : Integer ;
    Path : ANSIString ;
    ErrorMsg : Array[0..511] of ANSIChar ;
    pLIH_Options : PLIH_OptionsType ;
@@ -1289,6 +1290,7 @@ begin
      // Input
      if EPC9Available then begin
        // EPC-9/10 mappings
+       for i := 0 to High(AIChannelList) do AIChannelList[i] := 0 ;
        AIChannelList[0] := 0 ;
        AIChannelList[1] := 3 ;
        AIChannelList[2] := 2 ;
@@ -1299,6 +1301,7 @@ begin
        AIChannelList[7] := 7 ;
 
        // Output
+       for i := 0 to High(AOChannelList) do AOChannelList[i] := 0 ;
        AOChannelList[0] := 3 ;
        AOChannelList[1] := 1 ;
        AOChannelList[2] := 2 ;
@@ -1638,7 +1641,7 @@ begin
      DACScale := MaxDACValue/FDACVoltageRangeMax ;
 
      { Update D/A channels }
-     for ch := 0 to Min(nChannels,LIH_MaxDacChannels)-1 do begin
+     for ch := 0 to Min(nChannels,AOMaxChannels)-1 do begin
          // Keep within legitimate limits
          DACValue :=  Round(DACScale*DACVolts[ch]) ;
          if DACValue > MaxDACValue then DACValue := MaxDACValue ;
@@ -1650,7 +1653,7 @@ begin
 
      // Set digital outputs
      DigWord := DigValue ;
-     if not ADCActive then  LIH_SetDigital( 0, DigWord ) ;
+     //if not ADCActive then  LIH_SetDigital( 0, DigWord ) ;
      DIGDefaultValue := DigValue ;
 
      end ;
