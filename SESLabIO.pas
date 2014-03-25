@@ -121,7 +121,7 @@ unit SESLabIO;
            Long stimuli now work correctly with Digidata 132X
   14.01.14 Heka support updated to work with current EPCDLL downloadable from Heka site
            Support for ITC-18-USB added to HekaUnit.pas
-
+  25.03.14 Heka ITC-16-USB added to HekaUnit.pas
   ================================================================================ }
 
 interface
@@ -174,8 +174,9 @@ const
      HekaITC1600 = 22 ;
      HekaLIH88 = 23 ;
      HekaITC18USB = 24 ;
+     HekaITC16USB = 25 ;
 
-     NumLabInterfaceTypes = 25 ;
+     NumLabInterfaceTypes = 26 ;
      StimulusExtTriggerFlag = -1 ;  // Stimulus program started by external trig pulse.
 
 type
@@ -1086,6 +1087,7 @@ begin
        HekaITC1600 : Result := 'Heka ITC-1600' ;
        HekaLIH88 : Result := 'Heka LIH-88' ;
        HekaITC18USB : Result := 'Heka ITC-18-USB' ;
+       HekaITC16USB : Result := 'Heka ITC-16-USB' ;
        end ;
      end ;
 
@@ -1560,7 +1562,8 @@ begin
                                     FDACMinUpdateInterval ) ;
           end ;
 
-       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB : begin
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,
+       HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
           FLabInterfaceName := GetLabInterfaceName(FLabInterfaceType) ;
           Heka_ConfigureHardware( FADCEmptyFlag ) ;
           FLabInterfaceAvailable := Heka_GetLabInterfaceInfo(
@@ -1697,7 +1700,8 @@ begin
              end ;
           WirelessEEG : begin
              end ;
-          HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB : begin
+          HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,
+          HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
              Heka_CloseLaboratoryInterface ;
              end ;
 
@@ -1864,7 +1868,8 @@ begin
                               FADCCircularBuffer ) ;
           end ;
 
-       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB : begin
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,
+       HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
           Heka_ADCToMemory( ADCBuf,
                               FADCNumChannels,
                               FADCNumSamples,
@@ -1928,7 +1933,8 @@ begin
        WirelessEEG : begin
           end ;
 
-       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB : begin
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,
+       HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
           Heka_StopADC ;
           end ;
 
@@ -2054,7 +2060,8 @@ begin
        WirelessEEG : begin
           end ;
 
-       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB : begin
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,
+       HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
              Heka_MemoryToDACAndDigitalOut( DACBuf^,
                                             FDACNumChannels,
                                             FDACNumSamples,
@@ -2200,7 +2207,8 @@ begin
        WirelessEEG : begin
           end ;
 
-       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB : begin
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,
+       HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
              Heka_MemoryToDACAndDigitalOut( DACBuf^,
                                             FDACNumChannels,
                                             FDACNumSamples,
@@ -2273,7 +2281,8 @@ begin
        WirelessEEG : begin
           end ;
 
-       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB : begin
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,
+       HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
           Heka_StopDAC ;
           end ;
 
@@ -2343,7 +2352,8 @@ begin
        WirelessEEG : begin
           end ;
 
-       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB : begin
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,
+       HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
           Result := Heka_ReadADC( Channel ) ;
           end ;
 
@@ -2408,7 +2418,8 @@ begin
           Triton_WriteDACsAndDigitalPort(FLastDACVolts,FLastDACNumChannels,FLastDigValue) ;
           end ;
 
-       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB : begin
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,
+       HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
           Heka_WriteDACsAndDigitalPort(FLastDACVolts,FLastDACNumChannels,FLastDigValue) ;
           end ;
 
@@ -2504,7 +2515,8 @@ begin
           WirelessEEG_GetADCSamples( ADCBuf^, FOutPointer ) ;
           end ;
 
-       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB : begin
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,
+       HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
           Heka_GetADCSamples( ADCBuf^, FOutPointer ) ;
           end ;
 
@@ -2648,7 +2660,8 @@ begin
        WirelessEEG : begin
           end ;
 
-       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB : begin
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,
+       HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
           Heka_WriteDACsAndDigitalPort( FLastDACVolts, FLastDACNumChannels, DigByte ) ;
           end ;
 
@@ -2737,7 +2750,8 @@ begin
        WirelessEEG : begin
           end ;
 
-       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB : begin
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,
+       HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
           Heka_GetChannelOffsets( FADCChannelOffset, FADCNumChannels ) ;
           end ;
 
@@ -2849,7 +2863,8 @@ begin
           WirelessEEG_CheckSamplingInterval( FADCSamplingInterval) ;
           end ;
 
-      HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB : begin
+      HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,
+      HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
           Heka_CheckSamplingInterval( FADCSamplingInterval) ;
           end ;
 
@@ -3351,7 +3366,8 @@ begin
        WirelessEEG : begin
           end ;
 
-       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB : begin
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,
+       HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
           FDACUpdateInterval := FADCSamplingInterval ;
           end ;
        end ;

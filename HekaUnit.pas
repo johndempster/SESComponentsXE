@@ -12,6 +12,8 @@ unit HekaUnit;
 //           Only Filter 2 bandwidth can now be changed
 //           Filter 2 response now set by EPC9_SetF23Response
 // 12.03.14 LIH_Setdigital disabled causing access violation on startup
+// 25.03.14 Support for Heka ITC-16-USB added
+
 interface
 
   uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math, classes ;
@@ -1211,6 +1213,10 @@ begin
            HekaITC18 : iBoard := LIH_ITC18Board ;
            HekaITC18USB : begin
                           iBoard := LIH_ITC18Board ;
+                          pLIH_Options^.UseUSB := 1 ;
+                          end;
+           HekaITC16USB : begin
+                          iBoard := LIH_ITC16Board ;
                           pLIH_Options^.UseUSB := 1 ;
                           end;
            HekaITC1600 : iBoard := LIH_LIH1600Board ;
