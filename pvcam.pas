@@ -25,7 +25,10 @@ unit pvcam;
 //             overlap readout mode. Post exposure readout enabled by
 //             PostExposureReadout = TRUE in StartCapture
 // 24-7-13 JD Now compiles unders Delphi XE2/3 as well as 7. (not tested)
-//
+// 27.03.14 JD Now set to normal mode if frame transfer mode not available
+// 28.03.14 JD AcquisitionInProgress added to PVCAMSession. CheckFrameInterval()
+//             now exits if camera is acquiring
+//             Now calls PVCAM32.DLL or PVCAM64.DLL (depending on compile)
 
 {OPTIMIZATION OFF}
 {$DEFINE USECONT}
@@ -225,6 +228,7 @@ TPVCAMSession = record
     Handle : SmallInt ;
     CameraOpen : Boolean ;
     Temperature : Single ;
+    AcquisitionInProgress : Boolean ;
     end ;
 
 // Class 0: Abort Exposure flags
@@ -871,6 +875,7 @@ begin
 
      Result := False ;
      Session.CameraOpen := False ;
+     Session.AcquisitionInProgress := False ;
 
      // Always two bytes per pixel
      NumBytesPerPixel := 2 ;
@@ -998,11 +1003,12 @@ begin
              CameraInfo.Add( 'Continuous capture not supported!' ) ;
           end ;
 
+     FrameTransferCapable := 0 ;
      pl_get_param( Session.Handle, PARAM_FRAME_CAPABLE, ATTR_AVAIL, @FrameTransferCapable ) ;
      if FrameTransferCapable <> 0 then begin
         pl_get_param( Session.Handle, PARAM_FRAME_CAPABLE, ATTR_CURRENT, @FrameTransferCapable ) ;
-        if FrameTransferCapable = 0 then CameraInfo.Add( 'Frame transfer mode not available' ) ;
         end ;
+     if FrameTransferCapable = 0 then CameraInfo.Add( 'Frame transfer mode not available' ) ;
 
      // Set camera Logic Output to monitor indicate CCD exposure period (LO=HIGH)
      // (Used to gate intensifier during readout/wavelength change)
@@ -1020,8 +1026,14 @@ begin
         pl_set_param( Session.Handle, PARAM_CLEAR_MODE, @LongValue ) ;
         end ;
 
-     // Set camera into frame transfer mode
-     pl_ccd_set_pmode( Session.Handle, Word(PMODE_FT)) ;
+     // Set camera into frame transfer mode (if available)
+     if FrameTransferCapable = 1 then begin
+        pl_ccd_set_pmode( Session.Handle, Word(PMODE_FT)) ;
+        end
+     else begin
+        pl_ccd_set_pmode( Session.Handle, Word(PMODE_NORMAL)) ;
+        end ;
+
      pl_ccd_get_pmode( Session.Handle, Value ) ;
      PVCAM_DisplayErrorMessage( 'pl_ccd_get_pmode' ) ;
      case TPMode(Value) of
@@ -1043,6 +1055,7 @@ begin
        end ;
 
      // Check if multipler gain available
+     MultGainEnabled := 0 ;
      pl_get_param( Session.Handle, PARAM_GAIN_MULT_ENABLE, ATTR_AVAIL, @MultGainEnabled ) ;
      if MultGainEnabled <> 0 then begin
         pl_get_param( Session.Handle, PARAM_GAIN_MULT_ENABLE, ATTR_CURRENT, @MultGainEnabled ) ;
@@ -1077,7 +1090,12 @@ begin
      ProgDir := ExtractFilePath(ParamStr(0)) ;
 
      { Load PVCAM32 interface DLL library }
-     LibFileName := {ProgDir +} 'PVCAM32.DLL' ;
+    {$IFDEF WIN32}
+      LibFileName := 'PVCAM32.DLL' ; // 32 bit version
+    {$ELSE}
+      LibFileName := 'PVCAM64.DLL' ; // 64 bit version
+    {$IFEND}
+
      LibraryHnd := LoadLibrary( PChar(LibFileName));
 
      { Get addresses of procedures in library }
@@ -1244,6 +1262,7 @@ begin
     // Close camera
     if Session.CameraOpen then pl_cam_close( Session.Handle ) ;
     Session.CameraOpen := False ;
+    Session.AcquisitionInProgress := False ;
 
     // Un-initialise PVCAM library
     pl_pvcam_uninit ;
@@ -1322,6 +1341,9 @@ var
 begin
      Result := False ;
      if not LibraryLoaded then Exit ;
+
+     // Don't run check when camera is acquiring since it will abort it.
+     if Session.AcquisitionInProgress then Exit ;
 
      // Set frame capture region
      FrameRegion[0].s1 := FrameLeft ;
@@ -1441,9 +1463,6 @@ begin
     NumBytesPerFrame := (2*FrameWidth*FrameHeight) ;
     NumFrames := NumBytesInFrameBuffer div NumBytesPerFrame ;
 
-//outputdebugString(PChar(format('LRTB %d %d %d %d',[FrameLeft,FrameRight,FrameTop,FrameBottom]))) ;
-//outputdebugString(PChar(format('WH,NB %d %d %d',[FRameWidth,FrameHeight,NumBytesPerFrame]))) ;
-
     // Set readout speed of camera
     if pl_set_param( Session.Handle, PARAM_SPDTAB_INDEX, @ReadoutSpeedIndex ) = 0 then begin
        PVCAM_DisplayErrorMessage( 'pl_set_param(PARAM_SPDTAB_INDEX) ' ) ;
@@ -1499,6 +1518,7 @@ begin
         if ClearCCDPreExposure and ( TriggerMode <> CamFreeRun) then LongValue := Cardinal(CLEAR_PRE_EXPosure)
                                                                 else LongValue := Cardinal(CLEAR_PRE_Sequence) ;
         pl_set_param( Session.Handle, PARAM_CLEAR_MODE, @LongValue ) ;
+        PVCAM_DisplayErrorMessage( 'pl_set_param(PARAM_CLEAR_MODE) ' ) ;
         end ;
 
     // Set CCD to frame transfer mode
@@ -1525,7 +1545,6 @@ begin
                                    @NumBytesPerFrame,
                                    CIRC_OVERWRITE ) ;
        PVCAM_DisplayErrorMessage( 'pl_exp_setup_cont (TIMED_MODE)' ) ;
-//       outputdebugString(PChar(format('WH,NB %d %d %d',[FRameWidth,FrameHeight,NumBytesPerFrame]))) ;
        end
     else begin
        // Triggered mode
@@ -1552,13 +1571,16 @@ begin
     if Err <> 0 then begin
        pl_exp_start_cont( Session.Handle, FrameBuffer, NumBytesInFrameBuffer ) ;
        PVCAM_DisplayErrorMessage( 'pl_exp_start_cont ' ) ;
+       Session.AcquisitionInProgress := True ;
        end ;
 
     // Initialise buffer
-    for i := 1 to NumFrames do begin
-        ii := (NumBytesPerFrame div 2)*i -1 ;
-        PWordArray(FrameBuffer)^[ii] := 32767 ;
-        PWordArray(FrameBuffer)^[ii-1] := 0 ;
+    for i := 0 to NumFrames-1 do begin
+        ii := (NumBytesPerFrame div 2)*i ;
+        PWordArray(FrameBuffer)^[ii] := 0 ;
+        PWordArray(FrameBuffer)^[ii+1] := 32767 ;
+        PWordArray(FrameBuffer)^[ii+(NumBytesPerFrame div 2)-2] := 0 ;
+        PWordArray(FrameBuffer)^[ii+(NumBytesPerFrame div 2)-1] := 32767 ;
         end ;
 
     If Err <> 0 then Result := True ;
@@ -1573,6 +1595,7 @@ function PVCAM_StopCapture(
 // Stop continuous capture into buffer
 // -----------------------------------
 begin
+
     Result := False ;
     if not LibraryLoaded then Exit ;
 
@@ -1585,6 +1608,7 @@ begin
     PVCAM_DisplayErrorMessage( 'pl_exp_uninit_seq' ) ;
 
     Result := True ;
+    Session.AcquisitionInProgress := False ;
 
     end ;
 
