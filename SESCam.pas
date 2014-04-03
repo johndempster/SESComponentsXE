@@ -60,6 +60,7 @@ unit SESCam;
                   C4880 no longered opened if frame grabber not available.
  16.12.13 JD   .StartCapture Now returns False if unable to allocate enough frame buffer memory
                 EOutOfMemory exception now trapped and AllocateFrameBuffer returns false
+ 03.04.14 JD   PostExposureReadout flag now force on if camera only supports that mode. (CoolSnap HQ2)
   ================================================================================ }
 {$OPTIMIZATION OFF}
 {$POINTERMATH ON}
@@ -104,6 +105,7 @@ const
      // Frame capture trigger modes
      CamFreeRun = 0 ;
      CamExtTrigger = 1 ;
+     CamBulbMode = 2 ;
 
      // Trigger types
      CamExposureTrigger = 0 ; // External trigger starts exposure
@@ -144,6 +146,7 @@ type
     FFrameInterval : Double ;    // Duration of selected frame time interval (s)
     FFrameIntervalMin : Single ; // Min. time interval between frames (s)
     FFrameIntervalMax : Single ; // Max. time interval between frames (s)
+    FExposureTime : Double ;     // Camera exposure time (s)
     //FFrameReadoutTime : Double ;
 
     FReadoutSpeed : Integer ;        // Frame readout speed
@@ -240,6 +243,7 @@ type
     function GetMaxFramesInBuffer : Integer ;
     procedure SetFrameInterval( Value : Double ) ;
     function GetReadOutTime : Double ;
+    function GetExposureTime : Double ;
     function GetPixelWidth : Single ;
     function LimitTo(
              Value : Integer ;
@@ -255,6 +259,7 @@ type
     procedure SetCameraADC( Value : Integer ) ;
     procedure SetADCGain( Value : Integer ) ;
     procedure SetCCDVerticalShiftSpeed( Value : Integer ) ;
+    procedure SetCCDPostExposureReadout( Value : Boolean ) ;
 
 
   protected
@@ -300,7 +305,7 @@ type
     Property ComPort : Integer read FComPort write FComPort ;
     Property ComPortUsed : Boolean read FComPortUsed ;
     Property CCDClearPreExposure : Boolean read FCCDClearPreExposure write FCCDClearPreExposure ;
-    Property CCDPostExposureReadout : Boolean read FCCDPostExposureReadout write FCCDPostExposureReadout ;    
+    Property CCDPostExposureReadout : Boolean read FCCDPostExposureReadout write SetCCDPostExposureReadout ;
     Property FrameWidth : Integer Read GetFrameWidth ;
     Property FrameHeight : Integer Read GetFrameHeight ;
     Property FrameLeft : Integer Read FFrameLeft Write SetFrameLeft Default 0 ;
@@ -317,6 +322,7 @@ type
              read FShortenExposureBy Write FShortenExposureBy ;
 
     Property FrameInterval : Double Read FFrameInterval Write SetFrameInterval ;
+    Property ExposureTime : Double Read GetExposureTime ;
     Property PixelDepth : Integer Read FPixelDepth ;
     Property GreyLevelMin : Integer Read FGreyLevelMin ;
     Property GreyLevelMax : Integer Read FGreyLevelMax ;
@@ -1577,8 +1583,6 @@ begin
      FNumBytesPerFrame := FFrameWidth*FFrameHeight*FNumBytesPerPixel ;
      FNumBytesInFrameBuffer := FNumBytesPerFrame*FNumFramesInBuffer ;
 
-     //outputdebugString(PChar(format('NBiFB %d %d',[FNumBytesInFrameBuffer,FNumBytesPerFrame]))) ;
-
      DeallocateFrameBuffer ;
 
      if FNumBytesInFrameBuffer > 0 then begin
@@ -1587,7 +1591,6 @@ begin
           PAllocatedFrameBuffer := PFrameBuffer ;
 
           PFrameBuffer := Pointer( (NativeUInt(PByte(PFrameBuffer)) + $F) and (not $F)) ;
-          outputdebugstring(pchar(format('%X %X',[NativeUInt(PAllocatedFrameBuffer),NativeUInt(PFrameBuffer)])));
 
         Except
             on E : EOutOfMemory do begin
@@ -2154,6 +2157,21 @@ begin
      if not FCameraActive then SetFrameInterval( FFrameInterval ) ;
      Result := FReadoutTime ;
      end ;
+
+
+function TSESCam.GetExposureTime : Double ;
+//
+// Return camera exposure time
+//
+begin
+     Result := FFrameInterval
+                     - 0.001                   { Allow for CCD readout time}
+                     - AdditionalReadoutTime ; { Additional user defined readout time}
+    // If post-exposure readout shorten exposure to account for readout
+    if FCCDPostExposureReadout then Result := Result - ReadoutTime ;
+    // No shorter than 1ms exposure
+    Result := Max(Result,0.001) ;
+    end ;
 
 
 procedure TSESCam.SetFrameInterval( Value : Double ) ;
@@ -2898,5 +2916,17 @@ begin
 
     end ;
 
+procedure TSESCam.SetCCDPostExposureReadout( Value : Boolean ) ;
+// ------------------------------
+// Set post exposure readout mode
+// ------------------------------
+begin
+    FCCDPostExposureReadout := Value ;
+    case FCameraType of
+       RS_PVCAM,RS_PVCAM_PENTAMAX : begin
+           FCCDPostExposureReadout := FCCDPostExposureReadout or PVCAMSession.PostExposureReadout ;
+           end;
+       end;
+    end;
 
 end.
