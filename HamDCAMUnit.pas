@@ -14,7 +14,7 @@ unit HamDCAMUnit;
 // 16-12.13 JD Support for Flash 4.0 and 2.8 added. Exposure time in external trigger mode
 //             reduced by readout time to account for rolling shutter
 //             GetCameraGainList now returns 'n/a' if no gain settings.
-
+// 03-4-13 JD  HDCAM now defined as LONGINT rather than THANDLE to permit 64 bit compilation
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, messages,
@@ -1229,7 +1229,7 @@ TDCAM_PARAM_PROPERTYVALUETEXT = packed record
 
 
 Tdcam_getlasterror = function(
-                     HDCAM : THandle ;
+                     HDCAM : LongInt ;
                      Buf : PANSIChar ;
                      bytesize : Integer
                      ) : Integer ; stdcall ;
@@ -1267,121 +1267,121 @@ Tdcam_close	= function(
 //*** --- camera infomation --- ***/
 
 Tdcam_getstring	= function(
-                  HDCam : THandle ;
+                  HDCAM : LongInt ;
                   StringID : PANSIChar ;
                   Buf : PANSIChar ;
                   ByteSize : Integer
                   ) : Integer ; stdcall ;
 
 Tdcam_getcapability	= function(
-                      HDCam : THandle ;
+                      HDCAM : LongInt ;
                       var Capability : Cardinal ;
                       CapTypeID : Cardinal
                       ) : Integer ; stdcall ;
 
 Tdcam_getdatatype	= function(
-                    HDCam : THandle ;
+                    HDCAM : LongInt ;
                     var Datatype : DWord
                     ) : Integer ; stdcall ;
 
 Tdcam_getbitstype = function(
-                    HDCam : THandle ;
+                    HDCAM : LongInt ;
                     var Bitstype : Cardinal
                     ) : Integer ; stdcall ;
 
 Tdcam_setdatatype = function(
-                    HDCam : THandle ;
+                    HDCAM : LongInt ;
                     Datatype : Cardinal
                     ) : Integer ; stdcall ;
 
 Tdcam_setbitstype = function(
-                    HDCam : THandle ;
+                    HDCAM : LongInt ;
                     Bitstype : Cardinal
                     ) : Integer ; stdcall ;
 
 Tdcam_getdatasize = function(
-                    HDCam : THandle ;
+                    HDCAM : LongInt ;
                     pBuf : Pointer
                     ) : Integer ; stdcall ;
 
 Tdcam_getbitssize = function(
-                    HDCam : THandle ;
+                    HDCAM : LongInt ;
                     var Size : Cardinal
                     ) : Integer ; stdcall ;
 
 //*** --- parameters --- ***/
 
 Tdcam_queryupdate = function(
-                    HDCam : THandle ;
+                    HDCAM : LongInt ;
                     var Flag : Cardinal ;
                     Reserved  : Cardinal
                     ) : Integer ; stdcall ;
 
 Tdcam_getbinning = function(
-                   HDCam : THandle ;
+                   HDCAM : LongInt ;
                    var Binning : Cardinal
                    ) : Integer ; stdcall ;
 
 Tdcam_getexposuretime	= function(
-                        HDCam : THandle ;
+                        HDCAM : LongInt ;
                         var Sec : Double
                         ) : Integer ; stdcall ;
 
 Tdcam_gettriggermode = function(
-                       HDCam : THandle ;
+                       HDCAM : LongInt ;
                        var Mode : Cardinal
                        ) : Integer ; stdcall ;
 
 Tdcam_gettriggerpolarity = function(
-                           HDCam : THandle ;
+                           HDCAM : LongInt ;
                            var Polarity : Cardinal
                            ) : Integer ; stdcall ;
 
 Tdcam_setbinning = function(
-                   HDCam : THandle ;
+                   HDCAM : LongInt ;
                    binning : Cardinal
                    ) : Integer ; stdcall ;
 
 Tdcam_setexposuretime	= function(
-                        HDCam : THandle ;
+                        HDCAM : LongInt ;
                         Sec : Double
                         ) : Integer ; stdcall ;
 
 Tdcam_settriggermode = function(
-                       HDCam : THandle ;
+                       HDCAM : LongInt ;
                        Mode : Cardinal
                        ) : Integer ; stdcall ;
 
 Tdcam_settriggerpolarity = function(
-                           HDCam : THandle ;
+                           HDCAM : LongInt ;
                            Polarity  : Cardinal
                            ) : Integer ; stdcall ;
 
 //*** --- capturing --- ***/
 
 Tdcam_precapture = function(
-                   HDCam : THandle ;
+                   HDCAM : LongInt ;
                    CaptureMode : Cardinal
                    ) : Integer ; stdcall ;
 
 Tdcam_getdatarange = function(
-                     HDCam : THandle ;
+                     HDCAM : LongInt ;
                      var Max : Integer ;
                      var Min : Integer
                      ) : Integer ; stdcall ;
 
 Tdcam_getdataframebytes	= function(
-                          HDCam : THandle ;
+                          HDCAM : LongInt ;
                           var Size: Cardinal
                           ) : Integer ; stdcall ;
 
 Tdcam_allocframe = function(
-                   HDCam : THandle ;
+                   HDCAM : LongInt ;
                    Frame : Cardinal
                    ) : Integer ; stdcall ;
 
 Tdcam_getframecount = function(
-                      HDCam : THandle ;
+                      HDCAM : LongInt ;
                       var Frame  : Cardinal
                       ) : Integer ; stdcall ;
 
@@ -1394,19 +1394,19 @@ Tdcam_idle = function(
              ) : Integer ; stdcall ;
 
 Tdcam_wait = function(
-             HDCam : THandle ;
+             HDCAM : LongInt ;
              var Code : Cardinal ;
              timeout : Cardinal ;
              Event : THandle
              ) : Integer ; stdcall ;
 
 Tdcam_getstatus	= function(
-                  HDCam : THandle ;
+                  HDCAM : LongInt ;
                   var Status : Integer
                   ) : Integer ; stdcall ;
 
 Tdcam_gettransferinfo	= function(
-                        HDCam : THandle ;
+                        HDCAM : LongInt ;
                         var NewestFrameIndex : Cardinal ;
                         var FrameCount : Cardinal
                         ) : Integer ; stdcall ;
@@ -1418,7 +1418,7 @@ Tdcam_freeframe	 = function(
 //*** --- user memory support --- ***/
 
 Tdcam_attachbuffer = function(
-                     HDCam : THandle ;
+                     HDCAM : LongInt ;
                      pTop : Pointer ;
                      size : Cardinal
                      ) : Integer ; stdcall ;
@@ -1430,14 +1430,14 @@ Tdcam_releasebuffer = function(
 //*** --- data transfer --- ***/
 
 Tdcam_lockdata = function(
-                 HDCam : THandle ;
+                 HDCAM : LongInt ;
                  pTop : Pointer ;
                  var Rowbytes : Cardinal ;
                  frame : Cardinal
                  ) : Integer ; stdcall ;
 
 Tdcam_lockbits = function(
-                 HDCam : THandle ;
+                 HDCAM : LongInt ;
                  Top : Pointer ;
                  var Rowbytes : Cardinal ;
                  frame : Cardinal
@@ -1454,13 +1454,13 @@ Tdcam_unlockbits = function(
 //*** --- LUT --- ***/
 
 Tdcam_setbitsinputlutrange = function(
-                             HDCam : THandle ;
+                             HDCAM : LongInt ;
                              inMax : Cardinal ;
                              inMin : Cardinal
                              ) : Integer ; stdcall ;
 
 Tdcam_setbitsoutputlutrange	= function(
-                              HDCam : THandle ;
+                              HDCAM : LongInt ;
                               outMax : Byte ;
                               outMin : Byte
                               ) : Integer ; stdcall ;
@@ -1468,7 +1468,7 @@ Tdcam_setbitsoutputlutrange	= function(
 //*** --- Control Panel --- ***/
 
 Tdcam_showpanel	 = function(
-                   HDCam : THandle ;
+                   HDCAM : LongInt ;
                    hWnd : THandle ;
                    reserved : Cardinal
                    ) : Integer ; stdcall ;
@@ -1476,7 +1476,7 @@ Tdcam_showpanel	 = function(
 //*** --- extended --- ***/
 
 Tdcam_extended	 = function(
-                   HDCam : THandle ;
+                   HDCAM : LongInt ;
                    iCmd : Cardinal ;
                    param : Pointer ;
                    size : Cardinal
@@ -1488,49 +1488,49 @@ Tdcam_firetrigger = function(
                     ) : Integer ; stdcall ;
 
 Tdcam_getpropertyattr	= function(
-                        HDCam : THandle ;
+                        HDCAM : LongInt ;
                         var PropertyAttribute : TDCAM_PARAM_PROPERTYATTR
                         ) : Integer ; stdcall ;
 
 Tdcam_getpropertyvalue = function(
-                         HDCam : THandle ;
+                         HDCAM : LongInt ;
                          iProp : Integer ;
                          var pValue : Double
                          ) : Integer ; stdcall ;
 
 Tdcam_setpropertyvalue = function(
-                         HDCam : THandle ;
+                         HDCAM : LongInt ;
                          iProp : Integer ;
                          var pValue : Double
                          ) : Integer ; stdcall ;
 
-Tdcam_setgetpropertyvalue = function(HDCam : THandle ;
+Tdcam_setgetpropertyvalue = function(HDCAM : LongInt ;
                             iProp : Integer ;
                             var pValue : Double ;
                             option : Integer
                             ) : Integer ; stdcall ;
 
 Tdcam_querypropertyvalue = function(
-                           HDCam : THandle ;
+                           HDCAM : LongInt ;
                            iProp : Integer ;
                            var pValue : Double ;
                            option : Integer
                            ) : Integer ; stdcall ;
 
 Tdcam_getnextpropertyid	 = function(
-                           HDCam : THandle ;
+                           HDCAM : LongInt ;
                            var iProp : Integer ;
                            option : Integer
                            ) : Integer ; stdcall ;
 
 Tdcam_getpropertyname	 = function(
-                         HDCam : THandle ;
+                         HDCAM : LongInt ;
                          iProp : Integer ;
                          PropName : PANSIChar ;
                          MaxBytes : Integer ) : Integer ; stdcall ;
 
 Tdcam_getpropertyvaluetext = function(
-                             HDCam : THandle ;
+                             HDCAM : LongInt ;
                              var PropertyValue : Integer
                              ) : Integer ; stdcall ;
 
