@@ -15,7 +15,7 @@ unit NIMAQDXUnit;
 //         Enum type variables now set correctly.
 // 26-2-14 Now handles variable I32/I64/F64 attributes. Basler aca-1300 now working again
 // 28-2-14 AdditionReadOutTime option added to StartCap. Note external trigger not tested
-
+// 03-4-14 IMAQDX_GetDLLAddress() Handle changed from Integer to THandle for 64 bit compatibililty
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, math, strutils ;
@@ -763,7 +763,7 @@ function IMAQDX_CheckFrameInterval(
 
 procedure IMAQDX_LoadLibrary  ;
 function IMAQDX_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : String ) : Pointer ;
 
 procedure IMAQDX_CheckROIBoundaries( var Session : TIMAQDXSession ;
@@ -976,7 +976,7 @@ begin
 
 
 function IMAQDX_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : String ) : Pointer ;
 // -----------------------------------------
 // Get address of procedure within PVCAM32.DLL
