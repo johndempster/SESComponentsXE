@@ -1072,9 +1072,9 @@ var
      TritonDLLPath : String ; // TritonDLL file path
 begin
 
-     LoadLibrary(PChar(ExtractFilePath(ParamStr(0)) + 'libgcc_s_dw2-1.dll')) ;
+     //LoadLibrary(PChar(ExtractFilePath(ParamStr(0)) + 'libgcc_s_dw2-1.dll')) ;
      LoadLibrary(PChar(ExtractFilePath(ParamStr(0)) + 'libusb0.dll')) ;
-     LoadLibrary(PChar(ExtractFilePath(ParamStr(0)) + 'mingwm10.dll')) ;
+     //LoadLibrary(PChar(ExtractFilePath(ParamStr(0)) + 'mingwm10.dll')) ;
      LoadLibrary(PChar(ExtractFilePath(ParamStr(0)) + 'okFrontPanel.dll')) ;
 
      // Support DLLs loaded from program folder
@@ -1337,7 +1337,9 @@ begin
      Triton_CheckError('tecella_enumerate_get :',Err) ;
 
      DeviceIndex := 0 ;
+TECELLA_DisableFPUExceptions ;
      Err := tecella_initialize( @TecHandle, DeviceIndex ) ;
+TECELLA_EnableFPUExceptions ;
      Triton_CheckError('tecella_initialize :',Err) ;
      if Err = 0 then DeviceInitialised := True
                 else DeviceInitialised := False ;
