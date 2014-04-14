@@ -15,6 +15,7 @@ unit ImageFile;
 // 07.06.06 Nikon ICS file import added (NOTE ICSCreateFile and ICSSaveFrame not implemented)
 // 11.12.06 LoadFrame32 and SaveFrame32 added
 // 31.07.07 Export to STK files now works correctly
+// 08.04.13 Updated to compile correctly under Delphi XE (Chars to ANSIChar)
 
 interface
 
@@ -52,7 +53,7 @@ type
       NotesAvailable : longBool ;  // TRUE = Notes field(s) available
       ByteImage : SmallInt ;      // 1=8 bit, 0=16 bit image
       ImageNumber : SmallInt ;    // Image no. within file
-      FileName : Array[1..32] of Char ;  // File name
+      FileName : Array[1..32] of ANSIChar ;  // File name
       Merged : SmallInt ;         // Merged format??
       LUT1Color : Word ;          // LUT1 colour status
       Signature : SmallInt ;   // PIC file signature = 12345
@@ -73,7 +74,7 @@ type
       NoteType : Word ;      // Note type
       x : SmallInt ;     // X coord associated with note
       y : SmallInt ;     // Y coord associated with note
-      Text : Array[1..80] of char ; // Note text
+      Text : Array[1..80] of ANSIchar ; // Note text
       end ;
 
 //  TIFF file definitions
@@ -126,7 +127,8 @@ type
     { Private declarations }
     NewFile : Boolean ;             // TRUE if newly created file
     FFileType : TFileType ;         // Type of image file
-    FileHandle : Integer ;         // File handle
+    FileHandle : THandle ;         // File handle
+    FileIsOpen : Boolean ;           // File open flag
     FFileName : String ;            // Name of data file
     FFrameWidth : Cardinal ;        // Image width
     FFrameHeight : Cardinal ;       // Image height
@@ -174,8 +176,8 @@ type
     function PICCloseFile : Boolean ;
 
     procedure PICWriteNote(
-              FileHandle : Integer ;
-              NoteText : String ;
+              FileHandle : THandle ;
+              NoteText : ANSIString ;
               LastNote : Boolean
               ) ;
 
@@ -324,7 +326,7 @@ type
 
 
     function ReadRationalField(
-             FileHandle : Integer ;  // Open TIFF file handle
+             FileHandle : THandle ;  // Open TIFF file handle
              FileOffset : Integer    // Offset to start reading from
              ) : Double ;            // Return as double
 
@@ -334,31 +336,31 @@ type
               );
 
     function ReadASCIIField(
-         FileHandle : Integer ;  // Open TIFF file handle
+         FileHandle : THandle ;  // Open TIFF file handle
          FileOffset : Integer ;  // Offset to start reading from
          NumChars : Integer     // No. of characters to read
          ) : String ;
 
     procedure WriteASCIIField(
-              FileHandle : Integer ;  // Open TIFF file handle
+              FileHandle : THandle ;  // Open TIFF file handle
               FileOffset : Integer ;  // Offset to start reading from
               Text : String
               ) ;
 
     procedure AppendFloat(
-              var Dest : array of char;
+              var Dest : array of ANSIchar;
               Keyword : string ;
               Value : Extended
               ) ;
     procedure ReadFloat(
-              const Source : array of char;
+              const Source : array of ANSIchar;
               Keyword : string ;
               var Value : Single ) ;
 
-    procedure CopyStringToArray( var Dest : array of char ; Source : string ) ;
-    procedure CopyArrayToString( var Dest : string ; var Source : array of char ) ;
+    procedure CopyStringToArray( var Dest : array of ANSIchar ; Source : string ) ;
+    procedure CopyArrayToString( var Dest : string ; var Source : array of ANSIchar ) ;
     procedure FindParameter(
-              const Source : array of char ;
+              const Source : array of ANSIchar ;
               Keyword : string ;
               var Parameter : string ) ;
 
@@ -368,7 +370,7 @@ type
              ) : single ;
 
     function StringFromArray(
-             var Source : array of char ) : String ;
+             var Source : array of ANSIchar ) : String ;
   protected
     { Protected declarations }
   public
@@ -559,7 +561,7 @@ begin
 
      inherited Create(AOwner) ;
 
-     FileHandle := -1 ;
+     FileIsOpen := False ;
      FFileName := '' ;
 
      FFrameWidth := 0 ;
@@ -587,7 +589,8 @@ destructor TImageFile.Destroy ;
 begin
 
      // Close image file
-     if FileHandle >= 0 then FileClose( FileHandle ) ;
+     if FileIsOpen then FileClose( FileHandle ) ;
+     FileIsOpen := False ;
 
      Properties.Free ;
 
@@ -701,7 +704,7 @@ function TImageFile.LoadFrame(
 // --------------------------
 begin
 
-     if FileHandle < 0 then begin
+     if not FileIsOpen then begin
         Result := False ;
         Exit ;
         end ;
@@ -756,7 +759,7 @@ function TImageFile.SaveFrame(
 // ------------------------------
 begin
 
-     if FileHandle < 0 then begin
+     if  not FileIsOpen then begin
         Result := False ;
         Exit ;
         end ;
@@ -822,7 +825,7 @@ var
     Done : Boolean ;        // Loop done flag
     Magnification : Double ;
     PICNote : TPICNote ;    // PIC file note record
-    NoteText : String ;
+    NoteText : ANSIString ;
     NumSpaces : Integer ;
     i  : Integer ;
     LensMagnification : Single ;
@@ -831,14 +834,16 @@ begin
 
     Result := False ;
 
-    if FileHandle >= 0 then begin
+    if FileIsOpen then begin
        FErrorMessage := 'TIMAGEFILE: A file is aready open ' ;
        Exit ;
        end ;
 
     // Open file
     FileHandle := FileOpen( FileName, fmOpenReadWrite ) ;
-    if FileHandle < 0 then begin
+
+    if FileHandle >= 0 then FileIsOpen := True
+    else begin
        FErrorMessage := 'TIMAGEFILE: Unable to open ' ;
        Exit ;
        end ;
@@ -849,7 +854,7 @@ begin
         <> SizeOf(PICHeader) then begin  ;
         FErrorMessage := 'TIMAGEFILE: Unable to read BioRad PIC file ' + FileName ;
         FileClose( FileHandle ) ;
-        FileHandle := -1 ;
+        FileIsOpen := False ;
         Exit ;
         end ;
 
@@ -857,7 +862,7 @@ begin
     if PICHeader.Signature <> PICSignature then begin
        FErrorMessage := 'TIMAGEFILE: ' + FileName + ' not a PIC file!' ;
        FileClose( FileHandle ) ;
-       FileHandle := -1 ;
+       FileIsOpen := False ;
        Exit ;
        end ;
 
@@ -926,7 +931,7 @@ function TImageFile.PICReadAxisTypeNote(
 var
     Done : Boolean ;        // Loop done flag
     PICNote : TPICNote ;    // PIC file note record
-    NoteText : String ;
+    NoteText : ANSIString ;
     NumSpaces : Integer ;
     i  : Integer ;
 begin
@@ -981,14 +986,15 @@ begin
 
     Result := False ;
 
-    if FileHandle >= 0 then begin
+    if FileIsOpen then begin
        FErrorMessage := 'BIORAD: A file is aready open ' ;
        Exit ;
        end ;
 
     // Open file
     FileHandle := FileCreate( FileName, fmOpenRead ) ;
-    if FileHandle < 0 then begin
+    if FileHandle >= 0 then FileIsOpen := True
+    else begin
        FErrorMessage := 'BIORAD: Unable to create '+ FileName ;
        Exit ;
        end ;
@@ -1026,12 +1032,12 @@ var
      PICNote : TPICNote ;    // PIC file note record
      FilePointer : Int64 ;
      i : Integer ;
-     NoteText : String ;
+     NoteText : ANSIString ;
 begin
      Result := False ;
 
      // Exit if file not open
-     if FileHandle < 0 then Exit ;
+     if not FileIsOpen then Exit ;
 
      // Update PIC file header
      if NewFile then begin
@@ -1066,8 +1072,7 @@ begin
 
      // Close file
      FileClose( FileHandle ) ;
-     // Note. file handle = -1 indicates no file open
-     FileHandle := -1 ;
+     FileIsOpen := False ;
      FNumFrames := 0 ;
      Result := True ;
 
@@ -1075,8 +1080,8 @@ begin
 
 
 procedure TImageFile.PICWriteNote(
-          FileHandle : Integer ;    // PIC file handle
-          NoteText : String ;       // Text of note to be written
+          FileHandle : THandle ;    // PIC file handle
+          NoteText : ANSIString ;       // Text of note to be written
           LastNote : Boolean        // Set to TRUE if this is last note to be written
          ) ;
 // ----------------------
@@ -1218,7 +1223,7 @@ begin
 
 
 function TImageFile.ReadRationalField(
-         FileHandle : Integer ;  // Open TIFF file handle
+         FileHandle : THandle ;  // Open TIFF file handle
          FileOffset : Integer    // Offset to start reading from
          ) : Double ;            // Return as double
 // ----------------------------------------
@@ -1262,7 +1267,7 @@ begin
 
 
 function TImageFile.ReadASCIIField(
-         FileHandle : Integer ;  // Open TIFF file handle
+         FileHandle : THandle ;  // Open TIFF file handle
          FileOffset : Integer ;  // Offset to start reading from
          NumChars : Integer     // No. of characters to read
          ) : String ;
@@ -1271,7 +1276,7 @@ function TImageFile.ReadASCIIField(
 // ----------------------------------------
 var
      i : Integer ;
-     Ch : Char ;
+     Ch : ANSIChar ;
 begin
 
      Result := '' ;
@@ -1286,7 +1291,7 @@ begin
 
 
 procedure TImageFile.WriteASCIIField(
-          FileHandle : Integer ;  // Open TIFF file handle
+          FileHandle : THandle ;  // Open TIFF file handle
           FileOffset : Integer ;  // Offset to start reading from
           Text : String ) ;
 // ----------------------------------------
@@ -1294,14 +1299,14 @@ procedure TImageFile.WriteASCIIField(
 // ----------------------------------------
 var
      i : Integer ;
-     ch : char ;
+     ch : ANSIchar ;
 begin
 
      FileSeek( FileHandle, FileOffset, 0 ) ;
      for i := 1 to Length(Text) do begin
          FileWrite( FileHandle, Text[i], 1 ) ;
          end ;
-     ch := chr(0) ;
+     ch := #0 ;
      FileWrite( FileHandle, ch, 1 ) ;
      end ;
 
@@ -1319,14 +1324,15 @@ begin
 
      Result := False ;
 
-     if FileHandle >= 0 then begin
+     if FileIsOpen then begin
         FErrorMessage := 'TIFF: A file is aready open ' ;
         Exit ;
         end ;
 
      // Open file
      FileHandle := FileOpen( FileName, fmOpenRead ) ;
-     if FileHandle < 0 then begin
+     if FileHandle >= 0 then FileIsOpen := True
+     else begin
         FErrorMessage := 'TIFF: Unable to open ' + FileName ;
         Exit ;
         end ;
@@ -1337,14 +1343,14 @@ begin
         <> SizeOf(TIFFHeader) then begin  ;
         FErrorMessage := 'TIFF: Unable to read file header of' + FileName ;
         FileClose( FileHandle ) ;
-        FileHandle := -1 ;
+        FileIsOpen := False ;
         Exit ;
         end ;
     // Only little-endian (Intel CPUs) byte ordering supported at present
     if TIFFHeader.ByteOrder <> LittleEndian then begin
        FErrorMessage := 'TIFF: Macintosh byte ordering not supported!' ;
        FileClose( FileHandle ) ;
-       FileHandle := -1 ;
+       FileIsOpen := False ;
        Exit ;
        end ;
 
@@ -1439,14 +1445,15 @@ begin
 
     Result := False ;
 
-    if FileHandle >= 0 then begin
+    if FileIsOpen then begin
        FErrorMessage := 'TIMAGEFILE: A file is aready open ' ;
        Exit ;
        end ;
 
     // Open file
     FileHandle := FileCreate( FileName, fmOpenRead ) ;
-    if FileHandle < 0 then begin
+    if FileHandle >= 0 then FileIsOpen := True
+    else begin
        FErrorMessage := 'TIMAGEFILE: Unable to create ' + FileName ;
        Exit ;
        end ;
@@ -1488,7 +1495,7 @@ var
 begin
 
      Result := False ;
-     if FileHandle < 0 then Exit ;
+     if not FileIsOpen then Exit ;
 
      if NewFile then begin
         // Ensure that all frames have IFDs
@@ -1501,7 +1508,7 @@ begin
 
      // Close file
      FileClose(FileHandle) ;
-     FileHandle := -1 ;
+     FileIsOpen := False ;
 
      Result := True ;
 
@@ -1516,7 +1523,7 @@ var
     FilePointer : Int64 ;
 begin
 
-     if FileHandle >= 0 then begin
+     if FileIsOpen then begin
 
         if NewFile then begin
            // Save IFD
@@ -1530,7 +1537,7 @@ begin
 
         // Close file
         FileClose(FileHandle) ;
-        FileHandle := -1 ;
+        FileIsOpen := False ;
 
         Result := True ;
         end
@@ -1575,10 +1582,6 @@ begin
         if FileRead(FileHandle, IFDEntry, SizeOf(TTiffIFDEntry))
            = SizeOf(TTiffIFDEntry) then begin
            IFDList[NumIFDEntries] := IFDEntry ;
-           outputdebugString(PChar(format('%d %d %d %d',[IFDList[NumIFDEntries].Tag,
-                                                 IFDList[NumIFDEntries].FieldType,
-                                                 IFDList[NumIFDEntries].Count,
-                                                 IFDList[NumIFDEntries].Offset]))) ;
            Inc(NumIFDEntries) ;
            Dec(IFDCount) ;
            if IFDCount = 0 then Done := True ;
@@ -2039,14 +2042,15 @@ begin
 
     Result := False ;
 
-    if FileHandle >= 0 then begin
+    if FileIsOpen then begin
        FErrorMessage := 'TIMAGEFILE: A file is aready open ' ;
        Exit ;
        end ;
 
     // Open file
     FileHandle := FileCreate( FileName, fmOpenRead ) ;
-    if FileHandle < 0 then begin
+    if FileHandle >= 0 then FileIsOpen := True
+    else begin
        FErrorMessage := 'TIMAGEFILE: Unable to create ' + FileName ;
        Exit ;
        end ;
@@ -2169,14 +2173,15 @@ begin
 
     Result := False ;
 
-    if FileHandle >= 0 then begin
+    if FileIsOpen then begin
        FErrorMessage := 'TIMAGEFILE: A file is aready open ' ;
        Exit ;
        end ;
 
     // Open file
     FileHandle := FileOpen( FileName, fmOpenReadWrite ) ;
-    if FileHandle < 0 then begin
+    if FileHandle >= 0 then FileIsOpen := True
+    else begin
        FErrorMessage := 'TIMAGEFILE: Unable to open ' ;
        Exit ;
        end ;
@@ -2187,7 +2192,7 @@ begin
     ICSText := '' ;
     for i := 1 to NumBytes do begin
        FileRead(FileHandle, iByte, 1) ;
-       ICSText := ICSText + Char(iByte) ;
+       ICSText := ICSText + ANSIChar(iByte) ;
        end ;
     FileClose( FileHandle ) ;
 
@@ -2433,7 +2438,7 @@ begin
      Result := False ;
 
      // Exit if file not open
-     if FileHandle < 0 then Exit ;
+     if not FileIsOpen then Exit ;
 
      // Update PIC file header
      if NewFile then begin
@@ -2441,8 +2446,7 @@ begin
 
      // Close file
      FileClose( FileHandle ) ;
-     // Note. file handle = -1 indicates no file open
-     FileHandle := -1 ;
+     FileIsOpen := False ;
      FNumFrames := 0 ;
      Result := True ;
 
@@ -2525,7 +2529,7 @@ begin
 
 
 procedure TImageFile.AppendFloat(
-          var Dest : Array of char;
+          var Dest : Array of ANSIchar;
           Keyword : string ;
           Value : Extended ) ;
 { --------------------------------------------------------
@@ -2540,7 +2544,7 @@ begin
 
 
 procedure TImageFile.ReadFloat(
-          const Source : Array of char;
+          const Source : Array of ANSIchar;
           Keyword : string ;
           var Value : Single ) ;
 var
@@ -2552,7 +2556,7 @@ begin
 
 
 procedure TImageFile.CopyStringToArray(
-          var Dest : array of char ;
+          var Dest : array of ANSIchar ;
           Source : string ) ;
 var
    i,j : Integer ;
@@ -2566,7 +2570,7 @@ begin
      begin
           for i := 1 to length(Source) do
           begin
-               Dest[j] := Source[i] ;
+               Dest[j] := ANSIChar(Source[i]) ;
                j := j + 1 ;
                end ;
           end
@@ -2577,7 +2581,7 @@ begin
 
 procedure TImageFile.CopyArrayToString(
           var Dest : string ;
-          var Source : array of char ) ;
+          var Source : array of ANSIchar ) ;
 var
    i : Integer ;
 begin
@@ -2589,7 +2593,7 @@ begin
 
 
 function TImageFile.StringFromArray(
-          var Source : array of char ) : String ;
+          var Source : array of ANSIchar ) : String ;
 // --------------------------------------
 // Create string variable from char array
 // --------------------------------------
@@ -2605,7 +2609,7 @@ begin
 
 
 procedure TImageFile.FindParameter(
-          const Source : array of char ;
+          const Source : array of ANSIchar ;
           Keyword : string ;
           var Parameter : string ) ;
 var
@@ -2621,7 +2625,7 @@ begin
      Found := False ;
      while (not Found) and (s < High(Source)) do
      begin
-          if Source[s] = Keyword[k] then
+          if Source[s] = ANSIChar(Keyword[k]) then
           begin
                k := k + 1 ;
                if k > length(Keyword) then Found := True

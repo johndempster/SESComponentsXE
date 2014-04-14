@@ -14,7 +14,7 @@ unit HamDCAMUnit;
 // 16-12.13 JD Support for Flash 4.0 and 2.8 added. Exposure time in external trigger mode
 //             reduced by readout time to account for rolling shutter
 //             GetCameraGainList now returns 'n/a' if no gain settings.
-
+// 08.04.14 JD Updated to compile under 64 and 32 bit
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, messages,
@@ -2112,6 +2112,8 @@ var
     ReadoutTime : Double ;
     Param : TDCAM_PARAM_FEATURE ;
     ExposureTime : Double ;
+    iStart : NativeUInt ;
+    PointerSize : Integer ;
 begin
     Result := False ;
     if not Session.CameraOpen then Exit ;
@@ -2126,7 +2128,7 @@ begin
        DCAMAPI_SetProperty( Session,
                             DCAM_IDPROP_CCDMODE,
                             DCAMPROP_CCDMODE__EMCCD )
-       end ;    
+       end ;
 
     // Set CCD readout region
     DCAMAPI_CheckROIBoundaries( Session,
@@ -2175,14 +2177,21 @@ begin
                    SizeOf(Param)) ;
 
     // Set pointers to frames within image capture buffer
-    for i := 0 to NumFramesInBuffer-1 do
-        Session.FramePointers[i] := Pointer(Cardinal(PFrameBuffer) + i*NumBytesPerFrame) ;
+    iStart := 0 ;
+    for i := 0 to NumFramesInBuffer-1 do begin
+        Session.FramePointers[i] := Pointer(NativeUInt(PByte(PFrameBuffer)) + iStart) ;
+        iStart := iStart + Int64(NumBytesPerFrame) ;
+        end ;
 
     // Attach image capture buffer
-    Err := dcam_attachbuffer( Session.CamHandle, @Session.FramePointers,
-                              NumFramesInBuffer*4) ;
- //   outputdebugString(PChar(format('dcam_attachbuffer Err=%d',[Err])));
-
+    {$IFDEF WIN32}
+      PointerSize := 4 ;
+    {$ELSE}
+      PointerSize := 8 ;
+    {$IFEND}
+    Err := dcam_attachbuffer( Session.CamHandle,
+                              @Session.FramePointers,
+                              NumFramesInBuffer*PointerSize) ;
 
     // Set exposure time
     if ExternalTrigger = camExtTrigger then begin
@@ -2218,7 +2227,6 @@ begin
 
     // Start capture
     Err := dcam_capture( Session.CamHandle ) ;
-//    outputdebugString(PChar(format('dcam_capture Err=%d',[Err])));
     Session.CapturingImages := True ;
     Result := True ;
 

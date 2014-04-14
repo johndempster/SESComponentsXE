@@ -842,6 +842,7 @@ var
 
     LibraryHnd : THandle ;         // PVCAM32.DLL library handle
     LibraryLoaded : boolean ;      // PVCAM32.DLL library loaded flag
+    LibFileName : string ;         // DLL library file name
 
     FrameWidthMax : Integer ;               // Max. width of image frame
     FrameHeightMax : Integer ;              // Max. height of image frame
@@ -1099,7 +1100,7 @@ procedure PVCAM_LoadLibrary  ;
   Load PVCAM32.DLL library into memory
   -------------------------------------}
 var
-    LibFileName : string ;
+
     ProgDir : String ;
 begin
 
@@ -1177,9 +1178,8 @@ function PVCAM_GetDLLAddress(
 begin
     Result := GetProcAddress(Handle,PChar(ProcName)) ;
     if Result = Nil then
-       ShowMessage('PVCAM32.DLL: ' + ProcName + ' not found') ;
+       ShowMessage(LibFileName + ': ' + ProcName + ' not found') ;
     end ;
-
 
 
 procedure PVCAM_GetCameraReadoutSpeedList(

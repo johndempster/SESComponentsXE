@@ -99,6 +99,7 @@ contains
   MatrixDisplay in 'MatrixDisplay.pas',
   TVicLib in 'TVicLib.pas',
   AndorSDK3Unit in 'AndorSDK3Unit.pas',
-  HekaUnit in 'HekaUnit.pas';
+  HekaUnit in 'HekaUnit.pas',
+  ThorLabsUnit in 'ThorLabsUnit.pas';
 
 end.
