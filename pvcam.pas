@@ -31,6 +31,7 @@ unit pvcam;
 //             Now calls PVCAM32.DLL or PVCAM64.DLL (depending on compile)
 //             Readout time derived from PIXEL_TIME now adjusted for
 //             binning and sub-region for CoolSnap HQ2
+// 15.04.15 JD Tested in 64 bit mode using PVCAM 3.0.1
 
 {OPTIMIZATION OFF}
 {$DEFINE USECONT}

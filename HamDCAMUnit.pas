@@ -14,11 +14,11 @@ unit HamDCAMUnit;
 // 16-12.13 JD Support for Flash 4.0 and 2.8 added. Exposure time in external trigger mode
 //             reduced by readout time to account for rolling shutter
 //             GetCameraGainList now returns 'n/a' if no gain settings.
-<<<<<<< HEAD
 // 08.04.14 JD Updated to compile under 64 and 32 bit
-=======
-// 03-4-13 JD  HDCAM now defined as LONGINT rather than THANDLE to permit 64 bit compilation
->>>>>>> affe66b842c89b357efcbfbdbe16f57633128eb6
+// 03-4-14 JD  HDCAM now defined as LONGINT rather than THANDLE to permit 64 bit compilation
+// 15-4-15 JD Session.FramePointers and attach_buffers adjusted to compile correctly under
+//            both 32 and 64 bits. 64 bite version tested with Flash 4.0
+
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, messages,
