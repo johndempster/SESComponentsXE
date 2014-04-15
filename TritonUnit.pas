@@ -38,7 +38,8 @@ unit TritonUnit;
 //          clamp acts as voltage follower.
 // 10.04.12 CFast & CSlowA-D can now be enabled/disabled for auto compensation
 // 07.08.13 Updated to compile with Delphi XE3
-
+// 14.04.14 FPU exceptions disabled to avoid divide by zero error which occurs with Triton plus
+//          Padding at end of sweep reduced to 100 ms (to speed up repeat rate)
 interface
 
 uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math, classes, strutils ;
@@ -1314,11 +1315,17 @@ var
     CalibrationFile : String ;
 begin
 
+
+
      DeviceInitialised := False ;
 
      // Load DLL library
      if not LibraryLoaded then Triton_LoadLibrary ;
      if not LibraryLoaded then Exit ;
+
+     // FPU exceptions disabled (to avoid divide by zero exception with Triton-plus)
+
+     TECELLA_DisableFPUExceptions ;
 
      //Triton_CheckError('tecella_debug :',tecella_debug(PANSIChar('c:\triton debug.txt')));
 
@@ -1337,9 +1344,8 @@ begin
      Triton_CheckError('tecella_enumerate_get :',Err) ;
 
      DeviceIndex := 0 ;
-TECELLA_DisableFPUExceptions ;
      Err := tecella_initialize( @TecHandle, DeviceIndex ) ;
-TECELLA_EnableFPUExceptions ;
+
      Triton_CheckError('tecella_initialize :',Err) ;
      if Err = 0 then DeviceInitialised := True
                 else DeviceInitialised := False ;
@@ -2019,17 +2025,13 @@ begin
        Inc(NumStimSegments) ;
        end ;
 
-    // Add 1s to end of sweep
+    // Pad end of sweep
     // (Not sure if this is really necessary or not to avoid hardware buffer overflow errods
     StimSegments[NumStimSegments].SegmentType := TECELLA_STIMULUS_SEGMENT_SET ;
     StimSegments[NumStimSegments].value := StimSegments[NumStimSegments-1].value ;
-    StimSegments[NumStimSegments].duration := 1.0 ;//1.0 ;//0.5 ; //0.002 ;
+    StimSegments[NumStimSegments].duration := 0.1;//1.0 ; 0.5 ; 0.002 ;
     Inc(NumStimSegments) ;
 
-  { NumSamplesInStim := tecella_stimulus_sample_count( @StimSegments,
-                                                       NumStimSegments,
-                                                       DACUpdateInterval,
-                                                       0 ) ;}
     // Set holding voltage
     Index := 0 ;
     Triton_CheckError( 'tecella_stimulus_set_hold',
@@ -2048,7 +2050,6 @@ begin
                                              DeltaCount,
                                              NumIterations,
                                              Index ) ;
-//                                             ) ;
 
       // Start recording sweep
       ContinuousRecording := False ;
@@ -2292,6 +2293,9 @@ begin
     if not DeviceInitialised then Exit ;
 
     tecella_finalize (TecHandle);
+
+    // Re-enable FPU exceptions
+    TECELLA_EnableFPUExceptions ;
 
     if VmBuf <> Nil then FreeMem(VmBuf) ;
     VmBuf := Nil ;
