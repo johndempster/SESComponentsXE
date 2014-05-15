@@ -155,7 +155,7 @@ type
     TIFFHeader : TTiffHeader ;  // TIFF file header
     UICSTKFormat : Boolean ;
 
-    FIFDPointerList : Array[0..30000] of Integer ;
+    FIFDPointerList : Array[0..30000] of Int64 ;
     IFD : TImageFileDirectory ; // Current Image file directory
     //Buf : Array[0..30000] of Integer ;
 
@@ -214,7 +214,7 @@ type
     function STKCloseFile : Boolean ;
 
     Function TIFLoadIFD(
-         IFDPointer : Integer   // Pointer offset to IFD in data file
+         IFDPointer : Int64   // Pointer offset to IFD in data file
          ) : Boolean ;
 
     Function TIFSaveIFD(
@@ -1318,7 +1318,7 @@ function TImageFile.TIFOpenFile(
 // Open TIFF file
 // ---------------
 var
-     IFDPointer : Integer ;    // Pointer to image file directory
+     IFDPointer : Int64 ;    // Pointer to image file directory
      Done : Boolean ;
 begin
 
@@ -1548,7 +1548,7 @@ begin
 
 
 Function TImageFile.TIFLoadIFD(
-         IFDPointer : Integer    // Pointer offset to IFD in data file
+         IFDPointer : Int64    // Pointer offset to IFD in data file
          ) : Boolean ;
 // -----------------------------------
 // Load image file directory from file
@@ -1800,12 +1800,12 @@ var
     NumBytesToWrite : Cardinal ;
     NumBytesPerImage : Cardinal ;
     NumBytes : Cardinal ;
-    IFDPointer : Cardinal ;
+    IFDPointer : Int64 ;
     OK : Boolean ;
 begin
 
     NumBytesPerImage := FFrameWidth*FFrameHeight*FNumBytesPerPixel ;
-    IFDPointer := (FrameNum-1)*(cIFDImageStart + NumBytesPerImage) + SizeOf(TIFFHeader);
+    IFDPointer := Int64((FrameNum-1)*(cIFDImageStart + NumBytesPerImage) + SizeOf(TIFFHeader));
     FIFDPointerList[FrameNum-1] := IFDPointer ;
 
     // Move file pointer to end of tag list space
@@ -1964,7 +1964,7 @@ Function TImageFile.TIFLoadFrame(
 // Load frame # <FrameNum> from TIFF file
 // --------------------------------------
 var
-    IFDPointer : Integer ;    // Pointer to image file directory
+    IFDPointer : Int64 ;    // Pointer to image file directory
     OK : Boolean ;
     Strip : Integer ;
     PBuf : Pointer ;
@@ -1985,7 +1985,7 @@ begin
      for Strip := 0 to IFD.NumStrips-1 do begin
          FileSeek( FileHandle, IFD.StripOffsets[Strip], 0 ) ;
          FileRead( FileHandle, PByteArray(PBuf)^, IFD.StripByteCounts[Strip] ) ;
-         PBuf := Ptr(Integer(PBuf) + IFD.StripByteCounts[Strip]) ;
+         PBuf := Pointer(NativeUInt(PByte(PBuf)) + NativeUInt(IFD.StripByteCounts[Strip])) ;
          end ;
 
      Result := True ;
@@ -2015,7 +2015,7 @@ begin
      for Strip := 0 to IFD.NumStrips-1 do begin
          FileSeek( FileHandle, IFD.StripOffsets[Strip], 0 ) ;
          FileWrite( FileHandle, PByteArray(PBuf)^, IFD.StripByteCounts[Strip] ) ;
-         PBuf := Ptr(Integer(PBuf) + IFD.StripByteCounts[Strip]) ;
+         PBuf := Pointer(NativeUInt(PByte(pBuf)) + NativeUInt(IFD.StripByteCounts[Strip])) ;
          end ;
 
      FNumFrames := Max(FrameNum,FNumFrames) ;
