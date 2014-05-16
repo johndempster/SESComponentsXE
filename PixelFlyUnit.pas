@@ -6,7 +6,8 @@ unit PixelFlyUnit;
 // 30-8-4 External Trigger mode now working correctly
 // 2-9-4 Slow (>250ms) exposure mode added
 // 21/01/09 AdditionalReadoutTime added to StartCapture
-
+// 16.05.14 JD DTOL_GetDLLAddress: Handle now defined as THandle
+//             rather than Integer (possible cause of errors with 64 bit version)
 
 interface
 
@@ -221,7 +222,7 @@ TPIXELFLY_SETDRIVER_EVENT = function(
 procedure PixelFly_LoadLibrary  ;
 
 function  PixelFly_GetDLLAddress(
-          Handle : Integer ;
+          Handle : THandle ;
           const ProcName : string ) : Pointer ;
 
 function  PixelFly_OpenCamera(
@@ -434,7 +435,7 @@ begin
 
 
 function PixelFly_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
 // -----------------------------------------
 // Get address of procedure within PCCAM.DLL

@@ -3,6 +3,8 @@ unit DTOpenLayersUnit;
 // Data Translation DT-Open Layers image capture library support
 // --------------------------------------------------------------
 // 24-7-13 JD Now compiles unders Delphi XE2/3 as well as 7. (not tested)
+// 16.05.14 JD DTOL_GetDLLAddress: Handle now defined as THandle
+//             rather than Integer (possible cause of errors with 64 bit version)
 
 interface
 
@@ -1350,7 +1352,7 @@ procedure DTOL_LoadLibrary(
           )  ;
 
 function DTOL_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
 
 procedure DTOL_CheckROIBoundaries( var Session : TDTOLSession ;
@@ -1581,7 +1583,7 @@ begin
 
 
 function DTOL_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
 // -----------------------------------------
 // Get address of procedure within DLL

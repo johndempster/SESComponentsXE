@@ -11,7 +11,8 @@ unit SensiCamUnit;
 // 21/01/09 AdditionalReadoutTime added to StartCapture
 // 21/05/09 JD X8 bin factor added, SensiCam_CheckBinFactor procedure added
 // 24-7-13 JD Now compiles unders Delphi XE2/3 as well as 7. (not tested)
-
+// 16.05.14 JD SensiCam_GetDLLAddress: Handle now defined as THandle
+//             rather than Integer (possible cause of errors with 64 bit version)
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem ;
@@ -154,7 +155,7 @@ TEnable_Message_Log = function (level : integer ; FileName  : PANSIChar) : integ
 procedure SensiCam_LoadLibrary  ;
 
 function  SensiCam_GetDLLAddress(
-          Handle : Integer ;
+          Handle : THandle ;
           const ProcName : string ) : Pointer ;
 
 function  SensiCam_OpenCamera(
@@ -341,7 +342,7 @@ begin
 
 
 function SensiCam_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
 // -----------------------------------------
 // Get address of procedure within SENNTCAM.DLL

@@ -14,6 +14,8 @@ unit QCAMUnit;
 // 25.07.12 5ms added to ReadoutTime reported by QCAMAPI_CheckROIBoundaries when camera in
 //          external trigger mode (to avoid speeds where triggers are missed)
 // 24-7-13 JD Now compiles unders Delphi XE2/3 as well as 7. (not tested)
+// 16.05.14 JD QCAM_GetDLLAddress: Handle now defined as THandle
+//             rather than Integer (possible cause of errors with 64 bit version)
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, messages, controls, math ;
@@ -795,7 +797,7 @@ TQCam_IsRangeTable = function(
 
 function QCAMAPI_LoadLibrary : Boolean ;
 function QCAMAPI_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
 
 function QCAMAPI_OpenCamera(
@@ -1008,7 +1010,7 @@ begin
 
 
 function QCAMAPI_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
 // -----------------------------------------
 // Get address of procedure within DLL

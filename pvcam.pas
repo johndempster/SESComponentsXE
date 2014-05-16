@@ -31,7 +31,9 @@ unit pvcam;
 //             Now calls PVCAM32.DLL or PVCAM64.DLL (depending on compile)
 //             Readout time derived from PIXEL_TIME now adjusted for
 //             binning and sub-region for CoolSnap HQ2
-// 15.04.15 JD Tested in 64 bit mode using PVCAM 3.0.1
+// 15.04.14 JD Tested in 64 bit mode using PVCAM 3.0.1
+// 16.05.14 JD PVCAM_GetDLLAddress: Handle now defined as THandle
+//             rather than Integer (possible cause of errors with 64 bit PVCAM)
 
 {OPTIMIZATION OFF}
 {$DEFINE USECONT}
@@ -701,9 +703,8 @@ function PVCAM_OpenCamera(
 procedure PVCAM_LoadLibrary  ;
 
 function PVCAM_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
-
 
 procedure PVCAM_CloseCamera(
           var Session : TPVCAMSession ) ;
@@ -1171,11 +1172,11 @@ begin
 
 
 function PVCAM_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
-// -----------------------------------------
-// Get address of procedure within PVCAM32.DLL
-// -----------------------------------------
+// ----------------------------------------------
+// Get address of procedure within PVCAM32/64.DLL
+// ----------------------------------------------
 begin
     Result := GetProcAddress(Handle,PChar(ProcName)) ;
     if Result = Nil then

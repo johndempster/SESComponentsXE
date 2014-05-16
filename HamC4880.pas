@@ -21,7 +21,8 @@ const
     SlowReadout = 1 ;
 var
     ComPort : Integer ;
-    ComHandle : Integer ;
+    ComHandle : THandle ;
+    ComPortOpen : Boolean ;
     Reply : string ;
 
     function C4880_OpenCamera(
@@ -411,9 +412,13 @@ begin
         CommTimeouts.WriteTotalTimeoutMultiplier := 0 ;
         CommTimeouts.WriteTotalTimeoutConstant := 5000 ;
         SetCommTimeouts( ComHandle, CommTimeouts ) ;
+        ComPortOpen := True ;
         Result := True ;
         end
-     Else Result := False ;
+     Else begin
+        Result := False ;
+        ComPortOpen := False ;
+        end ;
      end ;
 
 
@@ -423,8 +428,9 @@ procedure CloseCOMPort ;
 // -------------------------------
 begin
      //   If COM link is open, close it
-     if ComHandle >= 0 then CloseHandle( ComHandle ) ;
-     ComHandle := -1 ;
+     if ComPortOpen then CloseHandle( ComHandle ) ;
+     ComPortOpen := false ;
+
      end ;
 
 
@@ -493,7 +499,8 @@ begin
      Result := Line ;
      end ;
 
-
+initialization
+  ComPortOpen := False ;
 
 
 end.

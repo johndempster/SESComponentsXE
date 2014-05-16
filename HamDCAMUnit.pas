@@ -18,7 +18,8 @@ unit HamDCAMUnit;
 // 03-4-14 JD  HDCAM now defined as LONGINT rather than THANDLE to permit 64 bit compilation
 // 15-4-15 JD Session.FramePointers and attach_buffers adjusted to compile correctly under
 //            both 32 and 64 bits. 64 bite version tested with Flash 4.0
-
+// 16.05.14 JD DCAM_GetDLLAddress: Handle now defined as THandle
+//             rather than Integer (possible cause of errors with 64 bit version)
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, messages,
@@ -1544,7 +1545,7 @@ Tdcam_getpropertyvaluetext = function(
 function DCAMAPI_LoadLibrary : Boolean ;
 
 function DCAMAPI_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
 
 function DCAMAPI_OpenCamera(
@@ -1787,7 +1788,7 @@ begin
 
 
 function DCAMAPI_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
 // -----------------------------------------
 // Get address of procedure within DLL

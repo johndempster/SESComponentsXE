@@ -19,7 +19,8 @@ unit AndorUnit;
 //         if DLL not found in c:\winfluor. Correct folder is now supplied to initialize
 //         to ensure detector.ini is located for older Ixon cameras
 // 16.08.13 JD Readout preamp gain and vertical shift speed can now be set by user
-
+// 16.05.14 JD Andor_GetDLLAddress: Handle now defined as THandle
+//             rather than Integer (possible cause of errors with 64 bit version)
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, messages, controls, math, strutils ;
@@ -555,7 +556,7 @@ TIsPreAmpGainAvailable = function(
 
 
 function Andor_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
 
 procedure Andor_LoadLibrary(
@@ -1092,7 +1093,7 @@ begin
 
 
 function Andor_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
 // -----------------------------------------
 // Get address of procedure within DLL

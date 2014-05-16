@@ -6,6 +6,8 @@ unit imaq1394;
 // 20-3-5 Camera gain can now be set
 // 15-10-6 Updated to work with IMAQ-1394 V2.02
 // 24-07-07 GetImage updated to ignore invalid buffer count at start of image acquisition
+// 16.05.14 JD DTOL_GetDLLAddress: Handle now defined as THandle
+//             rather than Integer (possible cause of errors with 64 bit version)
 
 interface
 uses WinTypes,sysutils, classes, dialogs, mmsystem, math ;
@@ -640,7 +642,7 @@ function IMAQ1394_CheckFrameInterval(
 
 procedure IMAQ1394_LoadLibrary  ;
 function IMAQ1394_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
 
 function IMAQ1394_GetStringAttribute(
@@ -758,7 +760,7 @@ begin
 
 
 function IMAQ1394_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
 // -----------------------------------------
 // Get address of procedure within PVCAM32.DLL
