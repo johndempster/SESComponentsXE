@@ -34,7 +34,10 @@ unit pvcam;
 // 15.04.14 JD Tested in 64 bit mode using PVCAM 3.0.1
 // 16.05.14 JD PVCAM_GetDLLAddress: Handle now defined as THandle
 //             rather than Integer (possible cause of errors with 64 bit PVCAM)
-
+// 29.05.14 JD Buffer empty flags no longer written to framebuffer in StartCapture
+//             (avoids crash with OptiMOS or other hires CCD cameras
+// 04.06.14 JD ReadoutTime has additional 1ms for frame transfers
+//             and has spedific computation for OptiMOS
 {OPTIMIZATION OFF}
 {$DEFINE USECONT}
 
@@ -731,7 +734,9 @@ function PVCAM_CheckFrameInterval(
           BinFactor : Integer ;   // Pixel binning factor (In)
           ReadoutSpeedIndex : Integer ; // Readout speed index # (In)
           Var FrameInterval : Double ;
-          Var ReadoutTime : Double) : Boolean ;
+          Var ReadoutTime : Double ;
+          ExternalTrigger : Integer      // Trigger mode  ;
+          ) : Boolean ;
 
 procedure PVCAM_GetCameraReadoutSpeedList(
           var Session : TPVCAMSession ;
@@ -947,7 +952,6 @@ begin
         pl_get_param( Session.Handle, PARAM_CHIP_NAME, ATTR_CURRENT, @TempName ) ;
         CameraInfo.Add( 'CCD= ' + PVCAM_CharArrayToString(TempName)) ;
         Session.ChipName := PVCAM_CharArrayToString(TempName) ;
-
         end ;
 
      // Identify cameras which only have post exposure readout
@@ -1089,7 +1093,8 @@ begin
                                1,
                                ReadoutSpeedIndex,
                                FrameInterval,
-                               ReadoutTime ) ;
+                               ReadoutTime,
+                               0 ) ;
      CameraInfo.Add( format( ' Readout time %.3g ms', [ReadoutTime*1000.0] )) ;
 
      Result := True ;
@@ -1350,7 +1355,9 @@ function PVCAM_CheckFrameInterval(
           ReadoutSpeedIndex : Integer ; // Readout speed index # (In)
    //       TriggerMode : Integer ;       // Frame capture trigger mode (In)
           Var FrameInterval : Double ;
-          Var ReadoutTime : Double) : Boolean ;
+          Var ReadoutTime : Double ;
+          ExternalTrigger : Integer      // Trigger mode  ;
+          ) : Boolean ;
 // ---------------------------------
 // Ensure that inter-frame is valid
 // ---------------------------------
@@ -1358,6 +1365,7 @@ var
      Available : Word ;
      PixelReadoutTime : Word ;
      NumPixels : Integer ;
+     NumBytesPerFrame1 : Cardinal ;
 begin
      Result := False ;
      if not LibraryLoaded then Exit ;
@@ -1382,14 +1390,16 @@ begin
      pl_exp_init_seq ;
      PVCAM_DisplayErrorMessage( 'pl_exp_init_seq ') ;
 
+     NumBytesPerFrame1 := NumBytesPerFrame ;
      pl_exp_setup_cont( Session.Handle,
                         1,
                         @FrameRegion,
                         TIMED_MODE,
                         1,
-                        @NumBytesPerFrame,
+                        @NumBytesPerFrame1,
                         CIRC_OVERWRITE ) ;
-     PVCAM_DisplayErrorMessage( 'pl_exp_setup_cont ') ;
+     // Removed because it was reporting spurious error with CoolSnap 11/6/14
+     //PVCAM_DisplayErrorMessage( 'pl_exp_setup_cont (CheckFrameInterval) ') ;
 
      // Get readout time from camera
      ReadoutTime := 0.0 ;
@@ -1404,14 +1414,22 @@ begin
         pl_get_param( Session.Handle, PARAM_PIX_TIME, ATTR_AVAIL, @Available ) ;
         if Available <> 0 then begin
               pl_get_param( Session.Handle, PARAM_PIX_TIME, ATTR_CURRENT, @PixelReadoutTime ) ;
-              // Corrections to readout for binning and sub-region derived from
-              // Coolsnap HQ2 (not known whether they apply to other cameras
-              ReadoutTime := 1E-9*PixelReadoutTime*FrameWidthMax*FrameHeightMax ;
-              ReadoutTime := ReadoutTime*(1.142/BinFactor + 0.13);
-              ReadoutTime := ReadoutTime*sqrt((FrameBottom - FrameTop+1)/FrameHeightMax) ;
-              end;
+              if ANSIContainsText(Session.ChipName,'optimos') then begin
+                 ReadoutTime := (FrameBottom - FrameTop+1)*10E-6 ;
+                 if ExternalTrigger = camExtTrigger then ReadoutTime := ReadoutTime*2.0 ;
+                 end
+              else begin
+                // Corrections to readout for binning and sub-region derived from
+                // Coolsnap HQ2 (not known whether they apply to other cameras
+                ReadoutTime := 1E-9*PixelReadoutTime*FrameWidthMax*FrameHeightMax ;
+                ReadoutTime := ReadoutTime*(1.142/BinFactor + 0.13);
+                ReadoutTime := ReadoutTime*sqrt((FrameBottom - FrameTop+1)/FrameHeightMax) ;
+                end;
+           end;
         end ;
 
+     // Add 1ms for frame transfers
+     ReadoutTime := ReadoutTime + 0.001 ;
 
      // Shut down sequence acquisition
      pl_exp_uninit_seq ;
@@ -1419,7 +1437,7 @@ begin
 
      // Prevent frame interval from being less than readout time
 
-     if FrameInterval < (ReadoutTime ) then FrameInterval := ReadoutTime ;
+     if FrameInterval < (ReadoutTime ) then FrameInterval := ReadoutTime  ;
 
      ExposureResolution := 0.001 ; // 1 ms exposure resolution
      FrameInterval := Round(FrameInterval/ExposureResolution)*ExposureResolution ;
@@ -1455,7 +1473,7 @@ function PVCAM_StartCapture(
 
 var
     ii : Integer ;
-    i,NumFrames : Cardinal ;
+    i,NumFrames,NumBytesPerFrame1 : Cardinal ;
     Available : Word ;
     LongValue : DWord ;
     ReadoutTime : Double ;
@@ -1485,6 +1503,7 @@ begin
 
     NumBytesPerFrame := (2*FrameWidth*FrameHeight) ;
     NumFrames := NumBytesInFrameBuffer div NumBytesPerFrame ;
+    NumBytesPerFrame1 := NumBytesPerFrame ;
 
     // Set readout speed of camera
     if pl_set_param( Session.Handle, PARAM_SPDTAB_INDEX, @ReadoutSpeedIndex ) = 0 then begin
@@ -1508,7 +1527,8 @@ begin
                               BinFactor,
                               ReadoutSpeedIndex,
                               FrameInterval,
-                              ReadoutTime ) ;
+                              ReadoutTime,
+                              TriggerMode ) ;
 
      // Check if multipler gain is available
      pl_get_param( Session.Handle, PARAM_GAIN_MULT_ENABLE, ATTR_AVAIL, @MultGainEnabled ) ;
@@ -1561,12 +1581,13 @@ begin
        // -----------------------
     if TriggerMode = CamFreeRun then begin
        // Free run mode
+       NumBytesPerFrame1 := NumBytesPerFrame ;
        Err := pl_exp_setup_cont( Session.Handle,
                                    1,
                                    @FrameRegion,
                                    TIMED_MODE,
                                    Round(FrameInterval/ExposureResolution),
-                                   @NumBytesPerFrame,
+                                   @NumBytesPerFrame1,
                                    CIRC_OVERWRITE ) ;
        PVCAM_DisplayErrorMessage( 'pl_exp_setup_cont (TIMED_MODE)' ) ;
        end
@@ -1574,22 +1595,23 @@ begin
        // Triggered & bulb mode
        // Note addition readout time can be added by user (via WinFluor setup dialog)
        ExposureTime := FrameInterval
-                       - 0.001                   { Allow for CCD readout time}
                        - AdditionalReadoutTime ; { Additional user defined readout time}
        // If post-exposure readout shorten exposure to account for readout
-       if PostExposureReadout then ExposureTime := ExposureTime - ReadoutTime ;
+       // otherwise allow 1 ms for frame readout
+       if PostExposureReadout then ExposureTime := ExposureTime - ReadoutTime
+                              else ExposureTime := ExposureTime - 0.001 ;
        // No shorter than 1ms exposure
        ExposureTime := Max(ExposureTime,0.001) ;
 
        if TriggerMode = CamBulbMode then ExposureMode := BULB_MODE
                                     else ExposureMode := STROBED_MODE ;
-
+       NumBytesPerFrame1 := NumBytesPerFrame ;
        Err := pl_exp_setup_cont( Session.Handle,
                                    1,
                                    @FrameRegion,
                                    ExposureMode,
                                    Round(ExposureTime/ExposureResolution),
-                                   @NumBytesPerFrame,
+                                   @NumBytesPerFrame1,
                                    CIRC_OVERWRITE ) ;
        PVCAM_DisplayErrorMessage( 'pl_exp_setup_cont (STROBED_MODE)' ) ;
        end ;
@@ -1601,17 +1623,9 @@ begin
        Session.AcquisitionInProgress := True ;
        end ;
 
-    // Initialise buffer
-    for i := 0 to NumFrames-1 do begin
-        ii := (NumBytesPerFrame div 2)*i ;
-        PWordArray(FrameBuffer)^[ii] := 0 ;
-        PWordArray(FrameBuffer)^[ii+1] := 32767 ;
-        PWordArray(FrameBuffer)^[ii+(NumBytesPerFrame div 2)-2] := 0 ;
-        PWordArray(FrameBuffer)^[ii+(NumBytesPerFrame div 2)-1] := 32767 ;
-        end ;
 
     If Err <> 0 then Result := True ;
-    outputdebugstring(pchar('camera started'));
+    outputdebugstring(pchar(format('camera started %d %d',[NumBytesPerFrame1,NumBytesPerFrame])));
     end ;
 
 

@@ -878,7 +878,8 @@ begin
                                        1,
                                        FReadoutSpeed,
                                        FFrameInterval,
-                                       FReadoutTime ) ;
+                                       FReadoutTime,
+                                       FTriggerMode ) ;
 
              end ;
 
@@ -2213,7 +2214,8 @@ begin
                                     FBinFactor,
                                     FReadoutSpeed,
                                     FFrameInterval,
-                                    FReadoutTime ) ;
+                                    FReadoutTime,
+                                    FTriggerMode ) ;
           end ;
 
        PIXELFLY : begin

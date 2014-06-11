@@ -50,6 +50,9 @@ unit IDRFile;
 //            CopyStringToArray() name changed to AppendStringToANSIArray()
 // 13-11-13 JD .ADCNumScansInFile now Int64 as is StartScan in .LoadADC() .SaveADC()
 //            .EDR files larger than 2GB now supported
+// 29.05.14 JD .AsyncFileWrite() now transfers directly from source data buffer
+//             to increase file writing speed.
+//             EDRFileHandle now THandle (for 64 bit compatibility)
 
 interface
 
@@ -152,6 +155,7 @@ TChannel = record
   private
     { Private declarations }
     FFileName : String ;           // Data file name
+    FFileOpen : Boolean ;          // TRUE = File open
     FWriteEnabled : Boolean ;      // TRUE = file can be written to
     FIdent : String ;              // Comment line
     FYearCreated : Integer ;         // Creation date (year)
@@ -177,7 +181,7 @@ TChannel = record
     FNumBytesPerFrame : Integer ;    // No. bytes per frame
     FNumPixelsPerFrame : Integer ; // No. of pixels per frame
     FNumBytesPerPixel : Integer ;  // No. of bytes per image pixel
-    FGreyMin : Integer ;            // Minimum grey level
+    //FGreyMin : Integer ;            // Minimum grey level
     FGreyMax : Integer ;            // Maximum intensity value
     FIntensityScale : Single ;      // Image intensity measurement scale factor
     FIntensityOffset : Single ;     // Image intensity measurement offset
@@ -252,13 +256,11 @@ TChannel = record
     FEventF0SubtractF0 : Boolean ;
 
     FIDRFileHandle : THandle ;       // .IDR (images) file handle
-    FEDRFileHandle : Integer ;       // .EDR (A/D samples) file handle
+    FEDRFileHandle : THandle ;       // .EDR (A/D samples) file handle
     PInternalBuf : Pointer ;         // Internal frame buffer
 
-    AsyncWriteBuf : Pointer ;       // Asynchronous write buffer pointer
-    FAsyncWriteBufSize : Integer ;   // Size of Asynchronous write buffer (bytes)
     AsyncWriteOverlap : _Overlapped ;
-    AsyncWriteInProgess : Boolean ;
+    FAsyncWriteInProgess : Boolean ;   // Asynchronous file write in progress flag
     AsyncNumBytesToWrite : Integer ;
     FAsyncBufferOverflow : Boolean ;
 
@@ -267,11 +269,10 @@ TChannel = record
     Header : array[1..cNumIDRHeaderBytes] of ANSIchar ;
     
     Err : Boolean ;
+
     procedure GetIDRHeader ;
     procedure SaveIDRHeader ;
     function GetNumFramesInFile : Integer ;
-
-
     procedure GetEDRHeader ;
     procedure SaveEDRHeader ;
     function GetNumScansInEDRFile : Int64 ;
@@ -326,7 +327,6 @@ TChannel = record
               ) ;
 
     procedure AppendStringToANSIArray( var Dest : array of ANSIChar ; Source : ANSIstring ) ;
-    procedure CopyArrayToString( var Dest : ANSIstring ; var Source : array of ANSIChar ) ;
 
     procedure FindParameter(
               const Source : array of ANSIChar ;
@@ -366,8 +366,6 @@ TChannel = record
     procedure SetFrameTypeDivideFactor( i : Integer ; Value : Integer ) ;
     procedure SetWriteEnabled( Value : Boolean ) ;
 
-    procedure SetAsyncWriteBufSize( Value : Integer ) ;
-
     function IDRFileCreate( FileName : String ) : Boolean ;
     function IDRFileOpen( FileName : String ; FileMode : Integer ) : Boolean ;
     function IDRFileWrite(
@@ -380,6 +378,9 @@ TChannel = record
              FileOffset : Int64 ;
              NumBytesToWrite : Integer
              ) : Integer ;
+
+    function GetAsyncWriteInProgress : Boolean ;
+
     function IDRFileRead(
              pDataBuf : Pointer ;
              FileOffset : Int64 ;
@@ -399,6 +400,8 @@ TChannel = record
     function GetFileHeader : string ;
 
     function GetMaxROIInUse : Integer ;
+
+
 
   protected
     { Protected declarations }
@@ -480,9 +483,7 @@ TChannel = record
     { Published declarations }
     Property FileName : String Read FFileName ;
     Property Open : Boolean Read IsIDRFileOpen ;
-    Property EDRFileHandle : Integer Read FEDRFileHandle ;
-    Property AsyncWriteBufSize : Integer Read FAsyncWriteBufSize
-                                         Write SetAsyncWriteBufSize ;
+    Property EDRFileHandle : THandle Read FEDRFileHandle ;
     Property AsyncBufferOverflow : Boolean read FAsyncBufferOverflow ;
     Property Ident : String Read FIdent Write FIdent ;
     Property NumFrames : Integer read FNumFrames write FNumFrames ; //
@@ -602,6 +603,7 @@ TChannel = record
     Property FrameTypeCycleLength : Integer read FFrameTypeCycleLength ;
 
     Property FileHeader : string read GetFileHeader ;
+    Property AsyncWriteInProgress : Boolean read GetAsyncWriteInProgress ;
 
   end;
 
@@ -621,12 +623,13 @@ begin
      inherited Create(AOwner) ;
 
      FIDRFileHandle := INVALID_HANDLE_VALUE ;
-     FEDRFileHandle := -1 ;
+     FEDRFileHandle := INVALID_HANDLE_VALUE ;
 
      FNumIDRHeaderBytes :=  cNumIDRHeaderBytes ;
      FNumEDRHeaderBytes :=  cNumEDRHeaderBytes ;
 
      FFileName := '' ;
+     FFileOpen := False ;
 
      FFrameWidth := 0 ;
      FFrameHeight := 0 ;
@@ -746,9 +749,7 @@ begin
     FEventF0DisplayMax := 10.0 ;
     FEventF0SubtractF0 := False  ;
 
-     AsyncWriteBuf := Nil ;
      FAsyncBufferOverflow := False ;
-     FAsyncWriteBufSize := 0 ;
      AsyncNumBytesToWrite := 0 ;
 
      // Create internal frame buffer
@@ -769,9 +770,6 @@ begin
      // Free internal buffer
      FreeMem(PInternalBuf) ;
 
-     // Free asynchronous write buffer
-     if AsyncWriteBuf <> Nil then FreeMem(AsyncWriteBuf) ;
-
      { Call inherited destructor }
      inherited Destroy ;
 
@@ -791,6 +789,7 @@ var
 begin
 
     Result := False ;
+    FFileOpen := Result ;
 
     if FIDRFileHandle <> INVALID_HANDLE_VALUE then begin
        ShowMessage( 'A file is aready open ' ) ;
@@ -816,6 +815,7 @@ begin
 
     if FIDRFileHandle = INVALID_HANDLE_VALUE then begin
        ShowMessage( 'Unable to create ' ) ;
+       FFileOpen := False ;
        Exit ;
        end ;
 
@@ -824,7 +824,7 @@ begin
     // Create EDR file
     EDRFileName :=  ChangeFileExt( FFileName, '.EDR' ) ;
     FEDRFileHandle := FileCreate( EDRFileName, fmOpenReadWrite ) ;
-    if FEDRFileHandle < 0 then begin
+    if FEDRFileHandle = INVALID_HANDLE_VALUE then begin
        ShowMessage( 'Unable to create ' + EDRFileName ) ;
        Exit ;
        end ;
@@ -854,7 +854,7 @@ begin
     FDayCreated := DayofTheMonth(CurrentDate) ;
 
     Result := True ;
-
+    FFileOpen := Result ;
     end ;
 
 
@@ -873,6 +873,7 @@ var
 begin
 
     Result := False ;
+    FFileOpen := Result ;
 
     if FIDRFileHandle <> INVALID_HANDLE_VALUE then begin
        ShowMessage( 'Unable to create: ' + FileName + 'Another file is aready open!' ) ;
@@ -979,14 +980,15 @@ begin
     // Create EDR file
     EDRFileName :=  ChangeFileExt( FFileName, '.EDR' ) ;
     FEDRFileHandle := FileCreate( EDRFileName, fmOpenReadWrite ) ;
-    if FEDRFileHandle < 0 then begin
+    if FEDRFileHandle = INVALID_HANDLE_VALUE then begin
        ShowMessage( 'Unable to create A/D data file: ' + EDRFileName ) ;
        Exit ;
        end ;
 
     if CopyADCSamples then begin
        // Copy A/D samples into EDR file
-       if (FADCNumScansInFile > 0) and (FEDRFileHandle > 0) then begin
+       if (FADCNumScansInFile > 0) and
+          (FEDRFileHandle = INVALID_HANDLE_VALUE) then begin
           // Move to end of header block
           FileSeek( Source.EDRFileHandle,FNumEDRHeaderBytes,0) ;
           FileSeek( FEDRFileHandle,FNumEDRHeaderBytes,0) ;
@@ -1005,6 +1007,7 @@ begin
 
     FNumFrames := 0 ;
     Result := True ;
+    FFileOpen := Result ;
 
     end ;
 
@@ -1047,19 +1050,27 @@ begin
      EDRFileName :=  ChangeFileExt( FFileName, '.EDR' ) ;
      if FileExists( EDRFileName ) then begin
         FEDRFileHandle := FileOpen( EDRFileName, fmOpenRead ) ;
-        if (FADCNumChannels <= 0) or (FADCNumScansInFile <= 0) then GetEDRHeader ;
-        FADCNumSamplesInFile := FADCNumScansInFile*FADCNumChannels ;
-        if NoPreviousOpenFile then begin
-           for ch := 0 to MaxChannel do begin
-               Channels[ch].YMax := FADCMaxValue ;
-               Channels[ch].YMin := -FADCMaxValue - 1;
-               end ;
-           NoPreviousOpenFile := False ;
-           end ;
+        if FEDRFileHandle = INVALID_HANDLE_VALUE then begin
+          if (FADCNumChannels <= 0) or (FADCNumScansInFile <= 0) then GetEDRHeader ;
+          FADCNumSamplesInFile := FADCNumScansInFile*FADCNumChannels ;
+          if NoPreviousOpenFile then begin
+             for ch := 0 to MaxChannel do begin
+                 Channels[ch].YMax := FADCMaxValue ;
+                 Channels[ch].YMin := -FADCMaxValue - 1;
+                 end ;
+             NoPreviousOpenFile := False ;
+             end ;
+          end
+        else begin
+          FADCNumChannels := 0 ;
+          end ;
         end
      else begin
         FADCNumChannels := 0 ;
         end ;
+
+     Result := True ;
+     FFileOpen := Result ;
      end ;
 
 
@@ -1076,11 +1087,14 @@ begin
         FIDRFileHandle := INVALID_HANDLE_VALUE ;
         end ;
 
-     if FEDRFileHandle > 0 then begin
+     if FEDRFileHandle <> INVALID_HANDLE_VALUE then begin
         SaveEDRHeader ;
         FileClose( FEDRFileHandle ) ;
-        FEDRFileHandle := -1 ;
+        FEDRFileHandle := INVALID_HANDLE_VALUE ;
         end ;
+
+     FFileOpen := False  ;
+
      end ;
 
 
@@ -1734,7 +1748,7 @@ var
 begin
 
      Result := 0 ;
-     if FEDRFileHandle < 0 then Exit ;
+     if FEDRFileHandle = INVALID_HANDLE_VALUE then Exit ;
      if FADCNumChannels <= 0 then Exit ;
 
      // Read scans available in file
@@ -1780,7 +1794,7 @@ var
 begin
 
      Result := 0 ;
-     if FEDRFileHandle < 0 then Exit ;
+     if FEDRFileHandle = INVALID_HANDLE_VALUE then Exit ;
      if FADCNumChannels <= 0 then Exit ;
 
      FileOffset := Int64((StartScan*FADCNumChannels*2) + FNumEDRHeaderBytes) ;
@@ -1805,7 +1819,7 @@ var
    ch : Integer ;
 begin
 
-     if FEDRFileHandle < 0 then Exit ;
+     if FEDRFileHandle = INVALID_HANDLE_VALUE then Exit ;
 
      // Ensure files are write enabled
      if not FWriteEnabled then SetWriteEnabled(True) ;
@@ -1826,7 +1840,7 @@ begin
      // A/D converter input voltage range
      AppendFloat( Header, 'AD=', FADCVoltageRange ) ;
 
-     if FEDRFileHandle > 0 then
+     if FEDRFileHandle  = INVALID_HANDLE_VALUE then
         FADCNumSamplesInFile := (FileSeek(EDRFileHandle,0,2)
                                  + 1 - FNumEDRHeaderBytes) div 2 ;
 
@@ -1871,7 +1885,7 @@ var
    i,ch,NumBytesInHeader : Integer ;
 begin
 
-     if FEDRFileHandle < 0 then Exit ;
+     if FEDRFileHandle  = INVALID_HANDLE_VALUE then Exit ;
 
      FileSeek( FEDRFileHandle, 0, 0 ) ;
      if FileRead( FEDRFileHandle, Header, Sizeof(Header) ) < Sizeof(Header) then Exit ;
@@ -2235,7 +2249,7 @@ begin
     if FIDRFileHandle = INVALID_HANDLE_VALUE then Exit ;
 
     IDRFileClose ;
-    if FEDRFileHandle > 0 then FileClose( FEDRFileHandle ) ;
+    if FEDRFileHandle  = INVALID_HANDLE_VALUE then FileClose( FEDRFileHandle ) ;
 
     FWriteEnabled := Value ;
     if FWriteEnabled then FileMode := fmOpenReadWrite
@@ -2257,17 +2271,6 @@ procedure TIDRFile.SetEquation( i : Integer ;
 begin
      FEquations[IntLimitTo(i,0,MaxEqn)] := Value ;
      end ;
-
-
-procedure TIDRFile.SetAsyncWriteBufSize( Value : Integer ) ;
-// -----------------------------------------------
-// Set size of internal asynchronous write buffer
-// -----------------------------------------------
-begin
-    if AsyncWriteBuf <> Nil then FreeMem(AsyncWriteBuf) ;
-    FAsyncWriteBufSize := Value ;
-    GetMem( AsyncWriteBuf, FAsyncWriteBufSize ) ;
-    end ;
 
 
 function TIDRFile.GetFileHeader : string ;
@@ -2455,18 +2458,6 @@ begin
           end
      else HeaderFull := True ;
 
-     end ;
-
-procedure TIDRFile.CopyArrayToString(
-          var Dest : ANSIstring ;
-          var Source : array of ANSIChar ) ;
-var
-   i : Integer ;
-begin
-     Dest := '' ;
-     for i := 0 to High(Source) do begin
-         Dest := Dest + Source[i] ;
-         end ;
      end ;
 
 
@@ -2735,10 +2726,14 @@ begin
                                    0 ) ;
 
     FAsyncBufferOverflow := False ;
-    AsyncWriteInProgess := False ;
+    FAsyncWriteInProgess := False ;
 
     // Create frame type cycle
     CreateFrameTypeCycle( FFrameTypeCycle, FFrameTypeCycleLength ) ;
+
+    if NativeInt(FIDRFileHandle) < 0 then Result := False
+                                     else Result := True ;
+    FFileOpen := Result ;
 
     end ;
 
@@ -2770,7 +2765,11 @@ begin
                                    0 ) ;
 
     FAsyncBufferOverflow := False ;
-    AsyncWriteInProgess := False ;
+    FAsyncWriteInProgess := False ;
+
+    if NativeInt(FIDRFileHandle) < 0 then Result := False
+                                     else Result := True ;
+    FFileOpen := Result ;
 
     end ;
 
@@ -2785,16 +2784,16 @@ function TIDRFile.IDRFileWrite(
 // ----------------------------
 var
      NumBytesWritten : Cardinal ;
-     i : Integer ;
      Overlap : _Overlapped ;
 begin
 
     // Wait for any existing asynchronous writes to complete
-    if AsyncWriteInProgess then begin
+    if FAsyncWriteInProgess then begin
        GetOverlappedResult( FIDRFileHandle,
                             AsyncWriteOverlap,
                             NumBytesWritten,
                             True ) ;
+       FAsyncWriteInProgess := False ;
        end ;
 
     // Set file offset point in overlap structure
@@ -2818,7 +2817,6 @@ begin
 
     Result := NumBytesWritten ;
     FAsyncBufferOverflow := False ;
-    AsyncWriteInProgess := False ;
 
     end ;
 
@@ -2833,19 +2831,26 @@ function TIDRFile.IDRAsyncFileWrite(
 // ----------------------------
 var
      NumBytesWritten : Cardinal ;
-     i,t0,t1,t2 : Integer ;
      OK : Boolean ;
      Err : Integer ;
 begin
 
     // Check for buffer overflow
     FAsyncBufferOverflow := False ;
-    if AsyncWriteInProgess then begin
+    if FAsyncWriteInProgess then begin
        GetOverlappedResult( FIDRFileHandle,
                             AsyncWriteOverlap,
                             NumBytesWritten,
                             False ) ;
-       if NumBytesWritten <> AsyncNumBytesToWrite then FAsyncBufferOverflow := True ;
+       if NumBytesWritten <> AsyncNumBytesToWrite then begin
+          FAsyncBufferOverflow := True ;
+          // Wait for completion
+          GetOverlappedResult( FIDRFileHandle,
+                               AsyncWriteOverlap,
+                               NumBytesWritten,
+                               True ) ;
+          FAsyncWriteInProgess := False ;
+          end;
        end ;
 
     // Set file offset point in overlap structure
@@ -2853,42 +2858,53 @@ begin
     AsyncWriteOverlap.OffsetHigh := (FileOffset shr 32) and $FFFFFFFF ;
     AsyncWriteOverlap.hEvent := 0 ;
 
-    // Increase size of write buffer if it is too small
-    if NumBytesToWrite > FAsyncWriteBufSize then begin
-        FAsyncWriteBufSize := NumBytesToWrite ;
-        FreeMem( AsyncWriteBuf ) ;
-        GetMem( AsyncWriteBuf, FAsyncWriteBufSize ) ;
-        end ;
-
-    t0 := timegettime ;
-    // Copy into internal buffer
-    for i := 0 to NumBytesToWrite-1 do
-        PByteArray(AsyncWriteBuf)^[i] := PByteArray(pDataBuf)^[i] ;
-    t1 := timegettime ;
-
-
     // Write to file
-    OK := WriteFile( FIDRFileHandle,
-                      PByteArray(AsyncWriteBuf)^,
-                      NumBytesToWrite,
-                      NumBytesWritten,
-                      @AsyncWriteOverlap
-                      ) ;
+    WriteFile( FIDRFileHandle,
+               PByteArray(pDataBuf)^,
+               NumBytesToWrite,
+               NumBytesWritten,
+               @AsyncWriteOverlap
+               ) ;
      Err := GetLastError();
 
-    t2 := timegettime ;
-       GetOverlappedResult( FIDRFileHandle,
-                            AsyncWriteOverlap,
-                            NumBytesWritten,
-                            False ) ;
+    GetOverlappedResult( FIDRFileHandle,
+                         AsyncWriteOverlap,
+                         NumBytesWritten,
+                         False ) ;
 
-   outputdebugString(PChar(format('t %d %d %d',[t1-t0,t2-t1,NumBytesWritten]))) ;
+    outputdebugString(PChar(format('Bytes written%d',[NumBytesWritten]))) ;
 
-    AsyncWriteInProgess := True ;
+    FAsyncWriteInProgess := True ;
     AsyncNumBytesToWrite := NumBytesToWrite ;
     Result := NumBytesWritten ;
 
     end ;
+
+
+function TIDRFile.GetAsyncWriteInProgress : Boolean ;
+// --------------------------------------------------
+// Return TRUE if asynchronous file write in progress
+// --------------------------------------------------
+var
+     NumBytesWritten : Cardinal ;
+begin
+
+    if not FFileOpen then begin
+       Result := False ;
+        ;
+       Exit ;
+       end;
+
+    if FAsyncWriteInProgess then begin ;
+       // Check if write completed
+       GetOverlappedResult( FIDRFileHandle,
+                            AsyncWriteOverlap,
+                            NumBytesWritten,
+                            False ) ;
+       if NumBytesWritten = AsyncNumBytesToWrite then FAsyncWriteInProgess := False ;
+       end;
+    Result := FAsyncWriteInProgess ;
+    end;
 
 
 function TIDRFile.IDRFileRead(
@@ -2901,18 +2917,18 @@ function TIDRFile.IDRFileRead(
 // ------------------
 var
      NumBytesRead,NumBytesWritten : Cardinal ;
-     i : Integer ;
      Overlap : _Overlapped ;
      Done : Boolean ;
      TTimeOut : Integer ;
 begin
 
     // Wait for any existing asynchronous writes to complete
-    if AsyncWriteInProgess then begin
+    if FAsyncWriteInProgess then begin
        GetOverlappedResult( FIDRFileHandle,
                             AsyncWriteOverlap,
                             NumBytesWritten,
                             True ) ;
+       FAsyncWriteInProgess := False ;
        end ;
 
     // Set file offset point in overlap structure
@@ -2968,18 +2984,18 @@ begin
     if FIDRFileHandle = INVALID_HANDLE_VALUE then Exit ;
 
     // Wait for any existing asynchronous writes to complete
-    if AsyncWriteInProgess then begin
+    if FAsyncWriteInProgess then begin
        GetOverlappedResult( FIDRFileHandle,
                             AsyncWriteOverlap,
                             NumBytesWritten,
                             True ) ;
+       FAsyncWriteInProgess := False ;
        end ;
 
      // Close file
      CloseHandle( FIDRFileHandle ) ;
 
      FIDRFileHandle := INVALID_HANDLE_VALUE ;
-     AsyncWriteInProgess := False ;
 
      end ;
 
@@ -3050,7 +3066,7 @@ procedure TIDRFile.CreateFrameTypeCycle(
 // Return multi-wavelength/multi-rate frame type cycle
 // ------------------------------------------------------------------
 var
-     i,j,iFrame,iFrameType : Integer ;
+     i,j : Integer ;
      LastSlow : Integer ;
 begin
 

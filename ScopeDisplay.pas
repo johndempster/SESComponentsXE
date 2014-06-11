@@ -102,13 +102,14 @@ unit ScopeDisplay;
   26.07.12 ... JD time calibration bar in print and clipboard images no longer has excessive digits
   04.09.12 ... JD Vertical tickmarks now computed correctly when Y axis scaling factor is negative
   13.11.13 ... JD .CopyDataToClipboard Line written limited to number of time points available
+  11.06.14 ... JD Ratio channel names can now be split over two line by including '/' separator
   }
 
 interface
 
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
-  Clipbrd, printers, mmsystem, math, strutils ;
+  Clipbrd, printers, mmsystem, math, strutils, types, uitypes ;
 const
      ScopeChannelLimit = 31 ;
      AllChannels = -1 ;
@@ -552,7 +553,7 @@ procedure Register;
 
 implementation
 const
-    LeftEdgeSpace = 50 ;
+    LeftEdgeSpace = 70 ;
     RightEdgeSpace = 20 ;
     cZoomInButton = 0 ;
     cZoomOutButton = 1 ;
@@ -963,19 +964,16 @@ const
     TickMultipliers : array[0..6] of Integer = (1,2,5,10,20,50,100) ;
 var
    CTop,ch,i,NumInUse,AvailableHeight,ChannelHeight,ChannelSpacing,LastActiveChannel : Integer ;
-   Lab : string ;
-   x,xPix,y,yPix : Integer ;
-   dy,dx : Single ;
+   x,xPix,yPix : Integer ;
+   dx : Single ;
    KeepColor : TColor ;
-   XGrid : Single ;                // Vertical grid X coord
    s : String ;
-   YMid : Integer ;
-   yVal : Single ;
+   XLeft,YMid : Integer ;
    yRange,TickBase,YTick,YTickSize,YTickMin,YTickMax,YScaledMax,YScaledMin : Single ;
    XRange,XTick,XTickSize,XTickMin,XTickMax,XScaledMax,XScaledMin : Single ;
    XAxisAt : Integer ;
    YTotal : Single ;
-   iTick, NumTicks : Integer ;
+   iTick, NumTicks,iSlashPos : Integer ;
 begin
 
      Canv.Font.Size := FFontSize ;
@@ -1241,17 +1239,27 @@ begin
          Canv.Pen.Color := clBlack ; //Channel[ch].Color ;
          Canv.Font.Color := clBlack ;
 
+         iSlashPos := Pos('/', Channel[ch].ADCName ) ;
+         if iSlashPos <= 0 then s := Channel[ch].ADCName
+                           else s := LeftStr(Channel[ch].ADCName,iSlashPos-1) ;
+
          // Draw label & units mid-way between lower and upper limits
          YMid := (Channel[ch].Top + Channel[ch].Bottom) div 2 ;
-         s := Channel[ch].ADCName ;
-         Canv.TextOut( Max(Channel[ch].Left - Canv.TextWidth(s+'x') - 1,0),
-                       YMid - Canv.TextHeight(s) -1,
-                       s) ;
+         XLeft := Max(Channel[ch].Left - Canv.TextWidth(s+'x') - 1,0);
+         Canv.TextOut( XLeft,YMid - Canv.TextHeight(s) -1,s) ;
 
-         s := Channel[ch].ADCUnits ;
-         Canv.TextOut( Max(Channel[ch].Left - Canv.TextWidth(s+'x') - 1,0),
-                       YMid,
-                       s) ;
+         if iSlashPos > 0  then begin
+            // Draw line
+            Canv.MoveTo( XLeft, yMid )  ;
+            Canv.LineTo( XLeft + Canv.TextWidth(s), yMid )  ;
+            // Draw denominator
+            s := RightStr(Channel[ch].ADCName,Length(Channel[ch].ADCName)-iSlashPos) ;
+            Canv.TextOut( XLeft,YMid + 1,s) ;
+            end
+         else begin
+            s := Channel[ch].ADCUnits ;
+            Canv.TextOut( XLeft,YMid,s) ;
+            end ;
 
          if not FZoomDisableVertical then begin
             DrawZoomButton( Canv,
@@ -3110,9 +3118,9 @@ procedure TScopeDisplay.Print ;
   Copy signal on display to printer
   ---------------------------------}
 var
-   i,j,n,ch,LastCh,YPix,xPix,Rec,NumBytesPerRecord : Integer ;
-   x,YTotal : single ;
-   LeftMarginShift, TopMarginShift, XPos,YPos : Integer ;
+   i,ch,LastCh,YPix,xPix,Rec,NumBytesPerRecord : Integer ;
+   YTotal : single ;
+   LeftMarginShift, XPos,YPos : Integer ;
    OK : Boolean ;
    ChannelHeight,cTop,NumInUse,AvailableHeight : Integer ;
    PrChan : Array[0..ScopeChannelLimit] of TScopeChannel ;
@@ -3331,9 +3339,9 @@ procedure TScopeDisplay.CopyImageToClipboard ;
   Copy signal image on display to clipboard
   -----------------------------------------}
 var
-   i,j,n,ch,LastCh,yPix,xPix,Rec,NumBytesPerRecord : Integer ;
-   x,YTotal : single ;
-   LeftMarginShift, TopMarginShift : Integer ;
+   i,ch,LastCh,yPix,xPix,Rec,NumBytesPerRecord : Integer ;
+   YTotal : single ;
+   LeftMarginShift : Integer ;
    OK : Boolean ;
    ChannelHeight,cTop,NumInUse,AvailableHeight : Integer ;
    MFChan : Array[0..ScopeChannelLimit] of TScopeChannel ;
