@@ -1623,9 +1623,8 @@ begin
        Session.AcquisitionInProgress := True ;
        end ;
 
-
     If Err <> 0 then Result := True ;
-    outputdebugstring(pchar(format('camera started %d %d',[NumBytesPerFrame1,NumBytesPerFrame])));
+
     end ;
 
 

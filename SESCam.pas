@@ -113,6 +113,11 @@ const
 
 type
 
+  TBigByteArray = Array[0..$1FFFFFFF] of Byte ;
+  pBigByteArray = ^TBigByteArray ;
+  TBigWordArray = Array[0..$1FFFFFFF] of Word ;
+  pBigWordArray = ^TBigWordArray ;
+
   TSESCam = class(TComponent)
   private
     { Private declarations }

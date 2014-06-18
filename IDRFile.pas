@@ -53,7 +53,9 @@ unit IDRFile;
 // 29.05.14 JD .AsyncFileWrite() now transfers directly from source data buffer
 //             to increase file writing speed.
 //             EDRFileHandle now THandle (for 64 bit compatibility)
-
+// 17.06.14 JD Error in DiskSpaceAvailable() causing false report of free disk space fixed
+//             SetWriteEnabled() EDR file now closed correctly (fixes inability to
+//             reselect existing file as a new data file.)
 interface
 
 uses
@@ -987,8 +989,7 @@ begin
 
     if CopyADCSamples then begin
        // Copy A/D samples into EDR file
-       if (FADCNumScansInFile > 0) and
-          (FEDRFileHandle = INVALID_HANDLE_VALUE) then begin
+       if FADCNumScansInFile > 0 then begin
           // Move to end of header block
           FileSeek( Source.EDRFileHandle,FNumEDRHeaderBytes,0) ;
           FileSeek( FEDRFileHandle,FNumEDRHeaderBytes,0) ;
@@ -1050,7 +1051,7 @@ begin
      EDRFileName :=  ChangeFileExt( FFileName, '.EDR' ) ;
      if FileExists( EDRFileName ) then begin
         FEDRFileHandle := FileOpen( EDRFileName, fmOpenRead ) ;
-        if FEDRFileHandle = INVALID_HANDLE_VALUE then begin
+        if FEDRFileHandle <> INVALID_HANDLE_VALUE then begin
           if (FADCNumChannels <= 0) or (FADCNumScansInFile <= 0) then GetEDRHeader ;
           FADCNumSamplesInFile := FADCNumScansInFile*FADCNumChannels ;
           if NoPreviousOpenFile then begin
@@ -1840,9 +1841,8 @@ begin
      // A/D converter input voltage range
      AppendFloat( Header, 'AD=', FADCVoltageRange ) ;
 
-     if FEDRFileHandle  = INVALID_HANDLE_VALUE then
-        FADCNumSamplesInFile := (FileSeek(EDRFileHandle,0,2)
-                                 + 1 - FNumEDRHeaderBytes) div 2 ;
+     FADCNumSamplesInFile := (FileSeek(EDRFileHandle,0,2)
+                             + 1 - FNumEDRHeaderBytes) div 2 ;
 
      if FADCNumChannels > 0 then begin
         FADCNumScansInFile := FADCNumSamplesInFile div FADCNumChannels ;
@@ -2249,7 +2249,6 @@ begin
     if FIDRFileHandle = INVALID_HANDLE_VALUE then Exit ;
 
     IDRFileClose ;
-    if FEDRFileHandle  = INVALID_HANDLE_VALUE then FileClose( FEDRFileHandle ) ;
 
     FWriteEnabled := Value ;
     if FWriteEnabled then FileMode := fmOpenReadWrite
@@ -2258,6 +2257,7 @@ begin
     // Open files in selected mode
     IDRFileOpen( FFileName, FileMode ) ;
 
+    if FEDRFileHandle <> INVALID_HANDLE_VALUE then FileClose( FEDRFileHandle ) ;
     FEDRFileHandle := FileOpen( ChangeFileExt( FFileName, '.EDR' ), FileMode ) ;
 
     end ;
@@ -2689,8 +2689,9 @@ begin
 
      // Get drive
      DriveLetter := UpperCase(ExtractFileDrive(FFileName)) ;
-     DiskIndex := Pos( DriveLetter, DriverLetterList ) ;
-     if DiskIndex > 0 then FreeSpace := DiskFree(DiskIndex) ;
+     DiskIndex := Pos( LeftStr(DriveLetter,1), DriverLetterList ) ;
+     if DiskIndex > 0 then FreeSpace := DiskFree(DiskIndex)
+                      else  FreeSpace := 0 ;
 
      SpaceRequired := Int64(FFrameWidth) *
                       Int64(FFrameHeight) *
@@ -2698,10 +2699,8 @@ begin
      SpaceRequired := SpaceRequired*Int64(NumFrames) ;
      SpaceRequired := SpaceRequired + Int64(1000000) ;
 
-     if FreeSpace >  SpaceRequired then Result := True
-                                   else Result := False ;
-
-     //if Uppercase(DriveLetter[1]) = 'G' then Result := True ;
+     if FreeSpace > SpaceRequired then Result := True
+                                  else Result := False ;
 
      end ;
 
@@ -2872,7 +2871,9 @@ begin
                          NumBytesWritten,
                          False ) ;
 
-    outputdebugString(PChar(format('Bytes written%d',[NumBytesWritten]))) ;
+    outputdebugString(PChar(format('Async write %d %d %d',
+    [FileOffset,Cardinal(AsyncWriteOverlap.OffsetHigh),
+    Cardinal(AsyncWriteOverlap.Offset)]))) ;
 
     FAsyncWriteInProgess := True ;
     AsyncNumBytesToWrite := NumBytesToWrite ;

@@ -16,6 +16,7 @@ unit QCAMUnit;
 // 24-7-13 JD Now compiles unders Delphi XE2/3 as well as 7. (not tested)
 // 16.05.14 JD QCAM_GetDLLAddress: Handle now defined as THandle
 //             rather than Integer (possible cause of errors with 64 bit version)
+// 17.06.14 JD 64 bit library now detected
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, messages, controls, math ;
@@ -944,14 +945,23 @@ function QCAMAPI_LoadLibrary  : Boolean ;
   ---------------------------------------------}
 var
     LibFileName : string ;
+    ChildLibFileName : string ;
 begin
 
      Result := LibraryLoaded ;
 
      if LibraryLoaded then Exit ;
 
+
      { Load DLL camera interface library }
-     LibFileName := 'QCamDriver.dll' ;
+    {$IFDEF WIN32}
+      LibFileName := 'QCamDriver.dll' ;
+      ChildLibFileName := 'QCamChildDriverx64.dll' ;
+    {$ELSE}
+      LibFileName := 'QCamDriver.dll' ;
+      ChildLibFileName := 'QCamChildDriverx64.dll' ;
+    {$IFEND}
+
      LibraryHnd := LoadLibrary( PChar(LibFileName));
      if LibraryHnd > 0 then LibraryLoaded := True ;
 
@@ -961,7 +971,7 @@ begin
         Exit ;
         end ;
 
-     LibraryChildHnd := LoadLibrary( PChar('QCamChildDriver.dll'));
+     LibraryChildHnd := LoadLibrary( PChar(ChildLibFileName));
 
      @QCam_ProcessRaw := QCAMAPI_GetDLLAddress(LibraryHnd,'QCam_ProcessRaw') ;
      @QCam_GrabRawNow := QCAMAPI_GetDLLAddress(LibraryHnd,'QCam_GrabRawNow') ;
@@ -1415,6 +1425,7 @@ begin
 
     // Free DLL library
     FreeLibrary( LibraryHnd ) ;
+    FreeLibrary( LibraryChildHnd ) ;
 
     Session.CameraOpen := False ;
 
@@ -1631,6 +1642,7 @@ var
     i : Integer ;
     RScale : Double ;
 begin
+    if not Session.CameraOpen then Exit ;
 
     // Set binning factor
     i := 0 ;
