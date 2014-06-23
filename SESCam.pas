@@ -1589,25 +1589,28 @@ begin
      FNumBytesPerFrame := FFrameWidth*FFrameHeight*FNumBytesPerPixel ;
      FNumBytesInFrameBuffer := FNumBytesPerFrame*FNumFramesInBuffer ;
 
+     outputdebugstring(pchar('Allocating buffer'));
+
      DeallocateFrameBuffer ;
 
      if FNumBytesInFrameBuffer > 0 then begin
         Try
           PFrameBuffer := GetMemory( NativeInt(FNumBytesInFrameBuffer + 4096) ) ;
           PAllocatedFrameBuffer := PFrameBuffer ;
-
+          // Allocate to 64 bit boundary
           PFrameBuffer := Pointer( (NativeUInt(PByte(PFrameBuffer)) + $F) and (not $F)) ;
-
         Except
             on E : EOutOfMemory do begin
+               outputdebugstring(pchar('Allocating buffer failed'));
                Exit ;
                end;
         end ;
+        outputdebugstring(pchar('Allocating buffer done'));
         end;
 
      ImageAreaChanged := False ;
      Result := True ;
-
+     outputdebugstring(pchar('buffer allocated'));
      end ;
 
 

@@ -38,11 +38,13 @@ unit pvcam;
 //             (avoids crash with OptiMOS or other hires CCD cameras
 // 04.06.14 JD ReadoutTime has additional 1ms for frame transfers
 //             and has spedific computation for OptiMOS
+// 20.06.14 JD StopCapture now also aborts camera operation
+
 {OPTIMIZATION OFF}
 {$DEFINE USECONT}
 
 interface
-uses classes,math,strutils ;
+uses classes,math,strutils,mmsystem ;
 const
 
 //*********************** Class 2: Data types ********************************/
@@ -1390,24 +1392,24 @@ begin
      pl_exp_init_seq ;
      PVCAM_DisplayErrorMessage( 'pl_exp_init_seq ') ;
 
-     NumBytesPerFrame1 := NumBytesPerFrame ;
-     pl_exp_setup_cont( Session.Handle,
-                        1,
-                        @FrameRegion,
-                        TIMED_MODE,
-                        1,
-                        @NumBytesPerFrame1,
-                        CIRC_OVERWRITE ) ;
-     // Removed because it was reporting spurious error with CoolSnap 11/6/14
-     //PVCAM_DisplayErrorMessage( 'pl_exp_setup_cont (CheckFrameInterval) ') ;
-
-     // Get readout time from camera
-     ReadoutTime := 0.0 ;
      pl_get_param( Session.Handle, PARAM_READOUT_TIME, ATTR_AVAIL, @Available ) ;
      if Available <> 0 then begin
-           pl_get_param( Session.Handle, PARAM_READOUT_TIME, ATTR_CURRENT, @ReadoutTime ) ;
-           ReadoutTime := ReadoutTime*0.001 ;
-           end ;
+        NumBytesPerFrame1 := NumBytesPerFrame ;
+        pl_exp_setup_cont( Session.Handle,
+                           1,
+                           @FrameRegion,
+                           TIMED_MODE,
+                           1,
+                           @NumBytesPerFrame1,
+                           CIRC_OVERWRITE ) ;
+        PVCAM_DisplayErrorMessage( 'pl_exp_setup_cont (CheckFrameInterval) ') ;
+
+        // Get readout time from camera
+        ReadoutTime := 0.0 ;
+        pl_get_param( Session.Handle, PARAM_READOUT_TIME, ATTR_CURRENT, @ReadoutTime ) ;
+        ReadoutTime := ReadoutTime*0.001 ;
+        end
+     else ReadoutTime := 0.0 ;
 
      // Estimate readout time from pixel read time
      if ReadoutTime <= 0.0 then begin
@@ -1473,7 +1475,7 @@ function PVCAM_StartCapture(
 
 var
     ii : Integer ;
-    i,NumFrames,NumBytesPerFrame1 : Cardinal ;
+    NumFrames,NumBytesPerFrame1 : Cardinal ;
     Available : Word ;
     LongValue : DWord ;
     ReadoutTime : Double ;
@@ -1485,6 +1487,8 @@ var
     ExposureMode : TExposureMode ;
     Err : Word ;
 begin
+
+    outputdebugstring(pchar('PVCAM_StartCapture'));
 
     Result := False ;
     if not LibraryLoaded then Exit ;
@@ -1619,12 +1623,10 @@ begin
     // Begin acquisition
     if Err <> 0 then begin
        pl_exp_start_cont( Session.Handle, FrameBuffer, NumBytesInFrameBuffer ) ;
-       PVCAM_DisplayErrorMessage( 'pl_exp_start_cont ' ) ;
        Session.AcquisitionInProgress := True ;
        end ;
 
     If Err <> 0 then Result := True ;
-
     end ;
 
 
@@ -1639,9 +1641,14 @@ begin
     Result := False ;
     if not LibraryLoaded then Exit ;
 
+    outputdebugstring(pchar('PVCAM_StopCapture'));
+
     // Stop continuous capture
     pl_exp_stop_cont( Session.Handle, 0 ) ;
     PVCAM_DisplayErrorMessage( 'pl_exp_stop_cont' ) ;
+
+    // Abort camera operations
+    pl_exp_abort( Session.Handle, Word(CCS_HALT) ) ;
 
     // Uninitialise frame sequence system
     pl_exp_uninit_seq ;
