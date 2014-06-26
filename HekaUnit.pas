@@ -13,6 +13,10 @@ unit HekaUnit;
 //           Filter 2 response now set by EPC9_SetF23Response
 // 12.03.14 LIH_Setdigital disabled causing access violation on startup
 // 25.03.14 Support for Heka ITC-16-USB added
+// 25.06.14 Free run and external trigger mode now working. Free Run/Ext trigger acquisition
+//          started in Heka_adctomemory() by calling Heka_memoryToDACandDigital()
+//          ITC-18 Min. sampling interval limited t0 greater than 0.01*max(No. ADC,4)
+//          because ITC-18 hung up with > 100 kHz sampling
 
 interface
 
@@ -561,7 +565,10 @@ TEPC9_DLLVersion= function : LongInt ; stdcall ;
             var dt : Double ;
             ADCVoltageRange : Single ;
             TriggerMode : Integer ;
-            CircularBuffer : Boolean
+            CircularBuffer : Boolean ;
+            DefDACVolts : Array of Single ;            // Default DAC voltage settings
+            NumDACChannels : Integer ;              // No. DAC channels
+            DefDigValue : Integer                     // Digital output word
             ) : Boolean ; stdcall ;
 
   function HEKA_StopADC : Boolean ;
@@ -572,16 +579,18 @@ TEPC9_DLLVersion= function : LongInt ; stdcall ;
             ) ;
 
   procedure HEKA_CheckSamplingInterval(
-            var SamplingInterval : Double ) ;
+            var SamplingInterval : Double ;
+            NumADCChannels : Integer ;
+            DACMaxChannels : Integer ) ;
 
 
   function  HEKA_MemoryToDACAndDigitalOut(
           var DACValues : Array of SmallInt  ; // D/A output values
-          NumDACChannels : Integer ;                // No. D/A channels
-          NumDACPoints : Integer ;                  // No. points per channel
+          NumDACChannels : Integer ;           // No. D/A channels
+          NumDACPoints : Integer ;             // No. points per channel
           var DigValues : Array of SmallInt  ; // Digital port values
           DigitalInUse : Boolean ;             // Output to digital outs
-          ExternalTrigger : Boolean ;           // Wait for ext. trigger
+          ExternalTrigger : Boolean ;          // Wait for ext. trigger
           RepeatWaveform  : Boolean            // Repeat output waveform
           ) : Boolean ;                        // before starting output
 
@@ -960,6 +969,14 @@ begin
                         FIFOMaxPoints,
                         AOMaxChannels,
                         AIMaxChannels );
+
+     // Temporary bug fix 26.6.14
+     // Min. interval doubled for ITC-16/18 because ITC-18 seems to be unable to
+     // handle more than 100 kHz.
+     if (iBoardType = LIH_ITC18Board) or
+        (iBoardType = LIH_ITC16Board) then begin
+        MinSamplingInterval := MinSamplingInterval*2.0 ;
+        end;
 
      ADCMaxChannels :=  AIMaxChannels ;
      DACMaxChannels :=  AOMaxChannels ;
@@ -1346,21 +1363,32 @@ function HEKA_ADCToMemory(
           var dt : Double ;                       { Sampling interval= function(s)= function(IN) }
           ADCVoltageRange : Single ;              { A/D input voltage range= function(V)= function(IN) }
           TriggerMode : Integer ;                 { A/D sweep trigger mode= function(IN) }
-          CircularBuffer : Boolean                { Repeated sampling into buffer= function(IN) }
+          CircularBuffer : Boolean ;               { Repeated sampling into buffer= function(IN) }
+          DefDACVolts : Array of Single ;            // Default DAC voltage settings
+          NumDACChannels : Integer ;              // No. DAC channels
+          DefDigValue : Integer                     // Digital output word
           ) : Boolean ;                           { Returns TRUE indicating A/D started }
 { -----------------------------
   Start A/D converter sampling
   -----------------------------}
+const
+     MaxDACValue = 32767 ;
+     MinDACValue = -32768 ;
+
 var
-   i,AcquisitionMode : Word ;
-   OK : LongInt ;
-   SetStimEnd,ReadContinuously,Immediate : Byte ;
-   AODataBufs : Array[0..LIH_MaxDacChannels-1] of PSmallIntArray ;
+   i,j,ch : Word ;
+   DACValues : PSmallIntArray ;
+   DigValues : PSmallIntArray ;
+   iDac : Array[0..15] of Integer ;
+   DACScale : Single ;
+   WaitForTrigger : Boolean ;
 begin
 
      Result := False ;
      if not DeviceInitialised then HEKA_InitialiseBoard ;
      if not DeviceInitialised then Exit ;
+
+     HEKA_StopADC ;
 
      AINumChannels := NumADCChannels ;
      AONumChannels := 1 ;
@@ -1368,43 +1396,48 @@ begin
      AICircularBuffer := CircularBuffer ;
      AIPointer := 0 ;
 
+
      SamplingInterval := dt ;
-     Heka_CheckSamplingInterval( SamplingInterval ) ;
+     Heka_CheckSamplingInterval( SamplingInterval,NumADCChannels, NumDACChannels ) ;
+     dt := SamplingInterval ;
 
      if TriggerMode <> tmWaveGen then begin
 
-        // Set up a single
-        AONumPoints := 1000 ;
-        AONumChannels := 1 ;
-        GetMem( AODataBufs[0], AONumPoints*2 ) ;
-        for i := 0 to AONumPoints-1 do AODataBufs[0]^[i] := 0 ;
+        // Start acquisition sweep in free run and external trigger mode
+        // using default analog and digital outputs
 
-        // Set external trigger mode
-        if TriggerMode = tmExtTrigger then AcquisitionMode := LIH_TriggeredAcquisition
-                                      else AcquisitionMode := 0 ;
+        GetMem( DACValues, NumADCSamples*NumDACChannels*2 ) ;
+        GetMem( DigValues, NumADCSamples*2 ) ;
 
-        AOPointer := 0 ;
-        SetStimEnd := 0 ;
-        ReadContinuously := 1 ;
-        Immediate := 0 ;
-        OK := LIH_StartStimAndSample ( 1,
-                                       NumADCChannels,
+        // Create default D/A and digital output waveforms
+        DACScale := MaxDACValue/FDACVoltageRangeMax ;
+        for ch  := 0 to NumDACChannels-1 do begin
+            iDAC[ch] := Max(Min(Round(DefDACVolts[ch]*DACScale),MaxDACValue),MinDACValue) ;
+            end;
+
+        j := 0 ;
+        for i := 0 to NumADCSamples-1 do begin
+            DigValues[i] := DefDigValue ;
+            for ch  := 0 to NumDACChannels-1 do begin
+              DACValues[j] := iDAC[ch] ;
+              Inc(j) ;
+              end ;
+            end ;
+
+        // Initiate A/D and D/A
+
+        if TriggerMode = tmFreeRun then WaitForTrigger := False
+                                   else WaitForTrigger := True ;
+        HEKA_MemoryToDACAndDigitalOut( DACValues^,
+                                       NumDACChannels,
                                        NumADCSamples,
-                                       1,
-                                       AcquisitionMode,
-                                       @AOChannelList,
-                                       @AICHannelList,
-                                       SamplingInterval,
-                                       @AODataBufs,
-                                       Nil,
-                                       Immediate,
-                                       SetStimEnd,
-                                       ReadContinuously ) ;
+                                       DigValues^,
+                                       true,
+                                       WaitForTrigger,
+                                       false ) ;
 
-        FreeMem(AODataBufs[0]) ;
-
-        ADCActive := True ;
-        DACActive := False ;
+        FreeMem(DacValues) ;
+        FreeMem(DigValues) ;
         end ;
 
 
@@ -1486,14 +1519,21 @@ begin
 
 
 procedure HEKA_CheckSamplingInterval(
-          var SamplingInterval : Double ) ;
+          var SamplingInterval : Double ;
+          NumADCChannels : Integer;
+          DACMaxChannels : Integer ) ;
 // --------------------------------------------------------------------------
 // Ensure that sampling interval is within limits and divisible by tick size
 // --------------------------------------------------------------------------
-  begin
-
+var
+  iDiv : Integer ;
+begin
+  iDiv := Max(NumADCChannels,DACMaxChannels);
+  SamplingInterval := SamplingInterval / iDiv ;
   SamplingInterval := Max(Round(SamplingInterval/SamplingIntervalStepSize),1)*SamplingIntervalStepSize ;
   SamplingInterval := Min(Max(SamplingInterval,MinSamplingInterval),MaxSamplingInterval) ;
+  SamplingInterval := SamplingInterval * iDiv ;
+  SamplingInterval := Max(Round(SamplingInterval/SamplingIntervalStepSize),1)*SamplingIntervalStepSize ;
 
 	end ;
 
@@ -1529,8 +1569,6 @@ begin
     AONumSamples := NumDACPoints ;
     AOCircularBuffer := RepeatWaveform ;
 
-    //EPC9_SetExtStimPath( 0.1, EPC9_ExtStimInput ) ;
-
     // Copy DAC waveform data into internal buffer
     // Ensure that the buffer has data for MinBufferDuration (s)
     if AOBuf <> Nil then FreeMem(AOBuf) ;
@@ -1545,7 +1583,7 @@ begin
         if j >= NPDACValues then j := j - AONumChannels ;
         end;
 
-    // Fill transfer buffer with initialise waveform to fill FIFO
+    // Fill transfer buffer with initial waveform to fill FIFO
     NPWrite := (Min(FIFOMaxPoints,NP) div AONumChannels)*AONumChannels ;
     for ch  := 0 to AONumChannels-1 do begin
       GetMem( AODataBufs[ch], NPWrite*2 ) ;
@@ -1564,7 +1602,10 @@ begin
     SetStimEnd := 0 ;
     ReadContinuously := 0 ;
     Immediate := 0 ;
-    AcquisitionMode := LIH_EnableDacOutput ;
+
+    // Set external trigger mode
+    if ExternalTrigger then AcquisitionMode := LIH_TriggeredAcquisition or LIH_EnableDacOutput
+                       else AcquisitionMode := LIH_EnableDacOutput ;
 
     OK := LIH_StartStimAndSample ( AONumChannels,
                                    AINumChannels,

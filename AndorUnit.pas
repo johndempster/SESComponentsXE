@@ -21,6 +21,9 @@ unit AndorUnit;
 // 16.08.13 JD Readout preamp gain and vertical shift speed can now be set by user
 // 16.05.14 JD Andor_GetDLLAddress: Handle now defined as THandle
 //             rather than Integer (possible cause of errors with 64 bit version)
+// 23.06.14 JD Now loads atmcd64d.dll in 64 bit version
+//             DLL now freed in Andor_CloseCamera
+
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, messages, controls, math, strutils ;
@@ -955,6 +958,7 @@ procedure Andor_LoadLibrary(
 var
     WinDir : Array[0..255] of Char ;
     SysDrive : String ;
+    LibFileName : string ;
 begin
 
      LibraryLoaded := False ;
@@ -963,18 +967,26 @@ begin
      GetWindowsDirectory( WinDir, High(WinDir) ) ;
      SysDrive := ExtractFileDrive(String(WinDir)) ;
 
+     { Load DLL camera interface library }
+
+    {$IFDEF WIN32}
+      LibFileName := 'atmcd32d.dll' ;
+    {$ELSE}
+      LibFileName := 'atmcd64d.dll' ;
+    {$IFEND}
+
      // Look for DLL initially in Winfluor folder
-     Session.LibFileName := ExtractFilePath(ParamStr(0)) + 'atmcd32d.dll' ;
+     Session.LibFileName := ExtractFilePath(ParamStr(0)) + LibFileName ;
 
      if not FileExists( Session.LibFileName ) then begin
         // If not in winfluor folder, try Andor SDK folder
-        Session.LibFileName := SysDrive + '\Program Files\Andor Solis\Drivers\atmcd32d.dll' ;
+        Session.LibFileName := SysDrive + '\Program Files\Andor Solis\Drivers\' + LibFileName ;
         if not FileExists( Session.LibFileName ) then begin
             // If not in most recent SDK folder try older one
-            Session.LibFileName := SysDrive + '\Program Files\Ixon\Drivers\atmcd32d.dll' ;
+            Session.LibFileName := SysDrive + '\Program Files\Ixon\Drivers\' + LibFileName ;
             if not FileExists( Session.LibFileName ) then begin
                 // Use Windows directory
-                Session.LibFileName := 'atmcd32d.dll' ;
+                Session.LibFileName := LibFileName ;
                 end ;
             end ;
         end ;
@@ -982,7 +994,7 @@ begin
      { Load DLL camera interface library }
      LibraryHnd := LoadLibrary( PChar(Session.LibFileName));
      if LibraryHnd <= 0 then begin
-        ShowMessage( 'Andor: ' + Session.LibFileName + ' not found! (Copy to c:\winfluor folder') ;
+        ShowMessage( Session.LibFileName + ' not found! (Copy to c:\Program Files\Winfluor folder') ;
         end ;
 
      @IdAndorDll := Andor_GetDLLAddress(LibraryHnd,'IdAndorDll') ;
@@ -1101,7 +1113,7 @@ function Andor_GetDLLAddress(
 begin
     Result := GetProcAddress(Handle,PChar(ProcName)) ;
     if Result = Nil then
-       ShowMessage('atmcd32d.dll: ' + ProcName + ' not found') ;
+       ShowMessage(ProcName + ' not found') ;
     end ;
 
 
@@ -1493,11 +1505,9 @@ begin
     // Close camera
     Andor_CheckError( 'ShutDown', ShutDown ) ;
 
-    // Free image transfer buffer
-//    if Session.PImageBuffer <> Nil then begin
-//       FreeMem( Session.PImageBuffer ) ;
-//       Session.PImageBuffer := Nil ;
-//       end ;
+    // Free DLL
+    if LibraryLoaded then FreeLibrary( LibraryHnd ) ;
+    LibraryLoaded := False ;
 
     Session.GetImageInUse := False ;
     Session.CameraOpen := False ;

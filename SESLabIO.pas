@@ -122,6 +122,9 @@ unit SESLabIO;
   14.01.14 Heka support updated to work with current EPCDLL downloadable from Heka site
            Support for ITC-18-USB added to HekaUnit.pas
   25.03.14 Heka ITC-16-USB added to HekaUnit.pas
+  26.06.14 External stimulus triggering now works with Heka ITC-18
+           .ADCCHANNELNUMZEROAVG property added
+
   ================================================================================ }
 
 interface
@@ -247,6 +250,8 @@ type
     FADCChannelYMin : Array[0..MaxADCChannels-1] of Single ;
     FADCChannelYMax : Array[0..MaxADCChannels-1] of Single ;
     FADCChannelInputNumber : Array[0..MaxADCChannels-1] of Integer ;
+
+    FADCChannelNumZero : Integer ;  // No. of points to average when zero level calculated from record region
 
     FDACMinValue : Integer ;           // Lower limit of D/A sample value
     FDACMaxValue : Integer ;           // upper limit of D/A sample value
@@ -682,7 +687,8 @@ procedure TritonAutoCompensation(
              Read GetADCChannelYMax Write SetADCChannelYMax ;
     Property ADCChannelInputNumber[Chan : Integer] : Integer
              Read GetADCChannelInputNumber Write SetADCChannelInputNumber ;
-
+    Property ADCChannelNumZero : Integer
+             Read FADCChannelNumZero write FADCChannelNumZero ;
 
     Property DACVoltageRange[Chan : Integer ] : Single
                                             Read GetDACVoltageRange ;
@@ -976,6 +982,7 @@ begin
         FADCChannelYMax[i] := FADCMaxValue ;
         FADCChannelInputNumber[i] := i ;
         end ;
+     FADCChannelNumZero := 20 ;
 
      FDACMaxChannels := 2 ;
      FDACMinValue := -2047 ;
@@ -1876,7 +1883,10 @@ begin
                               FADCSamplingInterval,
                               FADCVoltageRanges[FADCVoltageRangeIndex],
                               FADCTriggerMode,
-                              FADCCircularBuffer ) ;
+                              FADCCircularBuffer,
+                              FLastDACVolts,
+                              FLastDACNumChannels,
+                              FLastDigValue ) ;
           end ;
        end ;
      FADCActive := True ;
@@ -2865,7 +2875,7 @@ begin
 
       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,
       HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
-          Heka_CheckSamplingInterval( FADCSamplingInterval) ;
+          Heka_CheckSamplingInterval( FADCSamplingInterval,FADCNumChannels, FDACMaxChannels ) ;
           end ;
 
        end ;
@@ -3616,6 +3626,11 @@ begin
           end ;
 
        WirelessEEG : begin
+          end ;
+
+       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,
+       HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
+          Triggered := True ;
           end ;
 
        end ;
@@ -4649,6 +4664,8 @@ begin
         AddElementFloat( iNode, 'ADCVOLTAGERANGE', FADCChannelVoltageRanges[i] ) ;
         end ;
 
+    AddElementInt( ProtNode, 'ADCCHANNELNUMZEROAVG', FADCChannelNumZero ) ;
+
     // D/A channels
     for i := 0 to FDACMaxChannels-1 do begin
         iNode := ProtNode.AddChild( 'DACCHANNEL' ) ;
@@ -4791,6 +4808,8 @@ begin
            end ;
         Inc(NodeIndex) ;
         end ;
+
+    GetElementInt( ProtNode, 'ADCCHANNELNUMZEROAVG', FADCChannelNumZero ) ;
 
     // D/A channels
     NodeIndex := 0 ;

@@ -595,8 +595,6 @@ var
    ADCResolution,DACResolution : Integer ;
    ADCInputModes : Array[0..2] of Integer ;
    ADCModeCode : SmallInt ;
-   iDev : Integer ;
-   NoDevicesAvailable : Boolean ;
 begin
 
     // Find an available device
