@@ -124,7 +124,8 @@ unit SESLabIO;
   25.03.14 Heka ITC-16-USB added to HekaUnit.pas
   26.06.14 External stimulus triggering now works with Heka ITC-18
            .ADCCHANNELNUMZEROAVG property added
-
+  30.06.14 .DACAvailableWhileADCActive property added. Indicates that DAC can be restarted
+           while ADC is active
   ================================================================================ }
 
 interface
@@ -135,8 +136,7 @@ uses
 
 const
      MaxDevices = 5 ;
-     //MaxADCSamples = 131072 ;
-     MaxADCSamples = 1048576*8 ;
+     MaxADCSamples = 1048576*16 ;//1048576*8 ; Double to 16Msamples 26-6-14
      MaxADCChannels = 128 ;
      MaxDACChannels = 128 ;
      MaxADCVoltageRanges = 20 ;
@@ -653,6 +653,8 @@ procedure TritonAutoCompensation(
     procedure EPC9AutoRSComp ;
     procedure EPC9FlushCache ;
 
+    function GetDACAvailableWhileADCActive : Boolean ;
+
     procedure GetADCVoltageRanges(
               var Ranges : Array of Single ;
               var NumRanges : Integer ) ;
@@ -802,6 +804,7 @@ procedure TritonAutoCompensation(
 
     Property EPC9NumAmplifiers : Integer
                                  read EPC9GetNumAmplifiers ;
+    Property DACAvailableWhileADCActive : Boolean read GetDACAvailableWhileADCActive ;
 
   published
 
@@ -1952,6 +1955,7 @@ begin
        end ;
      FADCActive := False ;
      end ;
+
 
 
 procedure TSESLabIO.DACStart ;
@@ -4585,6 +4589,43 @@ procedure TSESLabIO.EPC9FlushCache ;
 begin
      Heka_FlushCache ;
      end;
+
+function TSESLabIO.GetDACAvailableWhileADCActive : Boolean ;
+// --------------------------------------------------------
+// Return TRUE if DAC can be restarted while ADC is running
+// --------------------------------------------------------
+begin
+     case FLabInterfaceType of
+       NoInterface12 : Result := False ;
+       NoInterface16 : Result := False ;
+       NationalInstruments : Result := True ;
+       Digidata1200 : Result := True ;
+       CED1401_12 : Result := True ;
+       CED1401_16 : Result := True ;
+       Digidata132X : Result := True ;
+       Instrutech : Result := False ;
+       ITC_16 : Result := False ;
+       ITC_18 : Result := False ;
+       VP500 : Result := False ;
+       NIDAQMX : Result := True ;
+       Digidata1440 : Result := True ;
+       Triton : Result :=  False ;
+       CED1401_10V : Result := True ;
+       WirelessEEG : Result := False ;
+       HekaEPC9 : Result := True ;
+       HekaEPC10 : Result := True ;
+       HekaEPC10plus : Result := True ;
+       HekaEPC10USB : Result := True ;
+       HekaITC16 : Result := True ;
+       HekaITC18 : Result := True ;
+       HekaITC1600 : Result := True ;
+       HekaLIH88 : Result := True ;
+       HekaITC18USB : Result := True ;
+       HekaITC16USB : Result := True ;
+       else Result := False ;
+       end ;
+     end ;
+
 
 
 // XML methods

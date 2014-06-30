@@ -17,6 +17,9 @@ unit HekaUnit;
 //          started in Heka_adctomemory() by calling Heka_memoryToDACandDigital()
 //          ITC-18 Min. sampling interval limited t0 greater than 0.01*max(No. ADC,4)
 //          because ITC-18 hung up with > 100 kHz sampling
+// 27.06.14 ITC-18 Now works correctly with sampling buffers > 50000 samples
+//          Analog output buffer no longer corrupted
+// 30.06.14 ITC-18 Additional bugs fixed
 
 interface
 
@@ -917,11 +920,6 @@ var
     PSA12_SetTone : TPSA12_SetTone ;
     EPC9_DLLVersion : TEPC9_DLLVersion ;
 
-
-// Find, Open & close device.
-
-
-
 function  HEKA_GetLabInterfaceInfo(
             InterfaceTypeIn : Integer ;
             var Model : string ; { Laboratory interface model name/number }
@@ -969,14 +967,6 @@ begin
                         FIFOMaxPoints,
                         AOMaxChannels,
                         AIMaxChannels );
-
-     // Temporary bug fix 26.6.14
-     // Min. interval doubled for ITC-16/18 because ITC-18 seems to be unable to
-     // handle more than 100 kHz.
-     if (iBoardType = LIH_ITC18Board) or
-        (iBoardType = LIH_ITC16Board) then begin
-        MinSamplingInterval := MinSamplingInterval*2.0 ;
-        end;
 
      ADCMaxChannels :=  AIMaxChannels ;
      DACMaxChannels :=  AOMaxChannels ;
@@ -1374,9 +1364,10 @@ function HEKA_ADCToMemory(
 const
      MaxDACValue = 32767 ;
      MinDACValue = -32768 ;
+    MinBufferDuration = 0.5 ;
 
 var
-   i,j,ch : Word ;
+   i,j,ch,NP : Integer ;
    DACValues : PSmallIntArray ;
    DigValues : PSmallIntArray ;
    iDac : Array[0..15] of Integer ;
@@ -1396,7 +1387,6 @@ begin
      AICircularBuffer := CircularBuffer ;
      AIPointer := 0 ;
 
-
      SamplingInterval := dt ;
      Heka_CheckSamplingInterval( SamplingInterval,NumADCChannels, NumDACChannels ) ;
      dt := SamplingInterval ;
@@ -1406,17 +1396,17 @@ begin
         // Start acquisition sweep in free run and external trigger mode
         // using default analog and digital outputs
 
-        GetMem( DACValues, NumADCSamples*NumDACChannels*2 ) ;
-        GetMem( DigValues, NumADCSamples*2 ) ;
-
         // Create default D/A and digital output waveforms
         DACScale := MaxDACValue/FDACVoltageRangeMax ;
         for ch  := 0 to NumDACChannels-1 do begin
             iDAC[ch] := Max(Min(Round(DefDACVolts[ch]*DACScale),MaxDACValue),MinDACValue) ;
             end;
 
+        NP := Round((MinBufferDuration*2)/SamplingInterval) ;
+        GetMem( DACValues, NP*NumDACChannels*2 ) ;
+        GetMem( DigValues, NP*2 ) ;
         j := 0 ;
-        for i := 0 to NumADCSamples-1 do begin
+        for i := 0 to NP-1 do begin
             DigValues[i] := DefDigValue ;
             for ch  := 0 to NumDACChannels-1 do begin
               DACValues[j] := iDAC[ch] ;
@@ -1430,7 +1420,7 @@ begin
                                    else WaitForTrigger := True ;
         HEKA_MemoryToDACAndDigitalOut( DACValues^,
                                        NumDACChannels,
-                                       NumADCSamples,
+                                       NP,
                                        DigValues^,
                                        true,
                                        WaitForTrigger,
@@ -1440,6 +1430,7 @@ begin
         FreeMem(DigValues) ;
         end ;
 
+     ADCActive := True ;
 
      end ;
 
@@ -1497,19 +1488,19 @@ begin
                 end;
              end;
          end;
-
+     OutBufPointer := AIPointer ;
      // Add same number of data points to output buffer
 
      MaxAOPointer := AONumSamples*AONumChannels - 1 ;
      for i := 0 to NewSamples-1 do begin
          for ch := 0 to AONumChannels-1 do begin
-             AIDataBufs[ch]^[i] := AOBuf[AOPointer]  ;
-             Inc(AOPointer) ;
-             if AIPointer > MaxAOPointer then begin
-                if AOCircularBuffer then AOPointer := 0
-                                    else AOPointer := AOPointer - AONumChannels ;
-                end;
-             end;
+             AIDataBufs[ch]^[i] := AOBuf[AOPointer+ch]  ;
+             end ;
+         AOPointer := AOPointer + AONumChannels ;
+         if AOPointer > MaxAOPointer then begin
+            if AOCircularBuffer then AOPointer := 0
+                                else AOPointer := AOPointer - AONumChannels ;
+            end;
          end;
 
      SetStimEnd := 0 ;
@@ -1553,9 +1544,9 @@ function  HEKA_MemoryToDACAndDigitalOut(
   spurious digital O/P changes between records
   --------------------------------------------------------------}
 const
-    MinBufferDuration = 0.5 ;
+    MinBufferDuration = 1.0 ;
 var
-   i,j,ch,iTo,iFrom,DigCh,MaxOutPointer,NP,NPWrite,AcquisitionMode,NPDACValues : Integer ;
+   i,j,k,ch,iTo,iFrom,DigCh,MaxOutPointer,NPWrite,AcquisitionMode,NPDACValues,MaxAOPointer : Integer ;
    AODataBufs : Array[0..LIH_MaxDacChannels-1] of PSmallIntArray ;
    OK : LongInt ;
    SetStimEnd,ReadContinuously,Immediate :Byte ;
@@ -1569,35 +1560,47 @@ begin
     AONumSamples := NumDACPoints ;
     AOCircularBuffer := RepeatWaveform ;
 
-    // Copy DAC waveform data into internal buffer
-    // Ensure that the buffer has data for MinBufferDuration (s)
+    // Create internal AO buffer (ensure that the buffer has data for MinBufferDuration (s))
+    // Set internal buffer size (at least as large as MinBufferDuration)
+    AONumSamples := Max( NumDACPoints, Round(MinBufferDuration/SamplingInterval) ) ;
+    if AOCircularBuffer then AONumSamples := Max(Ceil(AONumSamples div NumDACPoints),1)*NumDACPoints ;
     if AOBuf <> Nil then FreeMem(AOBuf) ;
-    NP := Max( AONumSamples, Round(MinBufferDuration/SamplingInterval))*AONumChannels ;
-    GetMem( AOBuf, NP*2 ) ;
+    GetMem( AOBuf, AONumSamples*AONumChannels*2 ) ;
 
-    j := 0 ;
-    NPDACValues := AONumSamples*AONumChannels ;
-    for i := 0 to NP-1 do begin
-        AOBuf^[i] := DACValues[j] ;
-        Inc(j) ;
-        if j >= NPDACValues then j := j - AONumChannels ;
-        end;
+    // Copy DAC waveform data into internal buffer
+    iFrom := 0 ;
+    iTo := 0 ;
+    for i := 0 to AONumSamples-1 do begin
+       for ch := 0 to AONumChannels-1 do begin
+          AOBuf^[iTo] := DACValues[(iFrom*AONumChannels)+ch] ;
+          Inc(iTo) ;
+          end;
+       Inc(iFrom) ;
+       if iFrom >= NumDACPoints then begin
+          if AOCircularBuffer then iFrom := 0
+                              else Dec(iFrom) ;
+          end;
+       end;
 
     // Fill transfer buffer with initial waveform to fill FIFO
-    NPWrite := (Min(FIFOMaxPoints,NP) div AONumChannels)*AONumChannels ;
-    for ch  := 0 to AONumChannels-1 do begin
-      GetMem( AODataBufs[ch], NPWrite*2 ) ;
-      j := ch ;
-      for i := 0 to (NPWrite div AONumChannels) -1 do begin
-          AODataBufs[ch]^[i] := AOBuf^[j] ;
-          j := j + AONumChannels ;
+    // Note. Keep within FIFO buffer limits for AI or AO (whichever is greater)
+    NPWrite := Min((FIFOMaxPoints div Max(AONumChannels,AINumChannels)),AONumSamples) ;
+
+    for ch  := 0 to AONumChannels-1 do
+      GetMem( AODataBufs[ch], NPWrite*AONumChannels*2 ) ;
+
+    AOPointer := 0 ;
+    MaxAOPointer := AONumSamples*AONumChannels - 1 ;
+    for i := 0 to NPWrite-1 do begin
+       for ch := 0 to AONumChannels-1 do AODataBufs[ch]^[i] := AOBuf^[AOPointer+ch] ;
+       AOPointer := AOPointer + AONumChannels ;
+       if AOPointer > MaxAOPointer then begin
+             if AOCircularBuffer then AOPointer := 0
+                                 else AOPointer := AOPointer - AONumChannels ;
           end;
       end;
-    AOPointer := NPWrite ;
 
     // Start A/D and D/A conversion
-
-    //EPC9_FlushCache ;
 
     SetStimEnd := 0 ;
     ReadContinuously := 0 ;
@@ -1675,7 +1678,7 @@ const
      MinDACValue = -32768 ;
 var
    DACScale : single ;
-   ch,DACValue : Integer ;
+   i,j,ch,DACValue : Integer ;
    DigWord : Word ;
 begin
 
@@ -1697,6 +1700,16 @@ begin
          if not ADCActive then LIH_SetDac( AOChannelList[ch], DACValue ) ;
          DACDefaultValue[ch] := DACValue ;
          end ;
+
+     if AOBuf <> Nil then begin
+        j := 0 ;
+        for i := 0 to AONumSamples-1 do begin
+            for ch := 0 to AONumChannels-1 do begin
+              AOBuf[j] := DACDefaultValue[ch] ;
+              Inc(j) ;
+              end;
+            end;
+        end;
 
      // Set digital outputs
      DigWord := DigValue ;
