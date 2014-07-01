@@ -17,6 +17,8 @@ unit QCAMUnit;
 // 16.05.14 JD QCAM_GetDLLAddress: Handle now defined as THandle
 //             rather than Integer (possible cause of errors with 64 bit version)
 // 17.06.14 JD 64 bit library now detected
+// 01.07.14 JD GetCameraNameString() and GetSerialString() added
+
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, messages, controls, math ;
@@ -549,6 +551,7 @@ type
         padding : array[0..63] of Integer ;
         end ;
 
+
    TQCam_Frame = packed record
      pBuffer : Pointer ;
      bufferSize : Integer ;
@@ -796,6 +799,16 @@ TQCam_IsRangeTable = function(
                          paramKey  : Integer
                          ) : Integer ; stdcall ;
 
+TQCam_GetSerialString = function(
+                        handle: Integer ;
+                        Buf : PANSIChar;
+                        Size : DWORD ) : Integer ; stdcall ;
+
+TQCam_GetCameraModelString = function(
+                        handle: Integer ;
+                        Buf : PANSIChar;
+                        Size : DWORD ) : Integer ; stdcall ;
+
 function QCAMAPI_LoadLibrary : Boolean ;
 function QCAMAPI_GetDLLAddress(
          Handle : THandle ;
@@ -932,8 +945,9 @@ var
   QCam_QueueSettings : TQCam_QueueSettings ;
   QCam_IsParamSupported : TQCam_IsParamSupported ;
   QCam_IsSparseTable : TQCam_IsSparseTable ;
-  QCam_IsRangeTable : TQCam_IsRangeTable ;  
-
+  QCam_IsRangeTable : TQCam_IsRangeTable ;
+  QCam_GetCameraModelString : TQCam_GetCameraModelString ;
+  QCam_GetSerialString : TQCam_GetSerialString ;
 
    LibraryLoaded : Boolean ;
    LibraryHnd : THandle ;
@@ -1013,6 +1027,8 @@ begin
      @QCam_IsParamSupported := QCAMAPI_GetDLLAddress(LibraryHnd,'QCam_IsParamSupported');
      @QCam_IsSparseTable := QCAMAPI_GetDLLAddress(LibraryHnd,'QCam_IsSparseTable');
      @QCam_IsRangeTable := QCAMAPI_GetDLLAddress(LibraryHnd,'QCam_IsRangeTable');
+     @QCam_GetCameraModelString := QCAMAPI_GetDLLAddress(LibraryHnd,'QCam_GetCameraModelString');
+     @QCam_GetSerialString := QCAMAPI_GetDLLAddress(LibraryHnd,'QCam_GetSerialString');
 
      Result := LibraryLoaded ;
 
@@ -1049,7 +1065,7 @@ function QCAMAPI_OpenCamera(
 const
     BufSize = 200 ;
 var
-    //cBuf : Array[0..BufSize] of ANSIChar ;
+    cBuf : Array[0..BufSize] of ANSIChar ;
     //iBuf : Array[0..BufSize] of Integer ;
     Err,i,iValue,iMin,iMax : Integer ;
     iMin64,iMax64 : Int64 ;
@@ -1071,7 +1087,6 @@ begin
         ShowMessage('QCAM: Unable to initialise driver!') ;
         Exit ;
         End ;
-    
 
      QCam_LibVersion( VersionMajor, VersionMinor, BuildNum ) ;
      CameraInfo.Add( format( 'QCAM Library V%d.%d (%d)',[VersionMajor, VersionMinor,BuildNum] )) ;
@@ -1259,6 +1274,16 @@ begin
            end ;
         end ;
 
+     if @QCam_GetCameraModelString <> Nil then begin
+        QCam_GetCameraModelString( Session.CamHandle, cBuf, High(cBuf)) ;
+        CameraType := ANSIString(cBuf) ;
+        end ;
+
+     if @QCam_GetSerialString <> Nil then begin
+        QCam_GetSerialString( Session.CamHandle, cBuf, High(cBuf)) ;
+        CameraType := CameraType + ' s/n ' + ANSIString(cBuf) ;
+        end ;
+
      CameraInfo.Add( 'Camera: ' + CameraType );
 
      // Get max. size of camera image
@@ -1300,7 +1325,7 @@ begin
      if iValue <> 0 then CameraInfo.Add( 'Regulated CCD cooling is available' )
      else begin
         QCAM_GetInfo( Session.CamHandle, qinfCooled, iValue ) ;
-        if iValue <> 0 then CameraInfo.Add( 'CCD cooling ia available' ) ;
+        if iValue <> 0 then CameraInfo.Add( 'CCD cooling is available' ) ;
         end ;
 
      QCAM_GetInfo( Session.CamHandle, qinfFanControl, iValue ) ;
@@ -1392,6 +1417,7 @@ begin
 
      Session.CameraOpen := True ;
      Result := Session.CameraOpen ;
+
 
      PixelWidth := 10.0 ;
 
@@ -1573,6 +1599,13 @@ begin
      QCAM_SetParam64( Session.QCAMSettings, qprm64Exposure, ExposureTime_ns ) ;
      InterFrameTimeInterval := ExposureTime_ns / 1E9 ;
 
+     QCAM_SetParam( Session.QCAMSettings, qprmTriggerType, 0 ) ;
+     QCAMAPI_CheckError( 'QCam_SendSettingsToCam',
+                         QCam_SendSettingsToCam( Session.CamHandle, Session.QCAMSettings)) ;
+     QCAM_SetParam( Session.QCAMSettings, qprmTriggerType, qcTriggerMode ) ;
+     QCAMAPI_CheckError( 'QCam_SendSettingsToCam',
+                         QCam_SendSettingsToCam( Session.CamHandle, Session.QCAMSettings)) ;
+
      // Set trigger mode
      if ExternalTrigger = CamExtTrigger then begin
         qcTriggerMode := qcTriggerEdgeHi ;
@@ -1588,9 +1621,9 @@ begin
         qcClearMode := qcNonClearing ;
         end ;
 
+
      QCAM_SetParam( Session.QCAMSettings, qprmTriggerType, qcTriggerMode ) ;
      QCAM_SetParam( Session.QCAMSettings, qprmCCDClearingMode, qcClearMode ) ;
-
      // Update camera
      QCAMAPI_CheckError( 'QCam_SendSettingsToCam',
                          QCam_SendSettingsToCam( Session.CamHandle, Session.QCAMSettings)) ;

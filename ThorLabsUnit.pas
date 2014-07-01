@@ -2388,6 +2388,75 @@ procedure ThorLabs_CheckError(
           ErrNum : Integer      // Error # returned by function
           ) ;
 
+var
+
+  is_InitCamera : Tis_InitCamera ;
+  is_ExitCamera : Tis_ExitCamera ;
+  is_GetCameraInfo : Tis_GetCameraInfo ;
+  is_CameraStatus : Tis_CameraStatus ;
+  is_GetCameraType : Tis_GetCameraType ;
+  is_GetNumberOfCameras : Tis_GetNumberOfCameras ;
+  is_GetPixelClockRange : Tis_GetPixelClockRange ;
+  is_SetPixelClock : Tis_SetPixelClock ;
+  is_GetUsedBandwidth : Tis_GetUsedBandwidth ;
+  is_GetFrameTimeRange : Tis_GetFrameTimeRange ;
+  is_SetFrameRate : Tis_SetFrameRate ;
+  is_GetExposureRange : Tis_GetExposureRange ;
+  is_SetExposureTime : Tis_SetExposureTime ;
+  is_GetFramesPerSecond : Tis_GetFramesPerSecond ;
+  is_SetIOMask : Tis_SetIOMask ;
+  is_GetSensorInfo : Tis_GetSensorInfo ;
+  is_GetRevisionInfo : Tis_GetRevisionInfo ;
+  is_EnableAutoExit : Tis_EnableAutoExit ;
+  is_EnableMessage : Tis_EnableMessage ;
+  is_SetHardwareGain : Tis_SetHardwareGain ;
+  is_SetRenderMode : Tis_SetRenderMode ;
+  is_SetWhiteBalance : Tis_SetWhiteBalance ;
+  is_SetWhiteBalanceMultipliers : Tis_SetWhiteBalanceMultipliers ;
+  is_GetWhiteBalanceMultipliers : Tis_GetWhiteBalanceMultipliers ;
+  is_SetEdgeEnhancement : Tis_SetEdgeEnhancement ;
+  is_SetColorCorrection : Tis_SetColorCorrection ;
+  is_SetBlCompensation : Tis_SetBlCompensation ;
+  is_SetBadPixelCorrection : Tis_SetBadPixelCorrection ;
+  is_LoadBadPixelCorrectionTable : Tis_LoadBadPixelCorrectionTable ;
+  is_SaveBadPixelCorrectionTable : Tis_SaveBadPixelCorrectionTable ;
+  is_SetBadPixelCorrectionTable : Tis_SetBadPixelCorrectionTable ;
+  is_SetMemoryMode : Tis_SetMemoryMode ;
+  is_TransferImage : Tis_TransferImage ;
+  is_TransferMemorySequence : Tis_TransferMemorySequence ;
+  is_MemoryFreezeVideo : Tis_MemoryFreezeVideo ;
+  is_GetLastMemorySequence : Tis_GetLastMemorySequence ;
+  is_GetNumberOfMemoryImages : Tis_GetNumberOfMemoryImages ;
+  is_GetMemorySequenceWindow : Tis_GetMemorySequenceWindow ;
+  is_IsMemoryBoardConnected : Tis_IsMemoryBoardConnected ;
+  is_ResetMemory : Tis_ResetMemory ;
+  is_SetSubSampling : Tis_SetSubSampling ;
+  is_ForceTrigger : Tis_ForceTrigger ;
+  is_GetBusSpeed : Tis_GetBusSpeed ;
+  is_SetBinning : Tis_SetBinning ;
+  is_ResetToDefault : Tis_ResetToDefault ;
+  is_LoadParameters : Tis_LoadParameters ;
+  is_SaveParameters : Tis_SaveParameters ;
+  is_GetGlobalFlashDelays : Tis_GetGlobalFlashDelays ;
+  is_SetFlashDelay : Tis_SetFlashDelay ;
+  is_LoadImage : Tis_LoadImage ;
+  is_SetImageAOI : Tis_SetImageAOI ;
+  is_SetCameraID : Tis_SetCameraID ;
+  is_SetBayerConversion : Tis_SetBayerConversion ;
+  is_SetTestImage : Tis_SetTestImage ;
+  is_SetHardwareGamma : Tis_SetHardwareGamma ;
+  is_GetCameraList : Tis_GetCameraList ;
+  is_SetAOI : Tis_SetAOI ;
+  is_SetAutoParameter : Tis_SetAutoParameter ;
+  is_GetAutoInfo : Tis_GetAutoInfo ;
+  is_SetTriggerDelay : Tis_SetTriggerDelay ;
+  is_SetGainBoost : Tis_SetGainBoost ;
+  is_SetLED : Tis_SetLED ;
+  is_SetGlobalShutter : Tis_SetGlobalShutter ;
+  is_SetExtendedRegister : Tis_SetExtendedRegister ;
+  is_GetExtendedRegister : Tis_GetExtendedRegister ;
+  is_SetHWGainFactor : Tis_SetHWGainFactor ;
+  is_Renumerate : Tis_Renumerate ;
 
 implementation
 
