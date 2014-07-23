@@ -22,13 +22,14 @@ unit Maths;
  13/9/04  MathFunc.CopyResultsToRichEdit temp file now saved in prog. dir.
  15/4/10 EPC2EXP function added
  20/4/11 Initial guesses for gaussian fits improved (usinfg GaussianGuess function)
+ 9/7/14 Temporary file name now created using TPath.GetTempFileName()
  }
 
 
 
 interface
 
-uses classes, comctrls, graphics, math, strutils ;
+uses classes, comctrls, graphics, math, strutils, system.ioutils ;
 
 const
      ChannelLimit = 15 ;
@@ -1056,8 +1057,8 @@ begin
 
         // Add last line and closing bracket
         OutList.Add('\par}') ;
-
-        TempFileName := ExtractFilePath(ParamStr(0)) + 'temp.rtf' ;
+//        TempFileName := ExtractFilePath(ParamStr(0)) + 'temp.rtf' ;
+        TempFileName := TPath.GetTempFileName ;
         OutList.SaveToFile( TempFileName ) ;
         RE.Lines.LoadFromFile( TempFileName ) ;
 

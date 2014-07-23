@@ -16,6 +16,9 @@ unit NIMAQDXUnit;
 // 26-2-14 Now handles variable I32/I64/F64 attributes. Basler aca-1300 now working again
 // 28-2-14 AdditionReadOutTime option added to StartCap. Note external trigger not tested
 // 03-4-14 IMAQDX_GetDLLAddress() Handle changed from Integer to THandle for 64 bit compatibililty
+// 09-7-14 IMAQDX_SetVideoMode() and IMAQDX_SetPixelFormat() now trap Session.CameraOpen = false
+// 22-7-14 OpenCamera now returns no. of cameras available
+//         Camera can be selected when more than one available
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, math, strutils ;
@@ -338,6 +341,7 @@ Type
  TIMAQDXSession = packed record
     ID : Integer ;
     CameraOpen : Boolean ;
+    SelectedCamera : Integer ;
     AcquisitionInProgress : Boolean ;
     NumFramesInBuffer : Integer ;
     FrameBufPointer : Pointer ;
@@ -350,6 +354,7 @@ Type
     CameraInfo : Array [0..9] of TIMAQdxCameraInformation ;
     Attributes : Array[0..999] of TIMAQdxAttributeInformation ;
     PixelSettings : Array[0..31] of TIMAQdxEnumItem ;
+    CameraNames : Array [0..9] of string ;
     NumPixelSettings : Cardinal ;
     NumAttributes : Cardinal ;
     NumCameras : Cardinal ;
@@ -683,6 +688,7 @@ Type
 
 function IMAQDX_OpenCamera(
           var Session : TIMAQDXSession ;   // Camera session
+          var SelectedCamera : Integer ;   // Selected camera #
           var CameraMode : Integer ;
           var PixelFormat : Integer ;
           var FrameWidthMax : Integer ;
@@ -690,6 +696,7 @@ function IMAQDX_OpenCamera(
           var NumBytesPerPixel : Integer ;
           var PixelDepth : Integer ;
           var BinFactorMax : Integer ;
+          var NumCameras : Integer ;       // No. of cameraS available (returned)
           CameraInfo : TStringList         // Returns Camera details
           ) : Boolean ;
 
@@ -990,6 +997,7 @@ begin
 
 function IMAQDX_OpenCamera(
           var Session : TIMAQDXSession ;   // Camera session
+          var SelectedCamera : Integer ;   // Selected camera #
           var CameraMode : Integer ;       // Video mode
           var PixelFormat : Integer ;        // Pixel format
           var FrameWidthMax : Integer ;    // Returns max. frame width (pixels)
@@ -997,6 +1005,7 @@ function IMAQDX_OpenCamera(
           var NumBytesPerPixel : Integer ; // Returns no. of bytes per pixel
           var PixelDepth : Integer ;       // Returns bits per pixel
           var BinFactorMax : Integer ;
+          var NumCameras : Integer ;       // No. of cameraS available (returned)
           CameraInfo : TStringList         // Returns Camera details
           ) : Boolean ;
 // ---------------------
@@ -1024,20 +1033,31 @@ begin
      Err := IMAQdxEnumerateCameras( Nil, Session.NumCameras, True) ;
      if Session.NumCameras > 0 then begin
         Err := IMAQdxEnumerateCameras( @Session.CameraInfo, Session.NumCameras, True) ;
+        CameraInfo.Add( 'Cameras available:' ) ;
+        for i := 0 to Session.NumCameras-1 do begin
+           Session.CameraNames[i] := format('%s: %s %s',[ANSIString(Session.CameraInfo[i].InterfaceName),
+                                                         ANSIString(Session.CameraInfo[i].VendorName),
+                                                         ANSIString(Session.CameraInfo[i].ModelName)]);
+           CameraInfo.Add(Session.CameraNames[i]);
+           end;
+        CameraInfo.Add('');
         end
      else begin
         ShowMessage('IMAQDX: No cameras detected!') ;
         Exit ;
         end ;
+     NumCameras := Session.NumCameras ;
 
-     CameraInfo.Add( 'Interface Name: ' + IMAQDX_CharArrayToString(Session.CameraInfo[0].InterfaceName)) ;
-     CameraInfo.Add( 'Vendor: ' + IMAQDX_CharArrayToString(Session.CameraInfo[0].VendorName)) ;
-     CameraInfo.Add( 'Model: ' + IMAQDX_CharArrayToString(Session.CameraInfo[0].ModelName)) ;
-     CameraInfo.Add( 'Camera File: ' + IMAQDX_CharArrayToString(Session.CameraInfo[0].CameraFileName)) ;
-     CameraInfo.Add( 'URL: ' + IMAQDX_CharArrayToString(Session.CameraInfo[0].CameraAttributeURL)) ;
+     SelectedCamera := Min(SelectedCamera,Session.NumCameras-1) ;
+     Session.SelectedCamera := SelectedCamera ;
+     CameraInfo.Add( 'Interface Name: ' + IMAQDX_CharArrayToString(Session.CameraInfo[SelectedCamera].InterfaceName)) ;
+     CameraInfo.Add( 'Vendor: ' + IMAQDX_CharArrayToString(Session.CameraInfo[SelectedCamera].VendorName)) ;
+     CameraInfo.Add( 'Model: ' + IMAQDX_CharArrayToString(Session.CameraInfo[SelectedCamera].ModelName)) ;
+     CameraInfo.Add( 'Camera File: ' + IMAQDX_CharArrayToString(Session.CameraInfo[SelectedCamera].CameraFileName)) ;
+     CameraInfo.Add( 'URL: ' + IMAQDX_CharArrayToString(Session.CameraInfo[SelectedCamera].CameraAttributeURL)) ;
 
      // Open camera
-     Err := IMAQdxOpenCamera ( Session.CameraInfo[0].InterfaceName,
+     Err := IMAQdxOpenCamera ( Session.CameraInfo[SelectedCamera].InterfaceName,
                                IMAQdxCameraControlModeController,
                                Session.ID) ;
 
@@ -1046,7 +1066,7 @@ begin
      // when IMAQdxConfigureAcquisition() called after program has been restarted
      // when using a GIGE camera. Not known why this occurs.
      IMAQdxCloseCamera( Session.ID ) ;
-     Err := IMAQdxOpenCamera ( Session.CameraInfo[0].InterfaceName,
+     Err := IMAQdxOpenCamera ( Session.CameraInfo[Session.SelectedCamera].InterfaceName,
                                IMAQdxCameraControlModeController,
                                Session.ID) ;
      // -----------------------------------------------------------------------
@@ -1589,6 +1609,8 @@ var
     i,Err : Integer ;
 begin
 
+      if not Session.CameraOpen then Exit ;
+
       // Set mode (if available)
       IMAQdx_SetAttributeEnum( Session,
                                Session.AttrVideoMode,
@@ -1606,10 +1628,6 @@ begin
                                         Session.NumPixelFormats ) ;
         end ;
 
-      // Set pixel format (if available)
-//      IMAQdx_SetAttributeEnum( Session,
-//                               Session.AttrPixelFormat,
-//                               Session.PixelFormats[PixelFormat].Name ) ;
      // Set pixel format
      IMAQDX_SetPixelFormat( Session,
                             PixelFormat,
@@ -1673,6 +1691,8 @@ var
   Attrib  : TIMAQdxEnumItem ;
   i : Integer ;
 begin
+
+    if not Session.CameraOpen then Exit ;
 
     // Set pixel format (if attribute available)
     if Session.AttrPixelFormat < 0 then PixelFormat := 0 ;

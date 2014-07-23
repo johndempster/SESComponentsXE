@@ -61,6 +61,7 @@ unit SESCam;
  16.12.13 JD   .StartCapture Now returns False if unable to allocate enough frame buffer memory
                 EOutOfMemory exception now trapped and AllocateFrameBuffer returns false
  03.04.14 JD   PostExposureReadout flag now force on if camera only supports that mode. (CoolSnap HQ2)
+ 09.07.14 JD   Binfactor division by zero trapped in GetPixelWidth()
   ================================================================================ }
 {$OPTIMIZATION OFF}
 {$POINTERMATH ON}
@@ -122,8 +123,10 @@ type
   private
     { Private declarations }
     FCameraType : Integer ;      // Type of lab. interface hardware
+    FNumCameras : Integer ;       // No. of cameras detected
     FCameraName : string ;       // Name of interface
     FCameraModel : string ;      // Model
+    FSelectedCamera : Integer ;  // No. of selected camera
     FCameraMode : Integer ;       // Camera video mode
     FCameraADC : Integer ;        // Camera A/D converter
     FComPortUsed : Boolean ;     // Camera control port in use
@@ -283,7 +286,7 @@ type
     procedure GetFrameBufferPointer( var FrameBuf : Pointer ) ;
     procedure GetLatestFrameNumber( var FrameNum : Integer ) ;
     function GetCameraName( Num : Integer ) : String ;
-    procedure GetCameraNameList( List : TStrings ) ;
+    procedure GetCameraLibList( List : TStrings ) ;
     procedure GetCameraTriggerModeList( List : TStrings ) ;
     procedure GetCameraGainList( List : TStrings ) ;
     procedure GetCameraReadoutSpeedList( List : TStrings ) ;
@@ -291,6 +294,7 @@ type
     procedure GetCameraADCList( List : TStrings ) ;
     procedure GetADCGainList( List : TStrings ) ;
     procedure GetCCDVerticalShiftSpeedList( List : TStrings ) ;
+    procedure GetCameraNameList( List : TStrings ) ;
 
     procedure GetCameraInfo( List : TStrings ) ;
     function IsLSM( iCameraType : Integer ) : Boolean ;
@@ -303,7 +307,9 @@ type
   published
     { Published declarations }
     Property CameraType : Integer Read FCameraType ;
+    Property SelectedCamera : Integer read FSelectedCamera write FSelectedCamera ;
     Property CameraAvailable : Boolean Read FCameraAvailable ;
+    Property NumCameras : Integer read FNumCameras ;
     Property CameraActive : Boolean Read FCameraActive ;
     Property CameraName : string read FCameraName ;
     Property CameraModel : string read FCameraModel ;
@@ -385,6 +391,7 @@ begin
      inherited Create(AOwner) ;
 
      FCameraType := NoCamera8 ; { No Camera }
+     FNumCameras := 0 ;       // No. of cameraS available
      FCameraAvailable := False ;
      FCameraActive := False ;
      FComPortUsed := False ;
@@ -542,7 +549,7 @@ begin
      end ;
 
 
-procedure TSESCam.GetCameraNameList( List : TStrings ) ;
+procedure TSESCam.GetCameraLibList( List : TStrings ) ;
 // -------------------------------------------
 // Get list of available camera/interface list
 // -------------------------------------------
@@ -582,6 +589,7 @@ begin
      FCameraType := InterfaceType ;
      FCameraModel := 'Unknown' ;
      FCameraMode := 0 ;
+     FNumCameras := 0 ;
      FComPortUsed := False ;
 
      // default settings
@@ -618,6 +626,7 @@ begin
           FPixelWidth := 1.0 ;
           FPixelUnits := '' ;
           FTriggerType := CamExposureTrigger ;
+          FNumCameras := 1 ;
           end ;
 
        NoCamera16 : begin
@@ -629,6 +638,7 @@ begin
           FPixelWidth := 1.0 ;
           FPixelUnits := '' ;
           FTriggerType := CamExposureTrigger ;
+          FNumCameras := 1 ;
           end ;
 
        ITEX_CCIR : begin
@@ -666,6 +676,7 @@ begin
 
           FReadoutSpeed := 0 ;
           FTriggerType := CamExposureTrigger ;
+          FNumCameras := 1 ;
 
           end ;
 
@@ -711,6 +722,7 @@ begin
              C4880_OpenCamera( FComPort, ReadoutRate, CameraInfo ) ;
 
              C4880_GetCameraGainList( CameraGainList ) ;
+             FNumCameras := 1 ;
              end ;
 
           end ;
@@ -749,7 +761,7 @@ begin
 
              FBinFactor := 1 ;
              FBinFactorMax := 1 ;
-
+             FNumCameras := 1 ;
              end ;
 
           FFrameIntervalMin := 1E-3 ;
@@ -787,7 +799,7 @@ begin
              FGreyLevelMin := 0 ;
              FBinFactorMax := 2 ;
              FCCDRegionReadoutAvailable := False ;
-
+             FNumCameras := 1 ;
              end ;
 
           FFrameWidth := FFrameWidthMax ;
@@ -830,13 +842,7 @@ begin
              FBinFactorMax := 8 ;    // symmetrical;
              FCCDRegionReadoutAvailable := False ;
              FFrameInterval := 0.100 ;
-            { SensicamCheckFrameInterval( SensicamSession,
-                                         FFrameWidthMax-1,
-                                         FBinFactor,
-                                         FTriggerMode,
-                                         FFrameInterval,
-                                         FReadoutTime ) ;
-             }
+             FNumCameras := 1 ;
              end ;
 
           FFrameWidth := FFrameWidthMax ;
@@ -857,6 +863,7 @@ begin
           CameraInfo.Clear ;
           FCameraAvailable := PVCAM_OpenCamera(
                               PVCAMSession,
+                              FSelectedCamera,
                               FReadoutSpeed,
                               FFrameWidthMax,
                               FFrameHeightMax,
@@ -864,6 +871,7 @@ begin
                               FGreyLevelMax,
                               FPixelWidth,
                               FPixelDepth,
+                              FNumCameras,
                               CameraInfo ) ;
 
           if FCameraAvailable then begin
@@ -885,7 +893,6 @@ begin
                                        FFrameInterval,
                                        FReadoutTime,
                                        FTriggerMode ) ;
-
              end ;
 
 
@@ -906,6 +913,7 @@ begin
           FPixelWidth := 1.0 ;
           FPixelUnits := '' ;
           FTriggerType := CamExposureTrigger ;
+          FNumCameras := 1 ;
           end ;
 
        ANDOR : begin
@@ -951,7 +959,7 @@ begin
              Andor_SetCooling( AndorSession, FCameraCoolingOn ) ;
              Andor_SetFanMode( AndorSession, FCameraFanMode ) ;
              Andor_SetCameraMode( AndorSession, FCameraMode ) ;
-
+             FNumCameras := 1 ;
              end ;
 
 
@@ -1005,7 +1013,7 @@ begin
              AndorSDK3_SetCooling( AndorSDK3Session, FCameraCoolingOn ) ;
              AndorSDK3_SetFanMode( AndorSDK3Session, FCameraFanMode ) ;
              AndorSDK3_SetCameraMode( AndorSDK3Session, FCameraMode ) ;
-
+             FNumCameras := 1 ;
              end ;
 
 
@@ -1029,6 +1037,7 @@ begin
           FPixelWidth := 1.0 ;
           FPixelUnits := '' ;
           FTriggerType := CamExposureTrigger ;
+          FNumCameras := 1 ;
           end ;
 
        QCAM : begin
@@ -1061,7 +1070,7 @@ begin
              FGreyLevelMin := 0 ;
              FBinFactorMax := 8 ;
              FCCDRegionReadoutAvailable := True ;
-
+             FNumCameras := 1 ;
              end ;
 
           FFrameWidth := FFrameWidthMax ;
@@ -1111,7 +1120,7 @@ begin
                 FTriggerType := CamReadoutTrigger ;
                 end
              else FTriggerType := CamExposureTrigger ;
-
+             FNumCameras := 1 ;
              end ;
 
           FFrameWidth := FFrameWidthMax ;
@@ -1158,7 +1167,7 @@ begin
              FBinFactorMax := 1 ;
              FFrameWidth := FFrameWidthMax ;
              FFrameHeight := FFrameHeightMax ;
-
+             FNumCameras := 1 ;
              end ;
           end ;
 
@@ -1168,6 +1177,7 @@ begin
 
           FCameraAvailable := IMAQDX_OpenCamera(
                               IMAQDXSession,
+                              FSelectedCamera,
                               FCameraMode,
                               FCameraADC,
                               FFrameWidthMax,
@@ -1175,6 +1185,7 @@ begin
                               FNumBytesPerPixel,
                               FPixelDepth,
                               FBinFactorMax,
+                              FNumCameras,
                               CameraInfo ) ;
 
           if FCameraAvailable then begin
@@ -1202,7 +1213,6 @@ begin
 //             FBinFactorMax := 8 ;
              FFrameWidth := FFrameWidthMax ;
              FFrameHeight := FFrameHeightMax ;
-
              end ;
 
           FFrameIntervalMin := 1E-3 ;
@@ -1250,7 +1260,7 @@ begin
              FBinFactorMax := 1 ;
              FFrameWidth := FFrameWidthMax ;
              FFrameHeight := FFrameHeightMax ;
-
+             FNumCameras := 1 ;
              end ;
 
           FFrameIntervalMin := 1E-3 ;
@@ -2401,8 +2411,9 @@ function TSESCam.GetPixelWidth : Single ;
 // Return width of camera pixel (after magnification)
 // --------------------------------------------------
 begin
+     FBinFactor := Max(FBinFactor,1) ;
      if FLensMagnification > 0.0 then Result := (FPixelWidth*FBinFactor) / FLensMagnification
-                                 else Result := FPixelWidth ;
+                                 else Result := FPixelWidth*FBinFactor ;
      end ;
 
 
@@ -2520,6 +2531,27 @@ begin
      if List.Count < 1 then List.Add('n/a') ;
 
      end ;
+
+
+procedure TSESCam.GetCameraNameList( List : TStrings ) ;
+// ------------------------------
+// Get list of available cameras
+// ------------------------------
+var
+     i : Integer ;
+begin
+
+     List.Clear ;
+     case FCameraType of
+          IMAQDX: for i  := 0 to IMAQDXSession.NumCameras-1 do List.Add(IMAQDXSession.CameraNames[i]) ;
+          RS_PVCAM,RS_PVCAM_PENTAMAX: for i  := 0 to PVCAMSession.NumCameras-1 do List.Add(PVCAMSession.CameraNames[i]) ;
+          end;
+
+     // Ensure list is not empty
+     if List.Count < 1 then List.Add('n/a') ;
+
+     end ;
+
 
 
 procedure TSESCam.GetCameraInfo( List : TStrings ) ;

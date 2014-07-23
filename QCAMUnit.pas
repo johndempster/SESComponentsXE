@@ -18,6 +18,7 @@ unit QCAMUnit;
 //             rather than Integer (possible cause of errors with 64 bit version)
 // 17.06.14 JD 64 bit library now detected
 // 01.07.14 JD GetCameraNameString() and GetSerialString() added
+// 09.07.14 JD Now detects 64 bit QCAM driver correctly
 
 interface
 
@@ -970,9 +971,9 @@ begin
      { Load DLL camera interface library }
     {$IFDEF WIN32}
       LibFileName := 'QCamDriver.dll' ;
-      ChildLibFileName := 'QCamChildDriverx64.dll' ;
+      ChildLibFileName := 'QCamChildDriver.dll' ;
     {$ELSE}
-      LibFileName := 'QCamDriver.dll' ;
+      LibFileName := 'QCamDriverx64.dll' ;
       ChildLibFileName := 'QCamChildDriverx64.dll' ;
     {$IFEND}
 

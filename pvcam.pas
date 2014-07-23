@@ -39,6 +39,9 @@ unit pvcam;
 // 04.06.14 JD ReadoutTime has additional 1ms for frame transfers
 //             and has spedific computation for OptiMOS
 // 20.06.14 JD StopCapture now also aborts camera operation
+// 9-7-14 pl_exp_stop_cont error check removed because it reports unnecessary error with Cascade camera
+// 22-7-14 OpenCamera now returns no. of cameras available
+//         Camera can be selected when more than one available
 
 {OPTIMIZATION OFF}
 {$DEFINE USECONT}
@@ -237,6 +240,9 @@ type
 TPVCAMSession = record
     Handle : SmallInt ;
     CameraOpen : Boolean ;
+    SelectedCamera : Integer ;
+    NumCameras : Cardinal ;
+    CameraNames : Array [0..9] of string ;
     Temperature : Single ;
     AcquisitionInProgress : Boolean ;
     FrameTransferCapable : Word ;
@@ -695,6 +701,7 @@ function pl_buf_set_exp_date(
 
 function PVCAM_OpenCamera(
          var Session : TPVCAMSession ;
+         var SelectedCamera : Integer ;   // Selected camera #
          ReadoutSpeedIndex : Integer ;    // Readout speed index
          var FrameWidth : Integer ;       // Width of image frame (Returned)
          var FrameHeight : Integer ;      // Height of image frame (Returned)
@@ -702,6 +709,7 @@ function PVCAM_OpenCamera(
          var GreyLevelMax : Integer ;      // Maximum grey level value (Returned)
          var PixelWidth : Single ;        // Pixel size (um) (Returned)
          var PixelDepth : Integer ;       // Bits / pixel (Returned)
+         var NumCameras : Integer ;       // No. of cameraS available (returned)
          CameraInfo : TStrings           // Camera information
          ) : Boolean ;                    // Returned True if camera opened successfully
 
@@ -866,6 +874,7 @@ var
 
 function PVCAM_OpenCamera(
          var Session : TPVCAMSession ;    // Camera session record
+         var SelectedCamera : Integer ;   // Selected camera #
          ReadoutSpeedIndex : Integer ;    // Readout speed index
          var FrameWidth : Integer ;       // Width of image frame (Returned)
          var FrameHeight : Integer ;      // Height of image frame (Returned)
@@ -873,19 +882,20 @@ function PVCAM_OpenCamera(
          var GreyLevelMax : Integer ;      // Maximum grey level value (Returned)
          var PixelWidth : Single ;        // Pixel size (um) (Returned)
          var PixelDepth : Integer ;       // Bits / pixel (Returned)
+         var NumCameras : Integer ;       // No. of cameraS available (returned)
          CameraInfo : TStrings           // Camera information
          ) : Boolean ;                    // Returned True if camera opened successfully
 //
 // Open Camera
 // -----------
 var
-     NumCameras : SmallInt ;
      TempName : Array[0..99] of ANSIchar ;
      Value : Word ;
      FrameInterval,ReadoutTime : Double ;
      i,LongValue : Cardinal ;
      Temperature : SmallInt ;
      Available,CircularBufferSupported,MultGainEnabled : Word ;
+     siValue : SmallInt ;
 begin
 
      Result := False ;
@@ -922,10 +932,16 @@ begin
      else CameraInfo.Add('Device driver: V?.?.? ') ;
 
      // Get number of cameras
-     pl_cam_get_total(NumCameras) ;
+     pl_cam_get_total(siValue) ;
+     Session.NumCameras := siValue ;
+     NumCameras := Session.NumCameras ;
      if NumCameras > 0 then begin
-        pl_cam_get_name( 0, TempName ) ;
-        CameraInfo.Add('Camera: '+ PVCAM_CharArrayToString(TempName) ) ;
+        for i := 0 to Session.NumCameras-1 do begin
+           pl_cam_get_name( i, TempName ) ;
+           Session.CameraNames[i] := format('Cam%d: %s ',[i,ANSIString(TempName)]);
+           CameraInfo.Add(Session.CameraNames[i]);
+           end;
+        CameraInfo.Add('');
         end
      else begin
         ShowMessage( 'PVCAM: No cameras available!' ) ;
@@ -935,6 +951,11 @@ begin
 
      // Open camera
      Session.CameraOpen := False ;
+     SelectedCamera := Min(SelectedCamera,Session.NumCameras-1) ;
+     Session.SelectedCamera := SelectedCamera ;
+     CameraInfo.Add('Camera: '+ Session.CameraNames[SelectedCamera] ) ;
+
+     pl_cam_get_name( SelectedCamera, TempName ) ;
      if pl_cam_open( TempName, Session.Handle, OPEN_EXCLUSIVE ) = 0 then begin
         ShowMessage('PVCAM: Unable to open camera!') ;
         CameraInfo.Add('PVCAM: Unable to open camera!') ;
@@ -1292,10 +1313,8 @@ begin
 
     // Un-initialise PVCAM library
     pl_pvcam_uninit ;
-    //PVCAM_DisplayErrorMessage( 'pl_pvcam_uninit ' ) ;
 
     end ;
-
 
 
 procedure PVCAM_CheckROIBoundaries(
@@ -1641,11 +1660,11 @@ begin
     Result := False ;
     if not LibraryLoaded then Exit ;
 
-    outputdebugstring(pchar('PVCAM_StopCapture'));
-
     // Stop continuous capture
     pl_exp_stop_cont( Session.Handle, 0 ) ;
-    PVCAM_DisplayErrorMessage( 'pl_exp_stop_cont' ) ;
+
+    //PVCAM_DisplayErrorMessage( 'pl_exp_stop_cont' ) ;
+    // 9-7-14 pl_exp_stop_cont error check removed because it reports unnecessary error with Cascade camera
 
     // Abort camera operations
     pl_exp_abort( Session.Handle, Word(CCS_HALT) ) ;
