@@ -71,7 +71,7 @@ interface
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs, itex, imaq1394,
   pixelflyunit, SensiCamUnit, HamDCAMUnit, Math, AndorUnit,
-  QCAMUnit, pvcam, imaqunit, nimaqdxunit, strutils, DTOpenLayersUnit, AndorSDK3Unit ;
+  QCAMUnit, pvcam, imaqunit, nimaqdxunit, strutils, DTOpenLayersUnit, AndorSDK3Unit, ThorlabsUnit ;
 
 const
      { Interface cards supported }
@@ -100,8 +100,9 @@ const
      SENSICAM = 22 ;               // added by M.Ascherl 14.sept.2007
      IMAQ = 23 ;
      IMAQDX = 24 ;
+     Thorlabs = 25 ;
 
-     NumLabInterfaceTypes = 25 ;   // up from 22; M.Ascherl
+     NumLabInterfaceTypes = 26 ;   // up from 22; M.Ascherl
 
      // Frame capture trigger modes
      CamFreeRun = 0 ;
@@ -234,6 +235,9 @@ type
 
     // Data Translation Open Layers session
     DTOLSession : TDTOLSession ;
+
+    // Thorlabs cameras session
+    ThorlabsSession : TThorlabsSession ;
 
     function AllocateFrameBuffer : Boolean ;
     procedure DeallocateFrameBuffer ;
@@ -544,6 +548,7 @@ begin
        SENSICAM : Result := 'PCO SensiCam';
        IMAQ : Result := 'National Instruments (IMAQ)' ;
        IMAQDX : Result := 'National Instruments (IMAQ-DX)' ;
+       Thorlabs : Result := 'Thorlabs DCx Cameras' ;
 
        end ;
      end ;
@@ -1271,6 +1276,62 @@ begin
           FTriggerType := CamExposureTrigger ;
           ImageAreaChanged := True ;
           end ;
+
+       Thorlabs : begin
+
+          CameraInfo.Clear ;
+          ThorlabsSession.ShutterMode := FCameraMode ;
+          FCameraAvailable := Thorlabs_OpenCamera(
+                              ThorlabsSession,
+                              FFrameWidthMax,
+                              FFrameHeightMax,
+                              FBinFactorMax,
+                              FNumBytesPerPixel,
+                              FPixelDepth,
+                              FPixelWidth,
+                              CameraInfo ) ;
+
+         if FCameraAvailable then begin
+
+             Thorlabs_GetCameraGainList( ThorlabsSession, CameraGainList ) ;
+
+             Thorlabs_GetCameraModeList( ThorlabsSession,CameraModeList ) ;
+
+//             Thorlabs_GetCameraADCList( AndorSDK3Session, CameraADCList ) ;
+
+             // List of readout speeds
+//             Thorlabs_GetCameraReadoutSpeedList( ThorlabsSession, CameraReadoutSpeedList ) ;
+//             FReadoutSpeed := 0 ;
+//             ThorlabsSession.ReadoutSpeed := FReadoutSpeed ;
+
+             // Calculate grey levels from pixel depth
+             FGreyLevelMax := 1 ;
+             for i := 1 to FPixelDepth do FGreyLevelMax := FGreyLevelMax*2 ;
+             FGreyLevelMax := FGreyLevelMax - 1 ;
+             FGreyLevelMin := 0 ;
+             FCCDRegionReadoutAvailable := True ;
+
+             // Set temperature set point
+//             AndorSDK3_SetTemperature( AndorSDK3Session, FTemperatureSetPoint ) ;
+//             AndorSDK3_SetCooling( AndorSDK3Session, FCameraCoolingOn ) ;
+//             AndorSDK3_SetFanMode( AndorSDK3Session, FCameraFanMode ) ;
+//             AndorSDK3_SetCameraMode( AndorSDK3Session, FCameraMode ) ;
+             FNumCameras := 1 ;
+             end ;
+
+
+          FFrameWidth := FFrameWidthMax ;
+          FFrameHeight := FFrameHeightMax ;
+
+          FFrameIntervalMin := 1E-3 ;
+          FFrameIntervalMax := 1000.0 ;
+
+          FPixelUnits := 'um' ;
+          FTriggerType := CamExposureTrigger ;
+
+          end ;
+
+
        end ;
 
      if FCameraAvailable then begin
@@ -1279,6 +1340,7 @@ begin
         FFrameRight := FFrameWidthMax - 1 ;
         FFrameTop := 0 ;
         FFrameBottom := FFrameHeightMax - 1 ;
+        FBinFactor := Max(FBinFactor,1) ;
         FFrameWidth := FFrameWidthMax div FBinFactor ;
         FFrameHeight := FFrameHeightMax div FBinFactor ;
 
@@ -1361,6 +1423,9 @@ begin
               DTOL_GetImage( DTOLSession ) ;
               end ;
 
+            Thorlabs : begin
+              Thorlabs_GetImage( ThorlabsSession ) ;
+              end ;
             end ;
         end ;
 
@@ -1437,6 +1502,10 @@ begin
 
             DTOL : begin
               DTOL_CloseCamera( DTOLSession ) ;
+              end ;
+
+            Thorlabs : begin
+              Thorlabs_CloseCamera( ThorlabsSession ) ;
               end ;
 
             end ;
@@ -1594,12 +1663,24 @@ begin
                                           FFrameWidth,
                                           FFrameHeight ) ;
               end ;
+
+          Thorlabs : begin
+              Thorlabs_CheckROIBoundaries( ThorlabsSession,
+                                          FFrameLeft,
+                                          FFrameRight,
+                                          FFrameTop,
+                                          FFrameBottom,
+                                          FBinFactor,
+                                          FFrameWidthMax,
+                                          FFrameHeightMax,
+                                          FFrameWidth,
+                                          FFrameHeight
+                                          ) ;
+              end ;
           end ;
 
      FNumBytesPerFrame := FFrameWidth*FFrameHeight*FNumBytesPerPixel ;
      FNumBytesInFrameBuffer := FNumBytesPerFrame*FNumFramesInBuffer ;
-
-     outputdebugstring(pchar('Allocating buffer'));
 
      DeallocateFrameBuffer ;
 
@@ -1615,12 +1696,10 @@ begin
                Exit ;
                end;
         end ;
-        outputdebugstring(pchar('Allocating buffer done'));
         end;
 
      ImageAreaChanged := False ;
      Result := True ;
-     outputdebugstring(pchar('buffer allocated'));
      end ;
 
 
@@ -1918,6 +1997,29 @@ begin
           FrameCounter := 0 ;
           end ;
 
+       Thorlabs : begin
+          // Note Andor cameras do not support additional readout time
+          FCameraActive := Thorlabs_StartCapture(
+                           ThorlabsSession,
+                           FFrameInterval,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
+                           FAmpGain,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameTop,
+                           FFrameWidth*FBinFactor,
+                           FFrameHeight*FBinFactor,
+                           FBinFactor,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FNumBytesPerFrame,
+                           FReadoutTime
+                           ) ;
+          FrameCounter := 0 ;
+          FTemperature := AndorSDK3Session.Temperature ;
+          end ;
+
+
        end ;
 
      FCameraRestartRequired := False ;
@@ -1999,6 +2101,12 @@ begin
           DTOL_StopCapture( DTOLSession ) ;
           FCameraActive := False ;
           end ;
+
+       Thorlabs : begin
+          Thorlabs_StopCapture( ThorlabsSession ) ;
+          FCameraActive := False ;
+          end ;
+
 
        end ;
      end ;
@@ -2327,6 +2435,12 @@ begin
                                    FFrameInterval ) ;
           end ;
 
+       Thorlabs : begin
+          Thorlabs_CheckFrameInterval( ThorlabsSession,
+                                    FFrameInterval,
+                                    FReadoutTime ) ;
+          end ;
+
        end ;
      end ;
 
@@ -2397,6 +2511,10 @@ begin
 
         DTOL : begin
            Result := DTOLSession.MaxFrames ;
+           end ;
+
+        Thorlabs : begin
+           Result :=  (20000000 div (NumPixelsPerFrame*FNumBytesPerPixel))-1 ;
            end ;
 
         else begin

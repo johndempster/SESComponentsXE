@@ -49,6 +49,8 @@ unit NidaqMXUnit;
 // 20.08.13 Unnecessary DAQmxResetDevice in NIDAQmx_initialise() removed to speed up
 //          initialisation
 // 05.11.13 FDACVoltageRange now defaults to 10V when no DACs available
+// 14.08.14 DAQmx_Val_Rising changed to DAQmx_Val_Rising in DAQmxCfgSampClkTiming()
+//          for compatibility with USB-6002/3
 
 interface
 
@@ -2093,7 +2095,7 @@ var
 
     DIGTaskHandle : Integer ;
     FDigClockSupported : LongBool ; // TRUE = Digital output clock controlled
-
+    FNoTriggerOnSampleClock : LongBool ; // TRUE = Cannot trigger AI sampling from AO clock
     InBuf : PIntArray ;
     DBuf : PDoubleArray ;
 
@@ -2260,6 +2262,16 @@ begin
           FDigClockSupported := False ;
           FDigMinUpdateInterval := FDACMinUpdateInterval ;
           end ;
+
+       // Determine if analog output clock can be used as a trigger signal
+       if ANSIContainsText(FBoardModel,'6000') or
+          ANSIContainsText(FBoardModel,'6001') or
+          ANSIContainsText(FBoardModel,'6002') or
+          ANSIContainsText(FBoardModel,'6003') or
+          ANSIContainsText(FBoardModel,'6004') or
+          ANSIContainsText(FBoardModel,'6005') then FNoTriggerOnSampleClock := True
+       else FNoTriggerOnSampleClock := False ;
+
        end
     else begin
        // Timing properties not available. Based limits on board type
@@ -2938,13 +2950,17 @@ begin
                                     FADCMaxSamplingInterval) ;
      ActualSamplingRate := 1.0 ;
      Repeat
+
+     SamplingRate := 1.0 / SamplingInterval ;
+
         // Set sampling rate
         Err := DAQmxCfgSampClkTiming( ADCTaskHandle,
                                nil,
                                SamplingRate,
-                               DAQmx_Val_Falling ,
+                               DAQmx_Val_Rising,
                                DAQmx_Val_FiniteSamps,
                                2);
+        NIMX_CheckError(Err);
         if Err <> 0 then break ;
 
         // Read rate back from board
@@ -2954,7 +2970,6 @@ begin
 
      // Return actual sampling interval
      SamplingInterval := 1.0 / ActualSamplingRate ;
-
 
      // Clear task
      NIMX_CheckError( DAQmxClearTask(ADCTaskHandle)) ;
@@ -3059,7 +3074,7 @@ begin
      NIMX_CheckError( DAQmxCfgSampClkTiming( ADCTaskHandle,
                                              nil,
                                              SamplingRate,
-                                             DAQmx_Val_Rising {DAQmx_Val_Falling},
+                                             DAQmx_Val_Rising,
                                              SampleMode,
                                              nSamples));
 
@@ -3095,7 +3110,11 @@ begin
      else begin
         if FDACClockSupported then begin
            // Start sampling when DAC waveform sweep starts
-           TriggerSource := '/' + DeviceName + '/ao/sampleclock' ;
+
+           // Use PFI1 as shared trigger for AI and AO when AO/sampleclock not available
+           if FNoTriggerOnSampleClock then TriggerSource := '/' + DeviceName + '/pfi1'
+                                      else TriggerSource := '/' + DeviceName + '/ao/sampleclock' ;
+
            NIMX_CheckError( DAQmxCfgDigEdgeStartTrig( ADCTaskHandle,
                                                       PANSIChar(TriggerSource),
                                                       DAQmx_Val_Rising )) ;
@@ -3268,7 +3287,7 @@ begin
         Err := DAQmxCfgSampClkTiming( TaskHandle,
                                nil,
                                SamplingRate,
-                               DAQmx_Val_Falling ,
+                               DAQmx_Val_Rising,
                                DAQmx_Val_FiniteSamps,
                                2);
         if Err <> 0 then break ;
@@ -3305,11 +3324,13 @@ var
     TriggerSource : ANSIString ;
     TriggerPolarity : Integer ;
     ChannelList : ANSIString ;
-    i : Integer ;
+    PortList : ANSIString ;
+    i,Err : Integer ;
     NumSamplesWritten : Integer ;
     VScale : Double ;
     UpdateRate : Double ;
     VDACS : Array[0..31] of Single ;
+    TaskHandle : Integer ;
 begin
     Result := False ;
     if not BoardInitialised then NIMX_InitialiseBoard ;
@@ -3347,11 +3368,12 @@ begin
                        else SampleMode := DAQmx_Val_FiniteSamps ;
 
      UpdateRate := 1.0/UpdateInterval ;
+
      // Set D/A output timing
      NIMX_CheckError( DAQmxCfgSampClkTiming( DACTaskHandle,
                                              nil,
                                              UpdateRate,
-                                             DAQmx_Val_Falling ,
+                                             DAQmx_Val_Rising,
                                              SampleMode,
                                              nPoints )) ;
     DACUpdateIntervalInUse := 1.0/UpdateRate ;
@@ -3366,18 +3388,42 @@ begin
      // Write data to buffer
      // No error check to avoid warning of out of range data
      DAQmxWriteAnalogF64 ( DACTaskHandle,
-                                            nPoints,
-                                            False,
-                                            DefaultTimeOut,
-                                            DAQmx_Val_GroupByScanNumber,
-                                            DBuf,
-                                            NumSamplesWritten,
-                                            Nil
-                                            ) ;
+                           nPoints,
+                           False,
+                           DefaultTimeOut,
+                           DAQmx_Val_GroupByScanNumber,
+                           DBuf,
+                           NumSamplesWritten,
+                           Nil
+                           ) ;
 
      if not ExternalTrigger then begin
         // Start sampling immediately on task start
-        NIMX_CheckError(DAQmxDisableStartTrig(DACTaskHandle));
+        if FNoTriggerOnSampleClock then begin
+           // If ao/sampleclock not available, use PFI1 as trigger
+           TriggerSource := '/' + DeviceName + '/PFI0' ;
+           NIMX_CheckError( DAQmxCfgDigEdgeStartTrig( DACTaskHandle,
+                                                      PANSIChar(TriggerSource),
+                                                      DAQmx_Val_Rising )) ;
+           // Digital output
+           NIMX_CheckError( DAQmxCreateTask( '', TaskHandle ) ) ;
+           PortList := DeviceName + '/port0' ;
+           Err := DAQmxCreateDOChan( TaskHandle,
+                                     PANSIChar(PortList),
+                                     nil,
+                                     DAQmx_Val_ChanForAllLines );
+           if Err = 0 then DAQmxWriteDigitalScalarU32( TaskHandle,
+                                                       True,
+                                                       DefaultTimeOut,
+                                                       0,
+                                                       Nil ) ;
+           // Clear task
+           NIMX_CheckError( DAQmxClearTask ( TaskHandle ) ) ;
+
+           end
+        else begin
+           NIMX_CheckError(DAQmxDisableStartTrig(DACTaskHandle));
+           end;
         end
      else begin
         // Starting sampling when external trigger received
@@ -3394,6 +3440,24 @@ begin
 
      // Start A/D task
      NIMX_CheckError( DAQmxStartTask(DACTaskHandle)) ;
+
+     // If not in external trigger mode and AO/sampleclock not available for trigger
+     // use 5V pulse on P1.
+     if (not ExternalTrigger) and FNoTriggerOnSampleClock then begin
+        NIMX_CheckError( DAQmxCreateTask( '', TaskHandle ) ) ;
+        PortList := DeviceName + '/port0' ;
+        Err := DAQmxCreateDOChan( TaskHandle,
+                                  PANSIChar(PortList),
+                                  nil,
+                                  DAQmx_Val_ChanForAllLines );
+        if Err = 0 then DAQmxWriteDigitalScalarU32( TaskHandle,
+                                                    True,
+                                                    DefaultTimeOut,
+                                                    1,
+                                                    Nil ) ;
+        NIMX_CheckError( DAQmxClearTask ( TaskHandle ) ) ;
+
+        end ;
 
      // Restore FPU exceptions
      NIMX_EnableFPUExceptions ;
