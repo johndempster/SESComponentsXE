@@ -43,6 +43,7 @@ unit ADCDataFile;
 // 14.08.12 PhysioNet file import now works correctly (supports 16 bit sample size as well as 12 bit)
 // 11.03.13 FP error on import of CHT files now fixed. FChannelADCVoltageRange[] now read from YCch#= header variable
 // 31/07/13 Modified to compiled under Delphi XE2/3
+// 15/08/14 Gap free ABF files now set to have a single record equal to whole file
 
 {$R 'adcdatafile.dcr'}
 interface
@@ -3171,8 +3172,17 @@ begin
 
     { Get byte offset of data section }
      FNumHeaderBytes :=  pc6Header.DataSectionPtr*512 ;
-     FNumScansPerRecord := pc6Header.NumSamplesPerEpisode div FNumChannelsPerScan ;
-     FNumRecords := pc6Header.ActualAcqLength div pc6Header.NumSamplesPerEpisode ;
+     if FABFAcquisitionMode = ftGapFree then begin
+        FNumScansPerRecord := pc6Header.ActualAcqLength div FNumChannelsPerScan ;
+//        FNumScansPerRecord := Max(FNumScansPerRecord div 256,1)*256;
+        FNumRecords := pc6Header.ActualAcqLength div (FNumScansPerRecord*FNumChannelsPerScan) ;
+        FNumRecords := FNumRecords +
+                       pc6Header.ActualAcqLength mod (FNumScansPerRecord*FNumChannelsPerScan) ;
+        end
+     else begin
+        FNumScansPerRecord := pc6Header.NumSamplesPerEpisode div FNumChannelsPerScan ;
+        FNumRecords := pc6Header.ActualAcqLength div pc6Header.NumSamplesPerEpisode ;
+        end ;
 
      { Determine whether data is integer or floating point }
      NumDataBytes := FileSeek( FileHandle, 0, 2 ) - FNumHeaderBytes ;
