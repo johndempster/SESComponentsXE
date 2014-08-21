@@ -100,6 +100,7 @@ contains
   TVicLib in 'TVicLib.pas',
   AndorSDK3Unit in 'AndorSDK3Unit.pas',
   HekaUnit in 'HekaUnit.pas',
-  ThorLabsUnit in 'ThorLabsUnit.pas';
+  ThorLabsUnit in 'ThorLabsUnit.pas',
+  dd1550 in 'dd1550.pas';
 
 end.

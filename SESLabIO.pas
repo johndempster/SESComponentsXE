@@ -126,6 +126,7 @@ unit SESLabIO;
            .ADCCHANNELNUMZEROAVG property added
   30.06.14 .DACAvailableWhileADCActive property added. Indicates that DAC can be restarted
            while ADC is active
+  20.08.14 Support for Digidata 1550 added (not tested)
   ================================================================================ }
 
 interface
@@ -178,8 +179,9 @@ const
      HekaLIH88 = 23 ;
      HekaITC18USB = 24 ;
      HekaITC16USB = 25 ;
+     Digidata1550 = 26 ;
 
-     NumLabInterfaceTypes = 26 ;
+     NumLabInterfaceTypes = 27;
      StimulusExtTriggerFlag = -1 ;  // Stimulus program started by external trig pulse.
 
 type
@@ -913,8 +915,8 @@ procedure TimerProc(
 implementation
 
 uses NatInst, CED1401, dd1200, dd1200win98, dd1320,
-     itcmm, itclib, vp500Unit, nidaqmxunit, dd1440, tritonunit,wirelesseegunit,ActiveX ;
-
+     itcmm, itclib, vp500Unit, nidaqmxunit, dd1440, tritonunit,wirelesseegunit,ActiveX,
+     dd1550;
 
 const
      { ------------------------- }
@@ -1098,6 +1100,7 @@ begin
        HekaLIH88 : Result := 'Heka LIH-88' ;
        HekaITC18USB : Result := 'Heka ITC-18-USB' ;
        HekaITC16USB : Result := 'Heka ITC-16-USB' ;
+       Digidata1550 : Result := 'Molecular Devices Digidata 1550';
        end ;
      end ;
 
@@ -1524,6 +1527,37 @@ begin
              end ;
           end ;
 
+       Digidata1550 : begin
+          FLabInterfaceName := 'Molecular Devices (Digidata 1550)' ;
+          DIGD1550_ConfigureHardware( FADCEmptyFlag ) ;
+          FLabInterfaceAvailable := DIGD1550_GetLabInterfaceInfo(
+                                    FLabInterfaceModel,
+                                    FADCMinSamplingInterval,
+                                    FADCMaxSamplingInterval,
+                                    FADCMinValue,
+                                    FADCMaxValue,
+                                    FADCVoltageRanges,
+                                    FADCNumVoltageRanges,
+                                    FADCBufferLimit,
+                                    FDACVoltageRange,
+                                    FDACMinUpdateInterval ) ;
+          FDACMinValue := FADCMinValue ;
+          FDACMaxValue := FADCMaxValue ;
+          if FLabInterfaceAvailable then begin
+             FDACBufferLimit := FADCBufferLimit ;
+             FDIGNumOutputs := 4 ; { No. of digital outputs }
+             FDIGInterval := FDACBufferLimit ;
+             FDigMinUpdateInterval := FDACMinUpdateInterval ;
+             FDigMaxUpdateInterval := 1000.0 ;
+             FDACTriggerOnLevel := IntLimit(Round((FDACMaxValue*4.99)/FDACVoltageRange),
+                                   FDACMinValue,FDACMaxValue) ;
+             FDACTriggerOffLevel := 0 ;
+             { Note. no initial points in D/A waveforms because A/D and D/A
+               runs synchronously }
+             FDACInitialPoints := 0 ;
+             end ;
+          end ;
+
        Triton : begin
           FLabInterfaceName := 'Tecella Triton' ;
           Triton_ConfigureHardware( FADCEmptyFlag ) ;
@@ -1705,6 +1739,9 @@ begin
           Digidata1440 : begin
              DD1440_CloseLaboratoryInterface ;
              end ;
+          Digidata1550 : begin
+             DIGD1550_CloseLaboratoryInterface ;
+             end ;
           Triton : begin
              Triton_CloseLaboratoryInterface ;
              end ;
@@ -1858,6 +1895,17 @@ begin
                               FADCChannelInputNumber ) ;
           end ;
 
+       Digidata1550 : begin
+          DIGD1550_ADCToMemory( ADCBuf,
+                              FADCNumChannels,
+                              FADCNumSamples,
+                              FADCSamplingInterval,
+                              FADCVoltageRanges[FADCVoltageRangeIndex],
+                              FADCTriggerMode,
+                              FADCCircularBuffer,
+                              FADCChannelInputNumber ) ;
+          end ;
+
        Triton : begin
           Triton_ADCToMemory( ADCBuf^,
                               FADCNumChannels,
@@ -1937,6 +1985,10 @@ begin
 
        Digidata1440 : begin
           DD1440_StopADC ;
+          end ;
+
+       Digidata1550 : begin
+          DIGD1550_StopADC ;
           end ;
 
        Triton : begin
@@ -2054,6 +2106,16 @@ begin
 
        Digidata1440 : begin
              DD1440_MemoryToDACAndDigitalOut( DACBuf^,
+                                              FDACNumChannels,
+                                              FDACNumSamples,
+                                              DigBuf^,
+                                              False,
+                                              FStimulusExtTrigger,
+                                              FDACRepeatedWaveform ) ;
+             end ;
+
+       Digidata1550 : begin
+             DIGD1550_MemoryToDACAndDigitalOut( DACBuf^,
                                               FDACNumChannels,
                                               FDACNumSamples,
                                               DigBuf^,
@@ -2209,6 +2271,16 @@ begin
                                               false ) ;
              end ;
 
+          Digidata1550 : begin
+             DIGD1550_MemoryToDACAndDigitalOut( DACBuf^,
+                                              FDACNumChannels,
+                                              FDACNumSamples,
+                                              DigBuf^,
+                                              True,
+                                              FStimulusExtTrigger,
+                                              false ) ;
+             end ;
+
           Triton : begin
              Triton_MemoryToDACAndDigitalOut( DACBuf^,
                                  FDACNumChannels,
@@ -2288,6 +2360,10 @@ begin
           DD1440_StopDAC ;
           end ;
 
+       Digidata1550 : begin
+          DIGD1550_StopDAC ;
+          end ;
+
        Triton : begin
           Triton_StopDAC ;
           end ;
@@ -2359,6 +2435,10 @@ begin
           Result := DD1440_ReadADC( Channel ) ;
           end ;
 
+       Digidata1550 : begin
+          Result := DIGD1550_ReadADC( Channel ) ;
+          end ;
+
        Triton : begin
           Result := Triton_ReadADC( Channel ) ;
           end ;
@@ -2426,6 +2506,10 @@ begin
 
        Digidata1440 : begin
           DD1440_WriteDACsAndDigitalPort(FLastDACVolts,FLastDACNumChannels,FLastDigValue) ;
+          end ;
+
+       Digidata1550 : begin
+          DIGD1550_WriteDACsAndDigitalPort(FLastDACVolts,FLastDACNumChannels,FLastDigValue) ;
           end ;
 
        Triton: begin
@@ -2519,6 +2603,9 @@ begin
           end ;
        Digidata1440 : begin
           DD1440_GetADCSamples( ADCBuf^, FOutPointer ) ;
+          end ;
+       Digidata1550 : begin
+          DIGD1550_GetADCSamples( ADCBuf^, FOutPointer ) ;
           end ;
 
        Triton : begin
@@ -2667,6 +2754,9 @@ begin
        Digidata1440 : begin
           DD1440_WriteDACsAndDigitalPort( FLastDACVolts, FLastDACNumChannels, DigByte ) ;
           end ;
+       Digidata1550 : begin
+          DIGD1550_WriteDACsAndDigitalPort( FLastDACVolts, FLastDACNumChannels, DigByte ) ;
+          end ;
        Triton : begin
           Triton_WriteDACsAndDigitalPort( FLastDACVolts, FLastDACNumChannels, DigByte ) ;
           end ;
@@ -2755,6 +2845,9 @@ begin
           end ;
        Digidata1440 : begin
           DD1440_GetChannelOffsets( FADCChannelOffset, FADCNumChannels ) ;
+          end ;
+       Digidata1550 : begin
+          DIGD1550_GetChannelOffsets( FADCChannelOffset, FADCNumChannels ) ;
           end ;
        Triton : begin
           FADCNumChannels := Max(FADCNumChannels,2) ; // Must be at least 2 channels
@@ -2865,6 +2958,12 @@ begin
                                             FADCMinSamplingInterval),
                                             FADCMaxSamplingInterval) ;
           DD1440_CheckSamplingInterval(FADCSamplingInterval,FADCNumChannels);
+          end ;
+       Digidata1550 : begin
+          FADCSamplingInterval := Min( Max( FADCSamplingInterval,
+                                            FADCMinSamplingInterval),
+                                            FADCMaxSamplingInterval) ;
+          DIGD1550_CheckSamplingInterval(FADCSamplingInterval,FADCNumChannels);
           end ;
        Triton : begin
           FADCSamplingInterval := Min( Max( FADCSamplingInterval,
@@ -3371,6 +3470,9 @@ begin
              FDACUpdateInterval := (FADCSamplingInterval*FDACNumChannels)/FADCNumChannels ;
              end ;      }
           end ;
+       Digidata1550 : begin
+          FDACUpdateInterval := FADCSamplingInterval ;
+          end ;
 
        Triton : begin
           Triton_CheckSamplingInterval(FADCSamplingInterval) ;
@@ -3421,6 +3523,8 @@ begin
           Bits := NIMX_ReadDigitalInputPort ;
           end ;
        Digidata1440 : begin
+          end ;
+       Digidata1550 : begin
           end ;
 
        Triton : begin
@@ -3625,6 +3729,10 @@ begin
           Triggered := True ;         // Triggering handled by DD132X_MemoryToDAC
           end ;
 
+       Digidata1550 : begin
+          Triggered := True ;         // Triggering handled by DD132X_MemoryToDAC
+          end ;
+
        Triton : begin
           Triggered := True ;
           end ;
@@ -3752,6 +3860,10 @@ begin
        Digidata1440 : begin
           FADCExternalTriggerActiveHigh := True ;
           end ;
+       Digidata1550 : begin
+          FADCExternalTriggerActiveHigh := True ;
+          end ;
+
 
        Triton : begin
           FADCExternalTriggerActiveHigh := True ;
@@ -4609,6 +4721,7 @@ begin
        VP500 : Result := False ;
        NIDAQMX : Result := True ;
        Digidata1440 : Result := True ;
+       Digidata1550 : Result := True ;
        Triton : Result :=  False ;
        CED1401_10V : Result := True ;
        WirelessEEG : Result := False ;

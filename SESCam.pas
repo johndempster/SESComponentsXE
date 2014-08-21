@@ -62,6 +62,7 @@ unit SESCam;
                 EOutOfMemory exception now trapped and AllocateFrameBuffer returns false
  03.04.14 JD   PostExposureReadout flag now force on if camera only supports that mode. (CoolSnap HQ2)
  09.07.14 JD   Binfactor division by zero trapped in GetPixelWidth()
+ 20.08.14 JD   Cam1.DefaultReadoutSpeed added
   ================================================================================ }
 {$OPTIMIZATION OFF}
 {$POINTERMATH ON}
@@ -71,7 +72,7 @@ interface
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs, itex, imaq1394,
   pixelflyunit, SensiCamUnit, HamDCAMUnit, Math, AndorUnit,
-  QCAMUnit, pvcam, imaqunit, nimaqdxunit, strutils, DTOpenLayersUnit, AndorSDK3Unit, ThorlabsUnit ;
+  QCAMUnit, pvcam, imaqunit, nimaqdxunit, strutils, DTOpenLayersUnit, AndorSDK3Unit, ThorlabsUnit, maths ;
 
 const
      { Interface cards supported }
@@ -155,7 +156,7 @@ type
     FFrameInterval : Double ;    // Duration of selected frame time interval (s)
     FFrameIntervalMin : Single ; // Min. time interval between frames (s)
     FFrameIntervalMax : Single ; // Max. time interval between frames (s)
-    FExposureTime : Double ;     // Camera exposure time (s)
+    //FExposureTime : Double ;     // Camera exposure time (s)
     //FFrameReadoutTime : Double ;
 
     FReadoutSpeed : Integer ;        // Frame readout speed
@@ -251,6 +252,7 @@ type
     function GetNumPixelsPerFrame : Integer ;
     function GetNumBytesPerFrame : Integer ;
     procedure SetReadOutSpeed( Value : Integer ) ;
+    function GetDefaultReadoutSpeed : Integer ;
     procedure SetNumFramesInBuffer( Value : Integer ) ;
     function GetMaxFramesInBuffer : Integer ;
     procedure SetFrameInterval( Value : Double ) ;
@@ -330,6 +332,7 @@ type
     Property BinFactor : Integer Read FBinFactor Write SetBinFactor Default 1 ;
     Property CCDRegionReadoutAvailable : Boolean Read FCCDRegionReadoutAvailable ;
     Property ReadoutSpeed : Integer Read FReadoutSpeed write SetReadoutSpeed ;
+    Property DefaultReadoutSpeed : Integer Read GetDEfaultReadoutSpeed ;
     Property ReadoutTime : Double Read GetReadoutTime ;
     Property AdditionalReadoutTime : Double
              read FAdditionalReadoutTime Write FAdditionalReadoutTime ;
@@ -1300,9 +1303,9 @@ begin
 //             Thorlabs_GetCameraADCList( AndorSDK3Session, CameraADCList ) ;
 
              // List of readout speeds
-//             Thorlabs_GetCameraReadoutSpeedList( ThorlabsSession, CameraReadoutSpeedList ) ;
-//             FReadoutSpeed := 0 ;
-//             ThorlabsSession.ReadoutSpeed := FReadoutSpeed ;
+             Thorlabs_GetCameraReadoutSpeedList( ThorlabsSession, CameraReadoutSpeedList ) ;
+             FReadoutSpeed := 0 ;
+             ThorlabsSession.PixelClock := FReadoutSpeed ;
 
              // Calculate grey levels from pixel depth
              FGreyLevelMax := 1 ;
@@ -1671,10 +1674,11 @@ begin
                                           FFrameTop,
                                           FFrameBottom,
                                           FBinFactor,
-                                          FFrameWidthMax,
-                                          FFrameHeightMax,
                                           FFrameWidth,
-                                          FFrameHeight
+                                          FFrameHeight,
+                                          FFrameInterval,
+                                          FTriggerMode,
+                                          FReadoutTime
                                           ) ;
               end ;
           end ;
@@ -2267,6 +2271,15 @@ begin
        AndorSDK3 : begin
           AndorSDK3Session.ReadoutSpeed := FReadoutSpeed ;
           end ;
+       Thorlabs : begin
+          ThorlabsSession.PixelClock := FReadoutSpeed ;
+          if ThorlabsSession.PixelClock >= (ThorlabsSession.NumPixelClocks-1) then begin
+             ThorlabsSession.PixelClock := ThorlabsSession.DefaultPixelClock ;
+             FReadoutSpeed := ThorlabsSession.PixelClock ;
+             end ;
+
+          end ;
+
        end ;
 
      ImageAreaChanged := True ;
@@ -2284,6 +2297,32 @@ begin
      if not FCameraActive then SetFrameInterval( FFrameInterval ) ;
      Result := FReadoutTime ;
      end ;
+
+
+function TSESCam.GetDefaultReadoutSpeed : Integer ;
+// ---------------------------------------
+// Return default readout speed for camera
+// ---------------------------------------
+var
+    i : Integer ;
+    MaxSpeed,ReadSpeed : Single ;
+begin
+    case FCameraType of
+        Thorlabs : Result := ThorLabsSession.DefaultPixelClock ;
+        else begin
+           // All other cameras use maximum rate
+           MaxSpeed := 0.0 ;
+           Result := 0 ;
+           for i := 0 to CameraReadoutSpeedList.Count-1 do begin
+              ReadSpeed := ExtractFloat( CameraReadoutSpeedList.Strings[i], 0.0 ) ;
+              if ReadSpeed > MaxSpeed then begin
+                 MaxSpeed := ReadSpeed ;
+                 Result := i ;
+                 end ;
+              end ;
+           end;
+        end ;
+    end;
 
 
 function TSESCam.GetExposureTime : Double ;
@@ -2305,8 +2344,8 @@ procedure TSESCam.SetFrameInterval( Value : Double ) ;
 // ---------------------------------
 // Set time interval between frames
 // ---------------------------------
-var
-     ReadoutRate : Integer ;
+//var
+//     ReadoutRate : Integer ;
 begin
 
      FFrameInterval := Value ;
@@ -2319,8 +2358,8 @@ begin
           end ;
 
        ITEX_C4880_10,ITEX_C4880_12 : begin
-          if FCameraType = ITEX_C4880_10 then ReadoutRate := FastReadout
-                                         else ReadoutRate := SlowReadout ;
+//          if FCameraType = ITEX_C4880_10 then ReadoutRate := FastReadout
+//                                         else ReadoutRate := SlowReadout ;
        {   C4880_CheckFrameInterval( FFrameLeft,
                                     FFrameTop,
                                     FFrameWidth*FBinFactor,
@@ -2437,8 +2476,9 @@ begin
 
        Thorlabs : begin
           Thorlabs_CheckFrameInterval( ThorlabsSession,
-                                    FFrameInterval,
-                                    FReadoutTime ) ;
+                                       FTriggerMode,
+                                       FFrameInterval,
+                                       FReadoutTime ) ;
           end ;
 
        end ;
@@ -2903,8 +2943,6 @@ procedure TSESCam.SetDisableEMCCD(
 // --------------------------------
 // Enable/disable EMCDD function
 // --------------------------------
-var
-    AmpType : Integer ;
 begin
 
      FDisableEMCCD := Value ;
@@ -2933,9 +2971,6 @@ begin
           end;
 
        ANDOR : begin
-          if FDisableEMCCD then AmpType := 1
-                           else AmpType := 0 ;
-          //Andor_SetOutputAmplifier( AndorSession, AmpType ) ;
           AndorSession.DisableEMCCD := FDisableEMCCD ;
           end ;
 
