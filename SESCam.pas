@@ -63,6 +63,8 @@ unit SESCam;
  03.04.14 JD   PostExposureReadout flag now force on if camera only supports that mode. (CoolSnap HQ2)
  09.07.14 JD   Binfactor division by zero trapped in GetPixelWidth()
  20.08.14 JD   Cam1.DefaultReadoutSpeed added
+ 22.08.14 JD   Support for Thorlabs DCx added and .NumPixelShiftFrames added
+               Support for Vieworks VA-29MC-5M camera with CameraLink interface added
   ================================================================================ }
 {$OPTIMIZATION OFF}
 {$POINTERMATH ON}
@@ -199,6 +201,7 @@ type
 
     FADCGain : Integer ;            // A/D gain index value
     FCCDVerticalShiftSpeed : Integer ; // Vertical CCD line shift speed index
+    FNumPixelShiftFrames : Integer ; // No. of pixel shifted frames
 
     ImageAreaChanged : Boolean ;   // TRUE = image area has been changed
 
@@ -376,6 +379,7 @@ type
     Property CameraADC : Integer read FCameraADC write SetCameraADC ;
     Property ADCGain : Integer read FADCGain write SetADCGain ;
     Property CCDVerticalShiftSpeed : Integer read FCCDVerticalShiftSpeed write SetCCDVerticalShiftSpeed ;
+    Property NumPixelShiftFrames : Integer read FNumPixelShiftFrames write FNumPixelShiftFrames ;
 
   end;
 
@@ -489,6 +493,8 @@ begin
      FTemperatureSetPoint := -50.0 ;
      FCameraCoolingOn := True ;
      FCameraFanMode  := 1 ;         // Andor Low settings
+
+     FNumPixelShiftFrames := 1 ; // No. of pixel shift frames acquired
 
      ImageAreaChanged := False ;
 
@@ -1151,12 +1157,13 @@ begin
                               FFrameHeightMax,
                               FNumBytesPerPixel,
                               FPixelDepth,
+                              FBinFactorMax,
                               CameraInfo ) ;
 
           if FCameraAvailable then begin
 
              CameraGainList.Clear ;
-             IMAQ_GetCameraGainList( CameraGainList ) ;
+             IMAQ_GetCameraGainList( IMAQSession, CameraGainList ) ;
 
              // Get camera readout speed options
              FReadoutSpeed := 1 ;
@@ -1642,6 +1649,7 @@ begin
                                           FFrameRight,
                                           FFrameTop,
                                           FFrameBottom,
+                                          FBinFactor,
                                           FFrameWidth,
                                           FFrameHeight ) ;
               end ;
@@ -1959,7 +1967,8 @@ begin
                            FBinFactor,
                            PFrameBuffer,
                            FNumFramesInBuffer,
-                           FNumBytesPerFrame
+                           FNumBytesPerFrame,
+                           FNumPixelShiftFrames
                            ) ;
           FrameCounter := 0 ;
           end ;

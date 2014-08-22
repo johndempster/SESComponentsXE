@@ -10,10 +10,12 @@ unit imaqUnit;
 // 24-7-13 JD Now compiles unders Delphi XE2/3 as well as 7. (not tested)
 // 29-10-13 JD IMAQ_CheckFrameInterval() changed. Camera frame interval now set to fixed video
 //          interval (1/25, 1/30 sec) depending upon RS170 or CCIR camera (IMAQ_CheckFrameInterval()
+// 02-07-14 MoveMemory now used in GetImage() and updated for 64 bit
+// 22-08-14 Support for Vieworks VA-29MC-5M camera with CameraLink interface added
 
 interface
 
-uses WinTypes,sysutils, classes, dialogs, mmsystem, math ;
+uses WinTypes,sysutils, classes, dialogs, mmsystem, math, strutils, shlobj ;
 
 const
 
@@ -1009,6 +1011,7 @@ const
   IMAQ_PCI_1424                       = $B0211093 ;
   IMAQ_PXI_1424                       = $B0221093 ;
   IMAQ_PCI_1426                       = $715D1093 ;
+  IMAQ_PCIe_1427                      = $71BF1093 ;
   IMAQ_PCI_1428                       = $B0E11093 ;
   IMAQ_PXI_1428                       = $707C1093 ;
   IMAQ_PCIX_1429                      = $71041093 ;
@@ -1019,14 +1022,27 @@ type
  TIMAQSession = record
     SessionID : Integer ;
     SessionOpen : Boolean ;
+    BoardType : String ;
+    AnalogVideoBoard : boolean ;
+    BinFactorMax : Integer ;
+    CameraName : string ;
     InterfaceID : Integer ;
     InterfaceOpen : Boolean ;
     AcquisitionInProgress : Boolean ;
     NumFrameBuffers : Integer ;
     FrameBufPointer : Pointer ;
     NumBytesPerFrame : Integer ;
+    FrameCounter : Integer ;
+    PixelDepths : Array[0..15] of Integer ;
+    NumPixelDepths : Integer ;
+    GainMin : Integer ;
+    GainMax : Integer ;
+    MinExposureTime : Double ;
+    MaxExposureTime : Double ;
     BufferList: Array[0..255] of Pointer ;
+    BufferFilled: Array[0..255] of Boolean ;
     BufferIndex : Integer ;
+    CCDShiftSupported : Boolean ;
     end ;
 
 //============================================================================
@@ -1428,6 +1444,7 @@ function IMAQ_OpenCamera(
           var FrameHeightMax : Integer ;
           var NumBytesPerPixel : Integer ;
           var PixelDepth : Integer ;
+          var BinFactorMax : Integer ;     // Largest bin factor
           CameraInfo : TStringList
           ) : Boolean ;
 
@@ -1447,7 +1464,8 @@ function IMAQ_StartCapture(
          BinFactor : Integer ;
          PFrameBuffer : Pointer ;
          NumFramesInBuffer : Integer ;
-         NumBytesPerFrame : Integer
+         NumBytesPerFrame : Integer ;
+         NumPixelShiftFrames : Integer // Extended resolution mode
          ) : Boolean ;
 
 procedure IMAQ_StopCapture(
@@ -1458,7 +1476,14 @@ procedure IMAQ_GetImage(
           var Session : TIMAQSession
           ) ;
 
-procedure IMAQ_GetCameraGainList( CameraGainList : TStringList ) ;
+procedure IMAQ_GetCameraGainList(
+          var Session : TIMAQSession ;
+          CameraGainList : TStringList ) ;
+
+procedure IMAQ_GetCameraADCList(
+          var Session : TIMAQSession ;
+          CameraADCList : TStringList ) ;
+
 
 procedure IMAQ_CheckFrameInterval(
           var Session : TIMAQSession ;
@@ -1473,19 +1498,24 @@ function IMAQ_GetDLLAddress(
          Handle : Integer ;
          const ProcName : string ) : Pointer ;
 
-procedure IMAQ_CheckROIBoundaries( Session : TIMAQSession ;
-                                   var FFrameLeft : Integer ;
-                                   var FFrameRight : Integer ;
-                                   var FFrameTop : Integer ;
-                                   var FFrameBottom : Integer ;
-                                   var FFrameWidth : Integer ;
-                                   var FFrameHeight : Integer
+procedure IMAQ_CheckROIBoundaries( var Session : TIMAQSession ;
+                                   var FrameLeft : Integer ;   // CCD AOI left edge
+                                   var FrameRight : Integer ;  // CCD AOI right edge
+                                   var FrameTop : Integer ;    // CCD AOI top edge
+                                   var FrameBottom : Integer ; // CCD AAO bottom edge
+                                   BinFactor : Integer ;       // pixel bin factor
+                                   var FrameWidth : Integer ;  // frame width (binned)
+                                   var FrameHeight : Integer   // frame height (binned)
                                    ) ;
 
 
 procedure IMAQ_CheckError( ErrNum : Integer ) ;
 
 function IMAQ_CharArrayToString( cBuf : Array of ANSIChar ) : String ;
+
+procedure IMAQ_SetBinning(
+          var Session : TIMAQSession ;
+          BinFactor : Integer ) ;
 
 
 var
@@ -1676,18 +1706,26 @@ function IMAQ_OpenCamera(
           var FrameHeightMax : Integer ; // Returns camera height width
           var NumBytesPerPixel : Integer ; // Returns bytes/pixel
           var PixelDepth : Integer ;       // Returns no. bits/pixel
+          var BinFactorMax : Integer ;     // Largest bin factor
           CameraInfo : TStringList         // Returns Camera details
           ) : Boolean ;
-// ---------------------
-// Open firewire camera
-// ---------------------
+// ------------
+// Open camera
+// ------------
+const
+    RS170Width = 640 ;
+
 var
     Err : Integer ;
     i :Integer ;
     InterfaceName : Array[0..255] of ANSIchar ;
+    wcBuf : Array[0..255] of Char ;
     InterfaceType : Integer ;
     ColourSupported : Integer ;
-    BoardType : String ;
+    sBits : ANSIString ;
+    asBuf : ANSIString ;
+    InterfaceFileName,Key : string ;
+    InterfaceFile : TextFile ;
 begin
 
      Result := False ;
@@ -1715,50 +1753,117 @@ begin
      if Err <> 0 then Exit ;
      Session.SessionOpen := True ;
 
-     imgGetAttribute( Session.SessionID, IMG_ATTR_INTERFACE_TYPE, InterfaceType ) ;
+     IMAQ_CheckError(imgGetAttribute( Session.SessionID, IMG_ATTR_INTERFACE_TYPE, InterfaceType )) ;
      case CArdinal(InterfaceType) of
-        PCIIMAQ1408_REVA : BoardType := 'PCI-1408 (Rev A)' ;
-        PCIIMAQ1408_REVB : BoardType := 'PCI-1408 (Rev B)' ;
-        PCIIMAQ1408_REVC : BoardType := 'PCI-1408 (Rev C)' ;
-        PCIIMAQ1408_REVF : BoardType := 'PCI-1408 (Rev F)' ;
-        PCIIMAQ1408_REVX : BoardType := 'PCI-1408 (Rev X)' ;
-        IMAQ_PCI_1405 : BoardType := 'PCI-1405' ;
-        IMAQ_PXI_1405 : BoardType := 'PCX-1405' ;
-        IMAQ_PCI_1407 : BoardType := 'PCI-1407' ;
-        IMAQ_PXI_1407 : BoardType := 'PCX-1407' ;
-        IMAQ_PCI_1408 : BoardType := 'PCI-1408' ;
-        IMAQ_PXI_1408 : BoardType := 'PCX-1408' ;
-        IMAQ_PCI_1409 : BoardType := 'PCI-1409' ;
-        IMAQ_PXI_1409 : BoardType := 'PCX-1409' ;
-        IMAQ_PCI_1410 : BoardType := 'PCI-1410' ;
-        IMAQ_PCI_1411 : BoardType := 'PCI-1411' ;
-        IMAQ_PXI_1411 : BoardType := 'PCX-1411' ;
-        IMAQ_PCI_1413 : BoardType := 'PCI-1413' ;
-        IMAQ_PXI_1413 : BoardType := 'PCX-1413' ;
-        IMAQ_PCI_1422 : BoardType := 'PCI-1422' ;
-        IMAQ_PXI_1422 : BoardType := 'PCX-1422' ;
-        IMAQ_PCI_1423 : BoardType := 'PCI-1423' ;
-        IMAQ_PXI_1423 : BoardType := 'PCX-1423' ;
-        IMAQ_PCI_1424 : BoardType := 'PCI-1424' ;
-        IMAQ_PXI_1424 : BoardType := 'PCX-1424' ;
-        IMAQ_PCI_1426 : BoardType := 'PCI-1426' ;
-        IMAQ_PCI_1428 : BoardType := 'PCI-1428' ;
-        IMAQ_PXI_1428 : BoardType := 'PCX-1428' ;
-        IMAQ_PCIX_1429 : BoardType := 'PCI-1429' ;
-        IMAQ_PCIe_1429 : BoardType := 'PCIe-1429' ;
-        else BoardType := 'Unknown' ;
+        $1408 : Session.BoardType := 'PCI-1408' ;
+        $1405 : Session.BoardType := 'PCI-1405' ;
+        $1407 : Session.BoardType := 'PCI-1407' ;
+        $1409 : Session.BoardType := 'PCI-1409' ;
+        $1410 : Session.BoardType := 'PCI-1410' ;
+        $1411 : Session.BoardType := 'PCI-1411' ;
+        $1413 : Session.BoardType := 'PCI-1413' ;
+        $1422 : Session.BoardType := 'PCI-1422' ;
+        $1423 : Session.BoardType := 'PCI-1423' ;
+        $1424 : Session.BoardType := 'PCI-1424' ;
+        $1426 : Session.BoardType := 'PCI-1426' ;
+        $1427 : Session.BoardType := 'PCIe-1427' ;
+        $1428 : Session.BoardType := 'PCI-1428' ;
+        $1429 : Session.BoardType := 'PCIe-1429' ;
+        else Session.BoardType := 'Unknown' ;
         end ;
 
-     CameraInfo.Add(Format('Board Type: PCI-%x',[InterfaceType]) ) ;
+     CameraInfo.Add('Board Type: ' + Session.BoardType ) ;
 
-     // If this is a colour camera, set it to monochrome mode
+     // Determine if this is an analog video board
+     if InterfaceType < $1420 then Session.AnalogVideoBoard := True
+                              else Session.AnalogVideoBoard := False ;
 
-     if imgGetAttribute( Session.SessionID, IMG_ATTR_COLOR, ColourSupported ) = 0 then begin
-        if ColourSupported <> 0 then begin
-           CameraInfo.Add('Colour images supported (luminance display mode selected)') ;
-           // Set colour representation mode to luminance
-           imgSetAttribute( Session.SessionID, IMG_ATTR_COLOR_IMAGE_REP, IMG_COLOR_REP_LUM8 ) ;
-           end ;
+    // Get camera type
+    SHGetFolderPath( 0, CSIDL_COMMON_DOCUMENTS, 0,0,wcBuf) ;
+    InterfaceFileName :=  StrPas(wcBuf) + '\National Instruments\NI-IMAQ\Data\' + InterfaceName ;
+    if FileExists(InterfaceFileName) then begin
+       AssignFile(InterfaceFile, InterfaceFileName ) ;
+       Reset( InterfaceFile ) ;
+       Session.CameraName := '' ;
+       repeat
+         ReadLn( InterfaceFile, asBuf ) ;
+         Key := 'Channel0 =' ;
+         if ANSIContainsText(asBuf, Key) and (Session.CameraName = '') then begin
+            asBuf := ANSIReplaceText( asBuf, Key, '');
+            asBuf := ANSIReplaceText( asBuf, '"', '');
+            asBuf := ANSIReplaceText( asBuf, '"', '');
+            Session.CameraName := asBuf ;
+            end ;
+         Until EOF(InterfaceFile) ;
+       CloseFile( InterfaceFile ) ;
+       end;
+     if Session.CameraName = '' then Session.CameraName := 'Unknown' ;
+     CameraInfo.Add('Camera: ' + Session.CameraName );
+
+     if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then begin
+
+        // Initialisation for Vieworks VA-29MC-5M
+
+        // Pixel bit depths
+        Session.PixelDepths[0] := 12 ;
+        Session.PixelDepths[1] := 10 ;
+        Session.PixelDepths[2] := 8 ;
+        Session.NumPixelDepths := 3 ;
+        Session.GainMin := 0 ;
+        Session.GainMax := 899 ;
+        Session.MinExposureTime := 1E-5 ;
+        Session.MaxExposureTime := 100.0 ;
+        Session.CCDShiftSupported := True ;
+        Session.BinFactorMax := 4 ;
+        BinFactorMax := Session.BinFactorMax ;
+        sBits := '2';
+        IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
+                                                     PANSIChar(ANSIString('Taps')),
+                                                     PANSIChar(sBits))) ;
+        sBits := '2';
+        IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
+                                                     PANSIChar(ANSIString('Bin Size')),
+                                                     PANSIChar(sBits))) ;
+
+        sBits := '12 bit' ;
+        IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
+                                                     PANSIChar(ANSIString('Data Bit')),
+                                                     PANSIChar(sBits))) ;
+
+        sBits := 'Normal';
+        IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
+                                                     PANSIChar(ANSIString('Mode')),
+                                                     PANSIChar(sBits))) ;
+        end
+     else begin
+
+        // Initialisation for analogue video cameras
+        Session.GainMin := 1 ;
+        Session.GainMax := 1 ;
+        Session.PixelDepths[2] := 8 ;
+        Session.NumPixelDepths := 1 ;
+        Session.MinExposureTime := 0.02 ;
+        Session.MaxExposureTime := 0.02 ;
+        Session.BinFactorMax := 1 ;
+        BinFactorMax := Session.BinFactorMax ;
+        Session.CCDShiftSupported := False ;
+        end ;
+
+       // If this is a colour camera, set it to monochrome mode
+
+       if imgGetAttribute( Session.SessionID, IMG_ATTR_COLOR, ColourSupported ) = 0 then begin
+          if ColourSupported <> 0 then begin
+             CameraInfo.Add('Colour images supported (luminance display mode selected)') ;
+             // Set colour representation mode to luminance
+             imgSetAttribute( Session.SessionID, IMG_ATTR_COLOR_IMAGE_REP, IMG_COLOR_REP_LUM8 ) ;
+             end ;
+
+       // Determine whetherRS170 or CCIR camera from frame width
+       if imgGetAttribute( Session.SessionID, IMG_ATTR_ACQWINDOW_WIDTH, FrameWidthMax ) = 0 then begin
+          if FrameWidthMax > RS170Width then Session.MinExposureTime := (1.0/25.0)*0.999
+                                        else Session.MinExposureTime := (1.0/30.0)*0.999 ;
+          end ;
+
         end ;
 
      // Pixel depth
@@ -1769,13 +1874,11 @@ begin
      if imgGetAttribute( Session.SessionID, IMG_ATTR_BYTESPERPIXEL, NumBytesPerPixel ) <> 0 then
         CameraInfo.Add('Unable to determine no. bytes/pixel') ;
 
-     // Image width
-     if imgGetAttribute( Session.SessionID, IMG_ATTR_ACQWINDOW_WIDTH, FrameWidthMax ) <> 0 then
-        CameraInfo.Add('Unable to determine horizontal pixel resolution') ;
 
      // Image height
      if imgGetAttribute( Session.SessionID, IMG_ATTR_ACQWINDOW_HEIGHT, FrameHeightMax ) <> 0 then
         CameraInfo.Add('Unable to determine vertical pixel resolution') ;
+
 
      CameraInfo.Add(format('Image size: %d x %d pixels (%d bits/pixel)',
                     [FrameWidthMax,FrameHeightMax,PixelDepth])) ;
@@ -1787,13 +1890,14 @@ begin
      end ;
 
 
-procedure IMAQ_CheckROIBoundaries( Session : TIMAQSession ;
-                                   var FFrameLeft : Integer ;
-                                   var FFrameRight : Integer ;
-                                   var FFrameTop : Integer ;
-                                   var FFrameBottom : Integer ;
-                                   var FFrameWidth : Integer ;
-                                   var FFrameHeight : Integer
+procedure IMAQ_CheckROIBoundaries( var Session : TIMAQSession ;
+                                   var FrameLeft : Integer ;   // CCD AOI left edge
+                                   var FrameRight : Integer ;  // CCD AOI right edge
+                                   var FrameTop : Integer ;    // CCD AOI top edge
+                                   var FrameBottom : Integer ; // CCD AAO bottom edge
+                                   BinFactor : Integer ;       // pixel bin factor
+                                   var FrameWidth : Integer ;  // frame width (binned)
+                                   var FrameHeight : Integer   // frame height (binned)
                                    ) ;
 // -------------------------------
 // Ensure ROI boundaries are valid
@@ -1806,25 +1910,32 @@ var
 
 begin
 
+     FrameTop := FrameTop div BinFactor ;
+     FrameLeft := FrameLeft div BinFactor ;
+     FrameBottom := FrameBottom div BinFactor ;
+     FrameRight := FrameRight div BinFactor ;
+
      // Calculate valid set of ROI boundaries
      IMAQ_CheckError(imgSessionFitROI( Session.SessionID,
                        IMG_ROI_FIT_SMALLER,
-                       FFrameTop,
-                       FFrameLeft,
-                       FFrameBottom - FFrameTop +1,
-                       FFrameRight - FFrameLeft +1,
+                       FrameTop,
+                       FrameLeft,
+                       FrameBottom - FrameTop +1,
+                       FrameRight - FrameLeft +1,
                        FittedFrameTop,
                        FittedFrameLeft,
                        FittedFrameHeight,
                        FittedFrameWidth )) ;
 
-     // Update
-     FFrameLeft := FittedFrameLeft ;
-     FFrameTop := FittedFrameTop ;
-     FFrameWidth := FittedFrameWidth ;
-     FFrameHeight := FittedFrameHeight ;
-     FFrameRight := FFrameLeft + FFrameWidth -1 ;
-     FFrameBottom := FFrameTop + FFrameHeight -1 ;
+     // Update region of interest
+     FrameLeft := FittedFrameLeft*BinFactor ;
+     FrameTop := FittedFrameTop*BinFactor ;
+     FrameRight := FrameLeft + FittedFrameWidth*BinFactor -1 ;
+     FrameBottom := FrameTop + FittedFrameHeight*BinFactor -1 ;
+
+     // Update image size
+     FrameWidth := FittedFrameWidth ;
+     FrameHeight := FittedFrameHeight ;
 
      end ;
 
@@ -1870,13 +1981,15 @@ function IMAQ_StartCapture(
          BinFactor : Integer ;             // Binning factor (1,2,4,8,16)
          PFrameBuffer : Pointer ;         // Pointer to start of ring buffer
          NumFramesInBuffer : Integer ;    // No. of frames in ring buffer
-         NumBytesPerFrame : Integer       // No. of bytes/frame
+         NumBytesPerFrame : Integer ;      // No. of bytes/frame
+         NumPixelShiftFrames : Integer // Extended resolution mode
          ) : Boolean ;
 // -------------------
 // Start frame capture
 // -------------------
 var
-    i : Integer ;
+    i,iGain : Integer ;
+    s : ANSIString ;
 begin
 
     // Stop any acquisition which is in progress
@@ -1885,30 +1998,97 @@ begin
        Session.AcquisitionInProgress := false ;
        end ;
 
-      // Create buffer list
-      for i := 0 to High(Session.BufferList) do begin
-          Session.BufferList[i] := Nil ;
-          end ;
+    // Create buffer list
+    for i := 0 to High(Session.BufferList) do begin
+        Session.BufferList[i] := Nil ;
+        Session.BufferFilled[i] := False ;
+        end ;
 
-     // Internal/external triggering of frame capture
-     if ExternalTrigger = CamFreeRun then begin
-        // Free run mode
-        IMAQ_CheckError(imgSessionTriggerConfigure2( Session.SessionID,
-                                                     IMG_SIGNAL_EXTERNAL,
+    if Session.GainMin <> Session.GainMax then begin
+       iGain := Session.GainMin + Round((Session.GainMax-Session.GainMin)*(AmpGain*0.01)) ;
+       IMAQ_CheckError( imgSetCameraAttributeNumeric(
+                        Session.SessionID,
+                        PANSIChar(ANSIString('Analog Gain')),
+                        iGain )) ;
+       end ;
+
+    if not Session.AnalogVideoBoard then begin
+
+       // Cameralink interface cameras
+       // ----------------------------
+
+       // Set camera binning
+       IMAQ_SetBinning( Session, BinFactor ) ;
+
+       // Extended resolution mode
+       if Session.CCDShiftSupported then begin
+          case NumPixelShiftFrames of
+             4 : s := '4 Shot Mono' ;
+             9 : s := '9 Shot Mono' ;
+             else s := 'None' ;
+             end;
+
+          if ExternalTrigger = CamFreeRun then s := 'None' ;
+          IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
+                                                       PANSIChar(ANSIString('Sequence Mode')),
+                                                       PANSIChar(s))) ;
+          // Turn fan off for pixel shift modes
+          if NumPixelShiftFrames > 1 then begin
+             s := 'Off' ;
+             IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
+                                                          PANSIChar(ANSIString('Fan')),
+                                                          PANSIChar(s))) ;
+             end ;
+          end;
+
+       // Set exposure time
+       IMAQ_CheckError( imgSetCameraAttributeNumeric(
+                        Session.SessionID,
+                        PANSIChar(ANSIString('Exposure Time')),
+                        ExposureTime*1E6 )) ;
+
+       // Internal/external triggering of frame capture
+       if ExternalTrigger = CamFreeRun then begin
+          s := 'Free Run' ;
+          IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
+                                                       PANSIChar(ANSIString('Trigger Mode')),
+                                                       PANSIChar(s))) ;
+          end
+       else begin
+          s := 'Standard' ;
+          IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
+                                                       PANSIChar(ANSIString('Trigger Mode')),
+                                                       PANSIChar(s))) ;
+          s := 'Ext' ;
+          IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
+                                                       PANSIChar(ANSIString('Trigger Source')),
+                                                       PANSIChar(s))) ;
+          s := 'Active High' ;
+          IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
+                                                       PANSIChar(ANSIString('Trigger Polarity')),
+                                                       PANSIChar(s))) ;
+          end ;
+      end
+    else begin
+      // Analog video cameras
+      // --------------------
+      if ExternalTrigger = CamFreeRun then begin
+         // Free run mode
+         IMAQ_CheckError(imgSessionTriggerConfigure2( Session.SessionID,
+                                                      IMG_SIGNAL_EXTERNAL,
                                                      0,
                                                      IMG_TRIG_POLAR_ACTIVEH,
                                                      1000000,
                                                      IMG_TRIG_ACTION_NONE)) ;
-        // Output a pulse on trigger line at end of frame
-        IMAQ_CheckError(imgSessionTriggerDrive2( Session.SessionID,
+         // Output a pulse on trigger line at end of frame
+         IMAQ_CheckError(imgSessionTriggerDrive2( Session.SessionID,
                                                  IMG_SIGNAL_EXTERNAL,
                                                  0,
                                                  IMG_TRIG_POLAR_ACTIVEH,
                                                  IMG_TRIG_DRIVE_FRAME_DONE)) ;
-        end
+         end
      else begin
-        // External trigger mode
-        // Disable trigger output
+        // External trigger mode (Disable trigger output)
         IMAQ_CheckError(imgSessionTriggerDrive2( Session.SessionID,
                                                  IMG_SIGNAL_EXTERNAL,
                                                  0,
@@ -1922,33 +2102,64 @@ begin
                                                      100000,
                                                      IMG_TRIG_ACTION_BUFFER)) ;
         end ;
+     end ;
 
-      // Set CCD readout region
-      IMAQ_CheckError( imgSessionConfigureROI( Session.SessionID,
-                                               FrameTop,
-                                               FrameLeft,
+    // Set CCD readout region
+    IMAQ_CheckError( imgSessionConfigureROI( Session.SessionID,
+                                               FrameTop div BinFactor,
+                                               FrameLeft div BinFactor,
                                                FrameHeight,
                                                FrameWidth )) ;
 
-      // Set up ring buffer
-      IMAQ_CheckError( imgRingSetup( Session.SessionID,
+    // Set up ring buffer
+    IMAQ_CheckError( imgRingSetup( Session.SessionID,
                                      NumFramesInBuffer,
                                      @Session.BufferList,
                                      0, 0 ));
 
-      Session.NumFrameBuffers := NumFramesInBuffer ;
-      Session.FrameBufPointer := PFrameBuffer ;
-      Session.NumBytesPerFrame := NumBytesPerFrame ;
-      Session.BufferIndex := 0 ;
+    Session.NumFrameBuffers := NumFramesInBuffer ;
+    Session.FrameBufPointer := PFrameBuffer ;
+    Session.NumBytesPerFrame := NumBytesPerFrame ;
+    Session.BufferIndex := 0 ;
+    Session.FrameCounter := 0 ;
 
-     // Start acquisition
-     IMAQ_CheckError(imgSessionStartAcquisition(Session.SessionID)) ;
+    // Start acquisition
+    IMAQ_CheckError(imgSessionStartAcquisition(Session.SessionID)) ;
 
-     Result := True ;
-     Session.AcquisitionInProgress := True ;
+    Result := True ;
+    Session.AcquisitionInProgress := True ;
 
-     end;
+    end;
 
+
+procedure IMAQ_SetBinning(
+          var Session : TIMAQSession ;
+          BinFactor : Integer ) ;
+var
+    s : ANSIString ;
+begin
+
+    if Session.BinFactorMax <= 1 then Exit ;
+
+    if BinFactor > 1 then begin
+       s := 'Binning' ;
+       IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
+                                                    PANSIChar(ANSIString('Mode')),
+                                                    PANSIChar(s))) ;
+       if BinFactor > 2 then s := '4x4'
+                        else s := '2x2' ;
+       IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
+                                                     PANSIChar(ANSIString('Bin Size')),
+                                                     PANSIChar(s))) ;
+       end
+    else begin
+       s := 'Normal' ;
+       IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
+                                                    PANSIChar(ANSIString('Mode')),
+                                                    PANSIChar(s))) ;
+       end ;
+
+    end ;
 
 procedure IMAQ_StopCapture(
           var Session : TIMAQSession            // Camera session #
@@ -1956,12 +2167,24 @@ procedure IMAQ_StopCapture(
 // ------------------
 // Stop frame capture
 // ------------------
+var
+    s : ANSIString ;
 begin
 
      if not Session.AcquisitionInProgress then Exit ;
 
      // Stop acquisition
      IMAQ_CheckError(imgSessionStopAcquisition(Session.SessionID)) ;
+
+     IMAQ_CheckError(imgInterfaceReset(Session.SessionID)) ;
+
+     if not Session.AnalogVideoBoard then begin
+        // Ensure fan is on
+        s := 'On' ;
+        IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
+                                                     PANSIChar(ANSIString('Fan')),
+                                                     PANSIChar(s))) ;
+        end ;
 
      Session.AcquisitionInProgress := False ;
 
@@ -1976,7 +2199,7 @@ procedure IMAQ_GetImage(
 // -----------------------------------------------------
 var
     i : Cardinal ;
-    Status,LatestIndex :Integer ;
+    NewFrames,NewFrameCounter :Integer ;
     PFromBuf, PToBuf : PByteArray ;
 
 begin
@@ -1984,33 +2207,33 @@ begin
     if not Session.AcquisitionInProgress then Exit ;
 
     // Get status
-    imgSessionStatus(Session.SessionID,status,LatestIndex);
-
-    // Exit if frame not available
-    if (LatestIndex < 0) or
-       (LatestIndex >= Session.NumFrameBuffers) or
-       (Status = 0) then Exit ;
+    //imgSessionStatus(Session.SessionID,status,LatestIndex);
+    imgGetAttribute( Session.SessionID, IMG_ATTR_FRAME_COUNT, NewFrameCounter ) ;
+    //imgGetAttribute( Session.SessionID, IMG_ATTR_LAST_VALID_BUFFER, Session.NumFramesAcquired ) ;
+    NewFrames := NewFrameCounter - Session.FrameCounter ;
+    Session.FrameCounter := NewFrameCounter ;
+    if NewFrames <= 0 then Exit ;
 
     // Copy frames from IMAQ to main WinFluor buffer
 
-    while Session.BufferIndex <> LatestIndex do begin
+    for i := 0 to NewFrames-1 do begin
         PFromBuf := Session.BufferList[Session.BufferIndex] ;
         PToBuf := Pointer( (Session.BufferIndex*Session.NumBytesPerFrame)
-                         + Cardinal(Session.FrameBufPointer) ) ;
-        for i := 0 to Session.NumBytesPerFrame-1 do begin
-            PToBuf^[i] := PFromBuf^[i] ;
-            end ;
+                         + NativeUInt(PByte(Session.FrameBufPointer))) ;
+        MoveMemory( PToBuf, PFromBuf, Session.NumBytesPerFrame ) ;
+        //Session.BufferFilled[Session.BufferIndex] := False ;
         Inc(Session.BufferIndex) ;
-        if Session.BufferIndex >= Session.NumFrameBuffers then
-           Session.BufferIndex := 0 ;
-           end ;
+        if Session.BufferIndex >= Session.NumFrameBuffers then Session.BufferIndex := 0 ;
+        end ;
 
-     //outputdebugString(PChar(format('%d %d ',[status, LatestIndex]))) ;
+     //outputdebugString(PChar(format('%d %d ',[Session.FrameCounter, NewFrames]))) ;
 
     end ;
 
 
-procedure IMAQ_GetCameraGainList( CameraGainList : TStringList ) ;
+procedure IMAQ_GetCameraGainList(
+          var Session : TIMAQSession ;
+          CameraGainList : TStringList ) ;
 // --------------------------------------------
 // Get list of available camera amplifier gains
 // --------------------------------------------
@@ -2018,7 +2241,30 @@ var
     i : Integer ;
 begin
     CameraGainList.Clear ;
-    for i := 1 to 1 do CameraGainList.Add( format( '%d',[i] )) ;
+    if Session.GainMin <> Session.GainMax then begin
+       for i := 1 to 100 do CameraGainList.Add( format( '%d%',[i] )) ;
+       end
+    else  CameraGainList.Add( 'X1') ;
+
+    end ;
+
+
+procedure IMAQ_GetCameraADCList(
+          var Session : TIMAQSession ;
+          CameraADCList : TStringList ) ;
+// ---------------------------------
+// Get list of available bit depths
+// ---------------------------------
+var
+    i : Integer ;
+begin
+    CameraADCList.Clear ;
+    if Session.NumPixelDepths > 1 then begin
+       for i := 0 to Session.NumPixelDepths-1 do
+           CameraADCList.Add( format( '%d bit',[Session.PixelDepths[i]] )) ;
+       end
+    else  CameraADCList.Add( 'n/a') ;
+
     end ;
 
 
@@ -2032,18 +2278,24 @@ procedure IMAQ_CheckFrameInterval(
 // -------------------------------------------
 // Check that selected frame interval is valid
 // -------------------------------------------
-const
-    RS170Width = 640 ;
 begin
-     // Determine whether RS170 or CCIR camera from frame width
-     if FrameWidthMax > RS170Width then FrameIntervalMin := (1.0/25.0)*0.999
-                                   else FrameIntervalMin := (1.0/30.0)*0.999 ;
+     if Session.AnalogVideoBoard then begin
+         // In free run mode set to  camera interval. In external trigger mode force above camera interval*2
 
-     // In free run mode set to  camera interval. In external trigger mode force above camera interval
-     if TriggerMode = CamExtTrigger then
-        FrameInterval := Max(FrameIntervalMin,FrameInterval)
-     else FrameInterval := FrameIntervalMin ;
-
+        if TriggerMode = CamFreeRun then begin
+          FrameIntervalMin := Session.MinExposureTime ;
+          FrameInterval := Session.MinExposureTime ;
+          end
+        else begin
+          FrameIntervalMin := Session.MinExposureTime*2 ;
+          FrameInterval := Max(FrameInterval,FrameIntervalMin) ;
+          end;
+        //FrameInterval := Max(Round(FrameInterval/Session.MinExposureTime),1)*Session.MinExposureTime ;
+        end
+     else begin
+        FrameIntervalMin := Session.MinExposureTime ;
+        FrameInterval := Max(FrameInterval,FrameIntervalMin) ;
+        end;
      end ;
 
 
