@@ -12,6 +12,7 @@ unit imaqUnit;
 //          interval (1/25, 1/30 sec) depending upon RS170 or CCIR camera (IMAQ_CheckFrameInterval()
 // 02-07-14 MoveMemory now used in GetImage() and updated for 64 bit
 // 22-08-14 Support for Vieworks VA-29MC-5M camera with CameraLink interface added
+// 25-08-14 Support for Vieworks VA-29MC-5M camera now working correctly
 
 interface
 
@@ -1809,6 +1810,7 @@ begin
         Session.PixelDepths[1] := 10 ;
         Session.PixelDepths[2] := 8 ;
         Session.NumPixelDepths := 3 ;
+        PixelDepth := Session.PixelDepths[0] ;
         Session.GainMin := 0 ;
         Session.GainMax := 899 ;
         Session.MinExposureTime := 1E-5 ;
@@ -1840,14 +1842,14 @@ begin
         // Initialisation for analogue video cameras
         Session.GainMin := 1 ;
         Session.GainMax := 1 ;
-        Session.PixelDepths[2] := 8 ;
+        Session.PixelDepths[0] := 8 ;
         Session.NumPixelDepths := 1 ;
+        PixelDepth := Session.PixelDepths[0] ;
         Session.MinExposureTime := 0.02 ;
         Session.MaxExposureTime := 0.02 ;
         Session.BinFactorMax := 1 ;
         BinFactorMax := Session.BinFactorMax ;
         Session.CCDShiftSupported := False ;
-        end ;
 
        // If this is a colour camera, set it to monochrome mode
 
@@ -1857,6 +1859,7 @@ begin
              // Set colour representation mode to luminance
              imgSetAttribute( Session.SessionID, IMG_ATTR_COLOR_IMAGE_REP, IMG_COLOR_REP_LUM8 ) ;
              end ;
+          end ;
 
        // Determine whetherRS170 or CCIR camera from frame width
        if imgGetAttribute( Session.SessionID, IMG_ATTR_ACQWINDOW_WIDTH, FrameWidthMax ) = 0 then begin
@@ -1867,18 +1870,20 @@ begin
         end ;
 
      // Pixel depth
-     if imgGetAttribute( Session.SessionID, IMG_ATTR_PIXDEPTH, PixelDepth ) <> 0 then
-        CameraInfo.Add('Unable to determine pixel depth') ;
+//     if imgGetAttribute( Session.SessionID, IMG_ATTR_PIXDEPTH, PixelDepth ) <> 0 then
+//        CameraInfo.Add('Unable to determine pixel depth') ;
 
      // Bytes per pixel
      if imgGetAttribute( Session.SessionID, IMG_ATTR_BYTESPERPIXEL, NumBytesPerPixel ) <> 0 then
         CameraInfo.Add('Unable to determine no. bytes/pixel') ;
 
-
      // Image height
      if imgGetAttribute( Session.SessionID, IMG_ATTR_ACQWINDOW_HEIGHT, FrameHeightMax ) <> 0 then
         CameraInfo.Add('Unable to determine vertical pixel resolution') ;
 
+     if imgGetAttribute( Session.SessionID, IMG_ATTR_ACQWINDOW_WIDTH, FrameWidthMax ) <> 0 then begin
+          CameraInfo.Add('Unable to determine horizontal pixel resolution') ;
+          end ;
 
      CameraInfo.Add(format('Image size: %d x %d pixels (%d bits/pixel)',
                     [FrameWidthMax,FrameHeightMax,PixelDepth])) ;
@@ -2108,8 +2113,8 @@ begin
     IMAQ_CheckError( imgSessionConfigureROI( Session.SessionID,
                                                FrameTop div BinFactor,
                                                FrameLeft div BinFactor,
-                                               FrameHeight,
-                                               FrameWidth )) ;
+                                               FrameHeight div BinFactor,
+                                               FrameWidth div BinFactor )) ;
 
     // Set up ring buffer
     IMAQ_CheckError( imgRingSetup( Session.SessionID,
@@ -2294,7 +2299,7 @@ begin
         end
      else begin
         FrameIntervalMin := Session.MinExposureTime ;
-        FrameInterval := Max(FrameInterval,FrameIntervalMin) ;
+        FrameInterval := Max(Round(FrameInterval/Session.MinExposureTime),1)*Session.MinExposureTime
         end;
      end ;
 

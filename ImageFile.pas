@@ -16,6 +16,8 @@ unit ImageFile;
 // 11.12.06 LoadFrame32 and SaveFrame32 added
 // 31.07.07 Export to STK files now works correctly
 // 08.04.13 Updated to compile correctly under Delphi XE (Chars to ANSIChar)
+// 17.07.14 Maximum TIF file strip size now forced to be multiple of no. of bytes per line
+//          to avoid scrambling of large TIF file images
 
 interface
 
@@ -1799,7 +1801,7 @@ var
     IValues : Array[0..9] of Cardinal ;
     NumBytesToWrite : Cardinal ;
     NumBytesPerImage : Cardinal ;
-    NumBytes : Cardinal ;
+    NumBytes,nBytesPerLine : Cardinal ;
     IFDPointer : Int64 ;
     OK : Boolean ;
 begin
@@ -1877,7 +1879,9 @@ begin
     IFD.StripOffsets[0] := IFDPointer + cIFDImageStart ;
     while NumBytesToWrite > 0 do begin
        // Write strip
-       NumBytes := Min(NumBytesToWrite,cIFDMaxBytesPerStrip) ;
+       nBytesPerLine := FFrameWidth*FNumBytesPerPixel ;
+       NumBytes := Min(NumBytesToWrite,(cIFDMaxBytesPerStrip div nBytesPerLine)*nBytesPerLine) ;
+
        IFD.StripByteCounts[IFD.NumStrips] := NumBytes ;
        Inc(IFD.NumStrips) ;
        IFD.StripOffsets[IFD.NumStrips] := IFD.StripOffsets[IFD.NumStrips-1] + NumBytes ;
