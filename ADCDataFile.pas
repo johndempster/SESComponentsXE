@@ -44,6 +44,7 @@ unit ADCDataFile;
 // 11.03.13 FP error on import of CHT files now fixed. FChannelADCVoltageRange[] now read from YCch#= header variable
 // 31/07/13 Modified to compiled under Delphi XE2/3
 // 15/08/14 Gap free ABF files now set to have a single record equal to whole file
+// 04/09/14 ABF V2 files can now be read
 
 {$R 'adcdatafile.dcr'}
 interface
@@ -97,10 +98,44 @@ const
   CHTFileHeaderSize = 8192 ;
   ABFFileHeaderSize_V15 = 2048 ;
 
+      ABF_ADCCOUNT=16    ; // number of ADC channels supported.
+      ABF_DACCOUNT=8     ; // number of DAC channels supported.
+      ABF_EPOCHCOUNT=10    ; // number of waveform epochs supported.
+      ABF_ADCUNITLEN=8     ; // length of ADC units strings
+      ABF_ADCNAMELEN_USER= 8 ; // length of user-entered ADC channel name strings
+      ABF_ADCNAMELEN =   10 ; // length of actual ADC channel name strings
+      ABF_DACUNITLEN =  8 ; // length of DAC units strings
+      ABF_DACNAMELEN =      10    ; // length of DAC channel name strings
+      ABF_USERLISTLEN =     256   ; // length of the user list (V1.6)
+ //      ABF_USERLISTCOUNT =   4  ; // number of independent user lists (V1.6)
+      ABF_USERLISTCOUNT =     ABF_DACCOUNT     ; // number of independent user lists (V1.6)
+      ABF_OLDFILECOMMENTLEN = 56  ; // length of file comment string (pre V1.6)
+      ABF_FILECOMMENTLEN   =  128 ; // length of file comment string (V1.6)
+      ABF_PATHLEN          =  256 ; // length of full path, used for DACFile and Protocol name.
+      ABF_CREATORINFOLEN   =  16  ; // length of file creator info string
+      ABF_ARITHMETICOPLEN  =  2   ; // length of the Arithmetic operator field
+      ABF_ARITHMETICUNITSLEN =8   ; // length of arithmetic units string
+      ABF_TAGCOMMENTLEN     = 56   ; // length of tag comment string
+      ABF_BLOCKSIZE         = 512  ; // Size of block alignment in ABF files.
+      PCLAMP6_MAXSWEEPLENGTH =16384  ; // Maximum multiplexed sweep length supported by pCLAMP6 apps.
+      PCLAMP7_MAXSWEEPLEN_PERCHAN =  1032258  ; // Maximum per channel sweep length supported by pCLAMP7 apps.
+      ABF_MAX_SWEEPS_PER_AVERAGE =65500   ; // The maximum number of sweeps that can be combined into a
+                                  // cumulative average (nAverageAlgorithm=ABF_INFINITEAVERAGE).
+      ABF_MAX_TRIAL_SAMPLES  = $7FFFFFFF    ; // Maximum length of acquisition supported (samples)
+
+     ABF_STATS_REGIONS =    8 ;             // The number of independent statistics regions.
+    ABF_BASELINE_REGIONS = 1 ;             // The number of independent baseline regions.
+    ABF_STATS_NUM_MEASUREMENTS =18 ;       // The total number of supported statistcs measurements.
+
+
+
 type
   TByteDynArray         = array of Byte ;
   TSmallIntArray = Array[0..10000000] of SmallInt ;
   PSmallIntArray = ^TSmallIntArray ;
+  TSingleArray = Array[0..10000000] of Single ;
+  PSingleArray = ^TSingleArray ;
+
   // Types of image file supported
   TADCDataFileType = ( ftUnknown,
                 ftWCP,
@@ -108,6 +143,7 @@ type
                 ftCFS,
                 ftAxonABF,
                 ftAxonPClampV5,
+                ftAxonABF2,
                 ftSCD,
                 ftWCD,
                 ftCDR,
@@ -215,7 +251,7 @@ type
       StatisticsPeriod : single ;
       StatisticsMeasurements : LongInt ;
       StatisticsSaveStrategy : SmallInt ;
-      
+
       { Group #5}
 	    ADCRange : single ;
 	    DACRange : single ;
@@ -260,7 +296,7 @@ type
       DACHoldingLevel : Array[0..3] of single ;
       SignalType : SmallInt ;
       Unused1412 : Array[1..10] of ANSIChar ;
-      
+
       { Group #8 }
       OutEnable : SmallInt ;
       SampleNumberOUT1 : SmallInt ;
@@ -519,6 +555,361 @@ type
    sUnused2048 : array[1..130] of ANSIChar ;
 
    end ;
+
+  TABF2Header = packed record
+      { Group #1 }
+      FileVersionNumber : single ;
+	    OperationMode : SmallInt ;
+      ActualAcqLength : LongInt ;
+	    NumPointsIgnored : SmallInt ;
+	    ActualEpisodes : LongInt ;
+	    FileStartDate : LongInt ;
+	    FileStartTime : LongInt ;
+	    StopwatchTime : LongInt ;
+	    HeaderVersionNumber : single ;
+	    nFileType : SmallInt ;
+      // GROUP #2 - File Structure
+      lDataSectionPtr : LongInt ;
+      lTagSectionPtr : LongInt ;
+      lNumTagEntries : LongInt ;
+      lScopeConfigPtr : LongInt ;
+      lNumScopes : LongInt ;
+      lDeltaArrayPtr : LongInt ;
+      lNumDeltas : LongInt ;
+      lVoiceTagPtr : LongInt ;
+      lVoiceTagEntries : LongInt ;
+      lSynchArrayPtr : LongInt ;
+      lSynchArraySize : LongInt ;
+      nDataFormat : SmallInt ;
+      nSimultaneousScan : SmallInt ;
+      lStatisticsConfigPtr : LongInt ;
+      lAnnotationSectionPtr : LongInt ;
+      lNumAnnotations : LongInt ;
+      lDACFilePtr : Array[0..ABF_DACCOUNT-1] of LongInt ;
+      lDACFileNumEpisodes : Array[0..ABF_DACCOUNT-1] of LongInt ;
+
+      // GROUP #3 - Trial hierarchy information
+      nADCNumChannels : SmallInt ;
+      fADCSequenceInterval : single ;
+      uFileCompressionRatio : DWORD ;
+      bEnableFileCompression : ByteBool ;
+      fSynchTimeUnit : single ;
+      fSecondsPerRun : single ;
+      lNumSamplesPerEpisode : LongInt ;
+      lPreTriggerSamples : LongInt ;
+      lEpisodesPerRun : LongInt ;
+      lRunsPerTrial : LongInt ;
+      lNumberOfTrials : LongInt ;
+      nAveragingMode : SmallInt ;
+      nUndoRunCount : SmallInt ;
+      nFirstEpisodeInRun : SmallInt ;
+      fTriggerThreshold : single ;
+      nTriggerSource : SmallInt ;
+      nTriggerAction : SmallInt ;
+      nTriggerPolarity : SmallInt ;
+      fScopeOutputInterval : single ;
+      fEpisodeStartToStart : single ;
+      fRunStartToStart : single ;
+      fTrialStartToStart : single ;
+      lAverageCount : LongInt ;
+      nAutoTriggerStrategy : SmallInt ;
+      fFirstRunDelayS : single ;
+      nTriggerTimeout : DWORD ; //FB 2296
+
+      // GROUP #4 - Display Parameters
+      nDataDisplayMode : SmallInt ;
+      nChannelStatsStrategy : SmallInt ;
+      lSamplesPerTrace : LongInt ;
+      lStartDisplayNum : LongInt ;
+      lFinishDisplayNum : LongInt ;
+      nShowPNRawData : SmallInt ;
+      fStatisticsPeriod : single ;
+      lStatisticsMeasurements : LongInt ;
+      nStatisticsSaveStrategy : SmallInt ;
+
+      // GROUP #5 - Hardware information
+      fADCRange : single ;
+      fDACRange : single ;
+      lADCResolution : LongInt ;
+      lDACResolution : LongInt ;
+      nDigitizerADCs : SmallInt ;
+      nDigitizerDACs : SmallInt ;
+      nDigitizerTotalDigitalOuts : SmallInt ;
+      nDigitizerSynchDigitalOuts : SmallInt ;
+      nDigitizerType : SmallInt ;
+
+      // GROUP #6 Environmental Information
+      nExperimentType : SmallInt ;
+      nManualInfoStrategy : SmallInt ;
+      fCellID1 : single ;
+      fCellID2 : single ;
+      fCellID3 : single ;
+      sProtocolPath : Array[0..ABF_PATHLEN-1] of ANSIChar ;
+      sCreatorInfo : Array[0..ABF_CREATORINFOLEN-1] of ANSIChar ;
+      sModifierInfo : Array[0..ABF_CREATORINFOLEN-1] of ANSIChar ;
+      nCommentsEnable : SmallInt ;
+      sFileComment : Array[0..ABF_FILECOMMENTLEN-1] of ANSIChar ;
+      nTelegraphEnable : Array[0..ABF_ADCCOUNT-1] of SmallInt ;
+      nTelegraphInstrument : Array[0..ABF_ADCCOUNT-1] of SmallInt ;
+      fTelegraphAdditGain : Array[0..ABF_ADCCOUNT-1] of single ;
+      fTelegraphFilter : Array[0..ABF_ADCCOUNT-1] of single ;
+      fTelegraphMembraneCap : Array[0..ABF_ADCCOUNT-1] of single ;
+      fTelegraphAccessResistance : Array[0..ABF_ADCCOUNT-1] of single ;
+      nTelegraphMode : Array[0..ABF_ADCCOUNT-1] of SmallInt ;
+      nTelegraphDACScaleFactorEnable : array[0..ABF_DACCOUNT-1] of SmallInt ;
+
+      nAutoAnalyseEnable : SmallInt ;
+
+      GUID : Array[0..15] of ANSIChar ;
+      fInstrumentHoldingLevel : Array[0..ABF_DACCOUNT-1] of single ;
+      ulFileCRC : DWORD ;
+      nCRCEnable : SmallInt ;
+
+      // GROUP #7 - Multi-channel information
+      nSignalType : SmallInt ;                        // why is this only single channel ?
+      nADCPtoLChannelMap : Array[0..ABF_ADCCOUNT-1] of SmallInt ;
+      nADCSamplingSeq : Array[0..ABF_ADCCOUNT-1] of  SmallInt ;
+      fADCProgrammableGain : Array[0..ABF_ADCCOUNT-1] of Single ;
+      fADCDisplayAmplification : Array[0..ABF_ADCCOUNT-1] of  Single ;
+      fADCDisplayOffset : Array[0..ABF_ADCCOUNT-1] of  Single ;
+      fInstrumentScaleFactor : Array[0..ABF_ADCCOUNT-1] of  Single ;
+      fInstrumentOffset : Array[0..ABF_ADCCOUNT-1] of  Single ;
+      fSignalGain : Array[0..ABF_ADCCOUNT-1] of  Single ;
+      fSignalOffset : Array[0..ABF_ADCCOUNT-1] of  Single ;
+      fSignalLowpassFilter : Array[0..ABF_ADCCOUNT-1] of  Single ;
+      fSignalHighpassFilter : Array[0..ABF_ADCCOUNT-1] of  Single ;
+      nLowpassFilterType : Array[0..ABF_ADCCOUNT-1] of ANSIChar ;
+      nHighpassFilterType : Array[0..ABF_ADCCOUNT-1] of ANSIChar ;
+      bHumFilterEnable : Array[0..ABF_ADCCOUNT-1] of ByteBool ;
+
+      sADCChannelName : Array[0..ABF_ADCCOUNT-1,0..ABF_ADCNAMELEN-1] of ANSIChar ;   // extra chars so name can be modified for P/N
+      sADCUnits : Array[0..ABF_ADCCOUNT-1,0..ABF_ADCUNITLEN-1] of ANSIChar ;
+      fDACScaleFactor : Array[0..ABF_DACCOUNT-1] of  Single ;
+      fDACHoldingLevel : Array[0..ABF_DACCOUNT-1] of  Single ;
+      fDACCalibrationFactor : Array[0..ABF_DACCOUNT-1] of  Single ;
+      fDACCalibrationOffset : Array[0..ABF_DACCOUNT-1] of  Single ;
+      sDACChannelName : Array[0..ABF_DACCOUNT-1,0..ABF_DACNAMELEN-1] of ANSIChar ;
+      sDACChannelUnits : Array[0..ABF_DACCOUNT-1,0..ABF_DACNAMELEN-1] of ANSIChar ;
+
+
+   // GROUP #9 - Epoch Waveform and Pulses
+      nDigitalEnable : SmallInt ;
+      nActiveDACChannel : SmallInt ;                     // should retire !
+      nDigitalDACChannel : SmallInt ;
+      nDigitalHolding : SmallInt ;
+      nDigitalInterEpisode : SmallInt ;
+      nDigitalTrainActiveLogic : SmallInt ;
+      nDigitalValuearray : array[0..ABF_EPOCHCOUNT-1] of SmallInt ;
+      nDigitalTrainValuearray : array[0..ABF_EPOCHCOUNT-1] of SmallInt ;
+      bEpochCompressionarray : array[0..ABF_EPOCHCOUNT-1] of bytebool ;
+      nWaveformEnablearray : array[0..ABF_DACCOUNT-1] of SmallInt ;
+      nWaveformSourcearray : array[0..ABF_DACCOUNT-1] of SmallInt ;
+      nInterEpisodeLevelarray : array[0..ABF_DACCOUNT-1] of SmallInt ;
+      nEpochTypearray : array[0..ABF_DACCOUNT-1,0..ABF_EPOCHCOUNT-1] of SmallInt ;
+      fEpochInitLevelarray : array[0..ABF_DACCOUNT-1,0..ABF_EPOCHCOUNT-1] of single ;
+      fEpochFinalLevelarray : array[0..ABF_DACCOUNT-1,0..ABF_EPOCHCOUNT-1] of single ; // Only used for ABF_EPOCHSLOPE.
+      fEpochLevelIncarray : array[0..ABF_DACCOUNT-1,0..ABF_EPOCHCOUNT-1] of single ;
+      lEpochInitDurationarray : array[0..ABF_DACCOUNT-1,0..ABF_EPOCHCOUNT-1] of LongInt ;
+      lEpochDurationIncarray : array[0..ABF_DACCOUNT-1,0..ABF_EPOCHCOUNT-1] of LongInt ;
+      nEpochTableRepetitions : array[0..ABF_DACCOUNT-1] of SmallInt ;
+      fEpochTableStartToStartInterval : array[0..ABF_DACCOUNT-1] of single ;
+
+      // GROUP #10 - DAC Output File
+      fDACFileScalearray : array[0..ABF_DACCOUNT-1] of single ;
+      fDACFileOffsetarray : array[0..ABF_DACCOUNT-1] of single ;
+      lDACFileEpisodeNumarray : array[0..ABF_DACCOUNT-1] of LongInt ;
+      nDACFileADCNumarray : array[0..ABF_DACCOUNT-1] of SmallInt ;
+      sDACFilePatharray : array[0..ABF_DACCOUNT-1,0..ABF_PATHLEN-1] of ANSIChar ;
+
+      // GROUP #11a - Presweep (conditioning) pulse train
+      nConditEnablearray : array[0..ABF_DACCOUNT-1] of SmallInt ;
+      lConditNumPulsesarray : array[0..ABF_DACCOUNT-1] of LongInt ;
+      fBaselineDurationarray : array[0..ABF_DACCOUNT-1] of single ;
+      fBaselineLevelarray : array[0..ABF_DACCOUNT-1] of single ;
+      fStepDurationarray : array[0..ABF_DACCOUNT-1] of single ;
+      fStepLevelarray : array[0..ABF_DACCOUNT-1] of single ;
+      fPostTrainPeriodarray : array[0..ABF_DACCOUNT-1] of single ;
+      fPostTrainLevelarray : array[0..ABF_DACCOUNT-1] of single ;
+      fCTStartLevelarray : array[0..ABF_DACCOUNT-1,0..ABF_EPOCHCOUNT-1] of single ;
+      fCTEndLevelarray : array[0..ABF_DACCOUNT-1,0..ABF_EPOCHCOUNT-1] of single ;
+      fCTIntervalDurationarray : array[0..ABF_DACCOUNT-1,0..ABF_EPOCHCOUNT-1] of single ;
+      fCTStartToStartIntervalarray : array[0..ABF_DACCOUNT-1] of single ;
+
+      // GROUP #11b - Membrane Test Between Sweeps
+      nMembTestEnablearray : array[0..ABF_DACCOUNT-1] of SmallInt ;
+      fMembTestPreSettlingTimeMSarray : array[0..ABF_DACCOUNT-1] of single ;
+      fMembTestPostSettlingTimeMSarray : array[0..ABF_DACCOUNT-1] of single ;
+
+      // GROUP #11c - PreSignal test pulse
+      nPreSignalEnablearray : array[0..ABF_DACCOUNT-1] of SmallInt ;
+      fPreSignalPreStepDurationarray : array[0..ABF_DACCOUNT-1] of single ;
+      fPreSignalPreStepLevelarray : array[0..ABF_DACCOUNT-1] of single ;
+      fPreSignalStepDurationarray : array[0..ABF_DACCOUNT-1] of single ;
+      fPreSignalStepLevelarray : array[0..ABF_DACCOUNT-1] of single ;
+      fPreSignalPostStepDurationarray : array[0..ABF_DACCOUNT-1] of single ;
+      fPreSignalPostStepLevelarray : array[0..ABF_DACCOUNT-1] of single ;
+
+      // GROUP #12 - Variable parameter user list
+      nULEnablearray : array[0..ABF_USERLISTCOUNT-1] of SmallInt ;
+      nULParamToVaryarray : array[0..ABF_USERLISTCOUNT-1] of SmallInt ;
+      nULRepeatarray : array[0..ABF_USERLISTCOUNT-1] of SmallInt ;
+      sULParamValueListarray : array[0..ABF_USERLISTCOUNT-1,0..ABF_USERLISTLEN-1] of ANSIChar ;
+
+      // GROUP #13 - Statistics measurements
+      nStatsEnable : SmallInt ;
+      nStatsActiveChannels : WORD ;           // Active stats channel bit flag
+      nStatsSearchRegionFlags : WORD ;          // Active stats region bit flag
+      nStatsSmoothing : SmallInt ;
+      nStatsSmoothingEnable : SmallInt ;
+      nStatsBaseline : SmallInt ;
+      nStatsBaselineDAC : SmallInt ;                      // If mode is epoch, then this holds the DAC
+      lStatsBaselineStart : LongInt ;
+      lStatsBaselineEnd : LongInt ;
+      lStatsMeasurements: array[0..ABF_STATS_REGIONS-1] of LongInt ;  // Measurement bit flag for each region
+      lStatsStartarray : array[0..ABF_STATS_REGIONS-1] of LongInt ;
+      lStatsEndarray : array[0..ABF_STATS_REGIONS-1] of LongInt ;
+      nRiseBottomPercentile : array[0..ABF_STATS_REGIONS-1] of SmallInt ;
+      nRiseTopPercentile : array[0..ABF_STATS_REGIONS-1] of SmallInt ;
+      nDecayBottomPercentile : array[0..ABF_STATS_REGIONS-1] of SmallInt ;
+      nDecayTopPercentilearray : array[0..ABF_STATS_REGIONS-1] of SmallInt ;
+      nStatsChannelPolarity : array[0..ABF_ADCCOUNT-1] of SmallInt ;
+      nStatsSearchModearray : array[0..ABF_STATS_REGIONS-1] of SmallInt ;    // Stats mode per region: mode is cursor region, epoch etc
+      nStatsSearchDACarray : array[0..ABF_STATS_REGIONS-1] of SmallInt ;     // If mode is epoch, then this holds the DAC
+
+      // GROUP #14 - Channel Arithmetic
+      nArithmeticEnable : SmallInt ;
+      nArithmeticExpression : SmallInt ;
+      fArithmeticUpperLimit : single ;
+      fArithmeticLowerLimit : single ;
+      nArithmeticADCNumA : SmallInt ;
+      nArithmeticADCNumB : SmallInt ;
+      fArithmeticK1 : single ;
+      fArithmeticK2 : single ;
+      fArithmeticK3 : single ;
+      fArithmeticK4 : single ;
+      fArithmeticK5 : single ;
+      fArithmeticK6 : single ;
+      sArithmeticOperator : array[0..ABF_ARITHMETICOPLEN-1] of ANSIChar ;
+      sArithmeticUnits : array[0..ABF_ARITHMETICUNITSLEN-1] of ANSIChar ;
+
+      // GROUP #15 - Leak subtraction
+      nPNPosition : SmallInt ;
+      nPNNumPulses : SmallInt ;
+      nPNPolarity : SmallInt ;
+      fPNSettlingTime : single ;
+      fPNInterpulse : single ;
+      nLeakSubtractType : array[0..ABF_DACCOUNT-1] of SmallInt ;
+      fPNHoldingLevel : array[0..ABF_DACCOUNT-1] of single ;
+      nLeakSubtractADCIndex : array[0..ABF_DACCOUNT-1] of SmallInt ;
+
+      // GROUP #16 - Miscellaneous variables
+      nLevelHysteresis : SmallInt ;
+      lTimeHysteresis : LongInt ;
+      nAllowExternalTags : SmallInt ;
+      nAverageAlgorithm : SmallInt ;
+      fAverageWeighting : single ;
+      nUndoPromptStrategy : SmallInt ;
+      nTrialTriggerSource : SmallInt ;
+      nStatisticsDisplayStrategy : SmallInt ;
+      nExternalTagType : SmallInt ;
+      lHeaderSize : LongInt ;
+      nStatisticsClearStrategy : SmallInt ;
+      nEnableFirstLastHolding : SmallInt ;            // First & Last Holding are now optional.
+
+      // GROUP #17 - Trains parameters
+      lEpochPulsePeriod : array[0..ABF_DACCOUNT-1,0..ABF_EPOCHCOUNT-1] of LongInt ;
+      lEpochPulseWidth : array[0..ABF_DACCOUNT-1,0..ABF_EPOCHCOUNT-1] of LongInt ;
+
+      // GROUP #18 - Application version data
+      nCreatorMajorVersion : SmallInt ;
+      nCreatorMinorVersion : SmallInt ;
+      nCreatorBugfixVersion : SmallInt ;
+      nCreatorBuildVersion : SmallInt ;
+      nModifierMajorVersion : SmallInt ;
+      nModifierMinorVersion : SmallInt ;
+      nModifierBugfixVersion : SmallInt ;
+      nModifierBuildVersion : SmallInt ;
+
+      // GROUP #19 - LTP protocol
+      nLTPType : SmallInt ;
+      nLTPUsageOfDAC : array[0..ABF_DACCOUNT-1] of SmallInt ;
+      nLTPPresynapticPulses : array[0..ABF_DACCOUNT-1] of SmallInt ;
+
+      // GROUP #20 - Digidata 132x Trigger out flag
+      nScopeTriggerOut : SmallInt ;
+
+      // GROUP #22 - Alternating episodic mode
+      nAlternateDACOutputState : SmallInt ;
+      nAlternateDigitalOutputState : SmallInt ;
+      nAlternateDigitalValue : array[0..ABF_EPOCHCOUNT-1] of SmallInt ;
+      nAlternateDigitalTrainValue : array[0..ABF_EPOCHCOUNT-1] of SmallInt ;
+
+      // GROUP #23 - Post-processing actions
+      fPostProcessLowpassFilter : array[0..ABF_ADCCOUNT-1] of single ;
+      nPostProcessLowpassFilterType : array[0..ABF_ADCCOUNT-1] of ANSIChar ;
+
+      // GROUP #24 - Legacy gear shift info
+      fLegacyADCSequenceInterval : single ;
+      fLegacyADCSecondSequenceInterval : single ;
+      lLegacyClockChange : LongInt ;
+      lLegacyNumSamplesPerEpisode : LongInt ;
+
+      end ;
+
+// ABF V2
+// ------
+
+  TABF_Initialize = function(
+                    pABFHeader : Pointer
+                    ) : ByteBool ;  stdcall ;
+  TABF_Cleanup = procedure ;
+
+  TABF_ReadOpen = function(
+                  FileName : PANSIChar ;
+                  var FileHandle : Integer ;
+                  Flags : DWORD ;
+                  pABFHeader : Pointer ;
+                  var MaxSamples : DWORD ;
+                  var MaxEpisodes : DWORD ;
+                  var Err : Integer
+                  ) : ByteBool ; stdcall ;
+
+  TABF_WriteOpen = function(
+                   FileName : PANSIChar ;
+                   var FileHandle : Integer ;
+                   Flags : DWORD ;
+                   pABFHeader : Pointer ;
+                   var Err : Integer
+                   ) : ByteBool ; stdcall ;
+
+  TABF_UpdateHeader = function(
+                      FileHandle : Integer ;
+                      pABFHeader : Pointer ;
+                      var Err : Integer
+                      ) : ByteBool ; stdcall ;
+
+  TABF_IsABFFile = function(
+                   FileName : PANSIChar ;
+                   var ABFFormat : Integer ;
+                   var Err : Integer
+                   ) : ByteBool ; stdcall ;
+
+  TABF_Close = function(
+               FileHandle : Integer ;
+               var Err : Integer
+               ) : ByteBool ; stdcall ;
+
+  TABF_ReadChannel = function(
+                     FileHandle : Integer ;
+                     pABFHeader : Pointer ;
+                     nChannel : Integer ;
+                     Episode : DWORD ;
+                     pfBuffer : PSingleArray ;
+                     var NumSamples : DWORD ;
+                     var Err : Integer
+                     ) : ByteBool ; stdcall ;
+
+
 
 // WCP V9.0 file structure
 
@@ -906,6 +1297,22 @@ TWAVEDataChunk = packed record
     // Axon ABF file data
     FABFAcquisitionMode : TABFAcquisitionMode ; // ftGapFree or ftEpisodic
 
+    // ABF V2.X
+    ABF2LibraryLoaded : Boolean ;
+    ABF2LibraryHnd : Integer ;
+    ABF2Header : TABF2Header ;
+    ABF2MaxSamples : DWORD ;
+    ABF2MaxEpisodes : DWORD ;
+    // DLL functions
+    ABF_Initialize : TABF_Initialize ;
+    ABF_Cleanup : TABF_Cleanup ;
+    ABF_ReadOpen : TABF_ReadOpen ;
+    ABF_WriteOpen : TABF_WriteOpen ;
+    ABF_UpdateHeader : TABF_UpdateHeader ;
+    ABF_IsABFFile : TABF_IsABFFile ;
+    ABF_Close : TABF_Close ;
+    ABF_ReadChannel : TABF_ReadChannel ;
+
     // CFS file data
     CFSFileHeader : TCFSFileHeader ;
     CFSChannelDef : Array[0..ChannelLimit] of TCFSChannelDef ;
@@ -923,6 +1330,8 @@ TWAVEDataChunk = packed record
 
     UseTempFile : Boolean ;
     //InBuf : Array[0..64000] of SmallInt ;
+
+
 
     procedure WCPLoadFileHeader ;
     function WCPSaveFileHeader : Boolean ;
@@ -947,6 +1356,7 @@ TWAVEDataChunk = packed record
     function WCDLoadFileHeader : Boolean ;
     function LDTLoadFileHeader : Boolean ;
     function ABFLoadFileHeader : Boolean ;
+    function ABF2LoadFileHeader : Boolean ;
     function PClampV5LoadFileHeader : Boolean ;
     function CFSLoadFileHeader : Boolean ;
 
@@ -967,6 +1377,8 @@ TWAVEDataChunk = packed record
 
     function RawLoadHeader : Boolean ;
     function IBWLoadFileHeader : Boolean ;
+
+    procedure LoadABF2Library  ;
 
     function HEKLoadFile : Boolean ;
     procedure HEKReadLine(
@@ -1268,7 +1680,9 @@ begin
 
      FMarkerList := TStringList.Create ;
 
+
      UpdateHeader := False ;
+     ABF2LibraryLoaded := False ;
 
      end ;
 
@@ -1284,8 +1698,46 @@ begin
 
      FMarkerList.Free ;
 
+     // Remove ABF V2 I/O library
+     if ABF2LibraryLoaded then begin
+        FreeLibrary( ABF2LibraryHnd ) ;
+        ABF2LibraryLoaded := False ;
+        end;
+
      { Call inherited destructor }
      inherited Destroy ;
+
+     end ;
+
+
+procedure TADCDataFile.LoadABF2Library  ;
+{ -------------------------------------
+  Load AXDD1440.DLL library into memory
+  -------------------------------------}
+const
+    LibName = 'abffio.dll' ;
+var
+     DLLFilePath : String ; // DLL file paths
+begin
+
+     ABF2LibraryLoaded := False ;
+
+     DLLFilePath :=  ExtractFilePath(ParamStr(0)) + LibName ;
+     if not FileExists(DLLFilePath) then Exit ;
+
+     ABF2LibraryHnd := LoadLibrary(PChar(DLLFilePath));
+     if ABF2LibraryHnd <= 0 then Exit ;
+
+     @ABF_Initialize := GetProcAddress(ABF2LibraryHnd,'ABF_Initialize') ;
+     @ABF_Cleanup := GetProcAddress(ABF2LibraryHnd,'ABF_Cleanup') ;
+     @ABF_ReadOpen := GetProcAddress(ABF2LibraryHnd,'ABF_ReadOpen') ;
+     @ABF_WriteOpen := GetProcAddress(ABF2LibraryHnd,'ABF_WriteOpen') ;
+     @ABF_UpdateHeader := GetProcAddress(ABF2LibraryHnd,'ABF_UpdateHeader') ;
+     @ABF_IsABFFile := GetProcAddress(ABF2LibraryHnd,'ABF_IsABFFile') ;
+     @ABF_Close := GetProcAddress(ABF2LibraryHnd,'ABF_Close') ;
+     @ABF_ReadChannel := GetProcAddress(ABF2LibraryHnd,'ABF_ReadChannel') ;
+
+     ABF2LibraryLoaded := True ;
 
      end ;
 
@@ -1331,6 +1783,7 @@ begin
           ftSCA : SCALoadFileHeader ;
           ftAxonPClampV5 : PClampV5LoadFileHeader ;
           ftAxonABF : ABFLoadFileHeader ;
+          ftAxonABF2 : ABF2LoadFileHeader ;
           ftCFS : CFSLoadFileHeader ;
           ftASC : ASCLoadFile ;
           ftWFDB : WFDBLoadFile ;
@@ -1354,28 +1807,38 @@ function TADCDataFile.FindFileType(
 // Return type of data file
 // ------------------------
 var
-    s : String ;
+    s : ANSIString ;
     IdentChar : Array[1..8] of ANSIChar ;
     IdentNumber : Single ;
     i : Integer ;
     TempFileOpen : Boolean ;
+    ABF2Format,Err : Integer ;
 begin
 
      Result := ftUnknown ;
 
-     // Open file if it is not already open
-     if FileHandle < 0 then begin
-        FileHandle := FileOpen( FileName, fmOpenRead ) ;
-        if FileHandle < 0 then begin
-           ShowMessage( 'Unable to open ' + FileName ) ;
-           Exit ;
-           end ;
-        TempFileOpen := True ;
-        end
-      else TempFileOpen := False ;
+     // Is it an Axon ABF2 data file?
+     // Load ABF V2 I/O library DLL
+     if not ABF2LibraryLoaded then LoadABF2Library ;
+     if (Result = ftUnknown) and (@ABF_IsABFFile <> Nil) then begin
+        s := FileName ;
+        if ABF_IsABFFile( PANSIChar(s), ABF2Format, Err ) then Result := ftAxonABF2 ;
+        end ;
 
      // Is it an Axon PClamp V6 or later data file?
      if Result = ftUnknown then begin
+
+        // Open file if it is not already open
+        if FileHandle < 0 then begin
+           FileHandle := FileOpen( FileName, fmOpenRead ) ;
+           if FileHandle < 0 then begin
+              ShowMessage( 'Unable to open ' + FileName ) ;
+              Exit ;
+              end ;
+           TempFileOpen := True ;
+           end
+         else TempFileOpen := False ;
+
         FileSeek( FileHandle, 0, 0 ) ;
         if FileRead(FileHandle,IdentChar,Sizeof(IdentChar))
            = Sizeof(IdentChar) then begin
@@ -1666,6 +2129,8 @@ procedure TADCDataFile.CloseDataFile ;
 // -----------------
 //   Close data file
 // -----------------
+var
+  Err : Integer ;
 begin
 
      if UpdateHeader then begin
@@ -1688,11 +2153,20 @@ begin
         TempHandle := -1 ;
         end ;
 
-     if FileHandle < 0 then Exit ;
-
-     // Close image file
-     FileClose( FileHandle ) ;
+     // Close  file
+     if FFileType = ftAxonABF2 then begin
+        ABF_Close( FileHandle, Err ) ;
+        end
+     else if FileHandle >= 0 then begin ;
+        FileClose( FileHandle ) ;
+        end ;
      FileHandle := -1 ;
+
+     // Remove ABF V2 I/O library
+     if ABF2LibraryLoaded then begin
+        FreeLibrary( ABF2LibraryHnd ) ;
+        ABF2LibraryLoaded := False ;
+        end;
 
      end ;
 
@@ -1711,8 +2185,8 @@ var
      FilePointer : Integer ;
      FileHandle1 : Integer ;
      NumBytesRead : Integer ;
-     i,j : Integer ;
-     ch : Integer ;
+     i,j,iEp : Integer ;
+     ch,pChan : Integer ;
      CFSch : Integer ;
      DataPointer : Integer ;
      RecHeader : TCFSDataHeader ;
@@ -1722,6 +2196,10 @@ var
      YInt4 : Integer ;
      YSng : Single ;
      YDbl : Double ;
+     fBuf : PSingleArray ;
+     iBuf : PSmallIntArray ;
+     NumSamples : DWORD ;
+     iShift,Err : Integer ;
 begin
 
      if FNumRecords <= 0 then begin
@@ -1784,6 +2262,39 @@ begin
              end ;
              Result := NumScans ;
 
+         end
+      else if FFileType = ftAxonABF2 then begin
+         // Load data from ABF V2.X file
+         GetMem( fBuf, SizeOf(Single)*ABF2Header.ActualAcqLength) ;
+         GetMem( iBuf, SizeOf(SmallInt)*ABF2Header.ActualAcqLength) ;
+         for ch  := 0 to FNumChannelsPerScan-1 do begin
+             pChan := ABF2Header.nADCSamplingSeq[ch] ;
+             j := FChannelOffset[ch] ;
+             if FABFAcquisitionMode = ftGapFree then begin
+                // Gap-free load whole file
+                for iEp := 1 to ABF2Header.ActualEpisodes do
+                    if ABF_ReadChannel( FileHandle, @ABF2Header, pChan, iEp, fBuf, NumSamples, Err ) then begin
+                    for i := 0 to NumSamples-1 do begin
+                        iBuf[j] := Round(fBuf[i]/FChannelScale[ch]) ;
+                        j := j + FNumChannelsPerScan ;
+                        end;
+                    end ;
+                end
+             else begin
+                // Episodic load episode
+                if ABF_ReadChannel( FileHandle, @ABF2Header, pChan, FRecordNum, fBuf, NumSamples, Err ) then begin
+                   for i := 0 to NumSamples-1 do begin
+                       iBuf[j] := Round(fBuf[i]/FChannelScale[ch]) ;
+                       j := j + FNumChannelsPerScan ;
+                       end;
+                   end ;
+                end ;
+             end;
+         iShift := StartAtScan*FNumChannelsPerScan ;
+         for i := 0 to NumScans*FNumChannelsPerScan-1 do Buf[i] := iBuf[i+iShift] ;
+
+         FreeMem(fBuf) ;
+         FreeMem(iBuf) ;
          end
       else begin
 
@@ -3227,6 +3738,121 @@ begin
      UseTempFile := False ;
 
      Result := True ;
+
+     end ;
+
+
+function TADCDataFile.ABF2LoadFileHeader : Boolean ;
+// ----------------------------------------------
+// Read file header block from Axon ABF V2.X file
+// ----------------------------------------------
+var
+     FileType : String ;
+     i,iEpisode,Err : Integer ;
+     ch,pChan : Integer ;
+     s : ANSIString ;
+     Flags,NumSamples : DWORD ;
+     YMax : single ;
+     Buf : PSingleArray ;
+begin
+
+    Result := False ;
+
+    if FileHandle >= 0 then begin
+       FileClose(FileHandle) ;
+       FileHandle := -1 ;
+       end;
+
+    // Open ABF file
+    s := FFileName ;
+    //ABF_Initialize( @ABF2Header ) ;
+    ABF_ReadOpen( PANSIChar(s), FileHandle, Flags, @ABF2Header, ABF2MaxSamples, ABF2MaxEpisodes, Err ) ;
+
+    // Allocate floating point data buffer
+    GetMem( Buf, ABF2MaxSamples*SizeOf(Single) ) ;
+
+    if ABF2Header.OperationMode = 3 then FABFAcquisitionMode := ftGapFree
+                                    else FABFAcquisitionMode := ftEpisodic ;
+
+    FNumChannelsPerScan := Max(ABF2Header.nADCNumChannels,1) ;
+    FNumBytesPerSample := 2 ;
+    FNumBytesPerScan := FNumChannelsPerScan*FNumBytesPerSample ;
+
+    FScanInterval := ABF2Header.fADCSequenceInterval*1E-6*FNumChannelsPerScan ;
+    FADCVoltageRange := ABF2Header.fADCRange ;
+
+    FMaxADCValue := 32767 ;
+    FMinADCValue := -32768 ;
+    // Get ident line
+    FIdentLine := '' ;
+    for i := 0 to High(ABF2Header.sFileComment) do if ABF2Header.sFileComment[i] <> #0 then
+        FIdentLine := FIdentLine + ABF2Header.sFileComment[i] ;
+
+    // Get channel names and units
+
+    for ch  := 0 to FNumChannelsPerScan-1 do begin
+        FChannelUnits[ch] := '' ;
+        i := 0 ;
+        pChan := ABF2Header.nADCSamplingSeq[ch] ;
+        while (ABF2Header.sADCUnits[pChan,i] <> #0) and (i < ABF_ADCUNITLEN) do begin
+           FChannelUnits[ch] := FChannelUnits[ch] + ABF2Header.sADCUnits[pChan,i] ;
+           Inc(i) ;
+           end ;
+
+        FChannelName[ch] := '' ;
+        i := 0 ;
+        while (ABF2Header.sADCChannelName[pChan,i] <> #0) and (i < ABF_ADCNAMELEN) do begin
+           FChannelName[ch] := FChannelName[ch] + ABF2Header.sADCChannelName[pChan,i] ;
+           Inc(i) ;
+           end ;
+        end ;
+
+    // Get limits of data and set channel scaling factors
+
+    for ch  := 0 to FNumChannelsPerScan-1 do begin
+        YMax := -1.0E30 ;
+        for iEpisode := 1 to ABF2MaxEpisodes do begin
+           if ABF_ReadChannel( FileHandle, @ABF2Header,
+                               ABF2Header.nADCSamplingSeq[ch],
+                               iEpisode, Buf, NumSamples, Err ) then begin
+              for i := 0 to NumSamples-1 do begin
+                  if YMax < Abs(Buf^[i]) then YMax := Abs(Buf^[i]) ;
+                  end;
+              end;
+           end;
+        FChannelGain[ch] := 1.0 ;
+        FChannelADCVoltageRange[ch] := FADCVoltageRange ;
+        FChannelScale[ch] :=  (YMax*1.1)/FMaxADCValue ;
+        FChannelCalibrationFactor[ch] := CalibFactor(ch) ;
+        FChannelOffset[ch] := ch ;
+        FChannelZero[ch] := 0 ;
+        end ;
+
+
+    { Get byte offset of data section }
+     FNumHeaderBytes :=  ABF2Header.lDataSectionPtr*512 ;
+
+     if FABFAcquisitionMode = ftGapFree then begin
+        FNumScansPerRecord := ABF2Header.ActualAcqLength div FNumChannelsPerScan ;
+        FNumRecords := ABF2Header.ActualAcqLength div (FNumScansPerRecord*FNumChannelsPerScan) ;
+        FNumRecords := FNumRecords +
+                       ABF2Header.ActualAcqLength mod (FNumScansPerRecord*FNumChannelsPerScan) ;
+        end
+     else begin
+        FNumScansPerRecord := ABF2Header.lNumSamplesPerEpisode div FNumChannelsPerScan ;
+        FNumRecords := ABF2Header.ActualAcqLength div ABF2Header.lNumSamplesPerEpisode ;
+        end ;
+
+     FNumBytesPerScan := FNumBytesPerSample*FNumChannelsPerScan ;
+     FNumRecordDataBytes := FNumScansPerRecord*FNumBytesPerScan ;
+     FNumRecordAnalysisBytes := 0 ;
+     FNumRecordBytes := FNumRecordDataBytes + FNumRecordAnalysisBytes ;
+
+     UseTempFile := False ;
+
+     Result := True ;
+
+     FreeMem(Buf) ;
 
      end ;
 

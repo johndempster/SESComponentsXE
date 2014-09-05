@@ -2,6 +2,8 @@ unit ThorLabsUnit;
 // ====================
 // Thorlabs DCx Cameras
 // ====================
+// 5.09.14 Tested with DCC1240M (drops frames when operating above 17 MHz pixel clock)
+
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, messages, controls, math, strutils ;
@@ -1918,6 +1920,12 @@ type
     s32Height : Integer ;
     end;
 
+TIS_CAPTURE_STATUS_INFO = record
+    CapStatusCnt_Total : DWORD ;
+    reserved : Array[1..60] of byte ;
+    adwCapStatusCnt_Detail :Array[0..255] of DWORD ; // access via UC480_CAPTURE_STATUS
+    end ;
+
 // ----------------------------------------------------------------------------
 // alias functions for compatibility
 // ----------------------------------------------------------------------------
@@ -2050,7 +2058,7 @@ type
 
  Tis_GetError      =  function(hCam : DWord ;
                       var pErr : Integer ;
-                      var ppcErr : PANSIChar
+                      var ppcErr : Pointer
                       ) : Integer ; cdecl ;
 
  Tis_SetErrorReport   = function(hCam : DWord ;
@@ -2453,6 +2461,7 @@ type
                                nSizeOfParam : DWORD ) : Integer ; cdecl ;
 
 
+
   // Read / Write I2C
 //  Tis_WriteI2C           =  function(hCam : DWord ; INT nDeviceAddr, INT nRegisterAddr, BYTE* pbData, INT nLen) : Integer ; cdecl ;
 //  Tis_ReadI2C            =  function(hCam : DWord ; INT nDeviceAddr, INT nRegisterAddr, BYTE* pbData, INT nLen) : Integer ; cdecl ;
@@ -2705,6 +2714,7 @@ var
   is_pixelclock : Tis_pixelclock ;
   is_DeviceFeature : Tis_DeviceFeature ;
   is_CaptureStatus : Tis_CaptureStatus ;
+  is_SetErrorReport : Tis_SetErrorReport ;
   tlast,nmiss : DWORD ;
 
 implementation
@@ -2717,16 +2727,18 @@ procedure ThorLabs_LoadLibrary(
 { ---------------------------------------------
   Load camera interface DLL library into memory
   ---------------------------------------------}
-const
-    LibName = 'uc480.dll' ;
 var
     LibFileName : string ;
 begin
 
      Session.LibraryLoaded := False ;
 
-     // Look for DLL initially in Winfluor folder
-     LibFileName := {ExtractFilePath(ParamStr(0)) +} LibName ;
+     { Load interface DLL library }
+    {$IFDEF WIN32}
+      LibFileName := 'uc480.dll' ; // 32 bit version
+    {$ELSE}
+      LibFileName := 'uc480_64.dll' ; // 64 bit version
+    {$IFEND}
 
      { Load DLL camera interface library }
      Session.LibraryHnd := LoadLibrary( PChar(LibFileName));
@@ -2835,6 +2847,7 @@ begin
      @is_PixelClock := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_PixelClock') ;
      @is_DeviceFeature := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_DeviceFeature') ;
      @is_CaptureStatus := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_CaptureStatus') ;
+     @is_SetErrorReport := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetErrorReport') ;
 
      Session.LibraryLoaded := True ;
 
@@ -2953,35 +2966,16 @@ begin
 
      // Initialise camera
      Session.CamHandle := 0 ;
-     is_initcamera( Session.CamHandle, 0 ) ;
+     if is_initcamera( Session.CamHandle, 0 ) <> IS_SUCCESS then begin
+        ShowMessage('Thorlabs DCx: Unable to open camera!') ;
+        Exit ;
+        end ;
+
+     // Enable error reports
+     is_setErrorReport(Session.CamHandle,IS_ENABLE_ERR_REP);
 
      // Set to bitmap display mode
-     Thorlabs_CheckError( Session.CamHandle, 'is_SetDisplayMode',
-     is_SetDisplayMode( Session.CamHandle,IS_SET_DM_DIB )) ;
-
-{     Thorlabs_CheckError( Session.CamHandle, 'is_ImageFormat(IMGFRMT_CMD_GET_NUM_ENTRIES)',
-     is_ImageFormat(Session.CamHandle, IMGFRMT_CMD_GET_NUM_ENTRIES, @ImageFormats.NumFormats, SizeOf(ImageFormats.NumFormats) ));
-
-     ImageFormats.SizeofListEntry := SizeOf(TIS_IMAGE_FORMAT_INFO);
-     //ImageFormats.NumFormats := 4 ;
-     Thorlabs_CheckError( Session.CamHandle, 'is_ImageFormat(IMGFRMT_CMD_GET_LIST)',
-     is_ImageFormat( Session.CamHandle,
-                     IMGFRMT_CMD_GET_LIST,
-                     @ImageFormats,
-                     24+ImageFormats.NumFormats*SizeOf(TIS_Image_Format_Info) ));
-
-     for i := 0 to ImageFormats.NumFormats-1 do begin
-        CameraInfo.Add( format('Image Format.%d %dx%d %s',[i,
-                      ImageFormats.FormatInfo[i].Width,
-                      ImageFormats.FormatInfo[i].Height,
-                      ANSIString(ImageFormats.FormatInfo[i].Name)]));
-        end;
-
-     iFormat := 25 ;
- //    Thorlabs_CheckError( Session.CamHandle, 'is_ImageFormat',
- //    is_ImageFormat( Session.CamHandle,
- //                    IMGFRMT_CMD_SET_FORMAT,@iFormat,Sizeof(iFormat)));}
-
+     is_SetDisplayMode( Session.CamHandle,IS_SET_DM_DIB ) ;
 
      is_GetSensorInfo(Session.CamHandle, @SensorInfo ) ;
      FrameWidthMax := SensorInfo.MaxWidth ;
@@ -2992,16 +2986,14 @@ begin
      case SensorInfo.ColorMode of
          IS_COLORMODE_MONOCHROME : begin
            // Monochrome cameras
-           Thorlabs_CheckError( Session.CamHandle, 'is_SetColorMode',
-           is_SetColorMode(Session.CamHandle, IS_CM_MONO8));
+           is_SetColorMode(Session.CamHandle, IS_CM_MONO8);
            s := s + ' Monochrome' ;
            Session.NumComponentsPerPixel := 1 ;
            Session.UseComponent := 0 ;
            end ;
          else begin
            // Colour cameras
-           Thorlabs_CheckError( Session.CamHandle, 'is_SetColorMode',
-           is_SetColorMode(Session.CamHandle, IS_CM_UYVY_PACKED));
+           is_SetColorMode(Session.CamHandle, IS_CM_UYVY_PACKED);
            s := s + ' Colour' ;
            Session.NumComponentsPerPixel := 4 ;
            Session.UseComponent := 1 ;
@@ -3009,7 +3001,6 @@ begin
          end;
 
      CameraInfo.Add(s) ;
-
 
      Session.GainAvailable := SensorInfo.MasterGain ;
 
@@ -3072,12 +3063,10 @@ begin
      CameraInfo.Add(s) ;
      BinFactorMax := Session.NumBinFactors ;
 
-     Thorlabs_CheckError( Session.CamHandle, 'is_PixelClock(IS_PIXELCLOCK_CMD_GET_NUMBER)',
      is_PixelClock( Session.CamHandle,IS_PIXELCLOCK_CMD_GET_NUMBER,
-                    @Session.NumPixelClocks,SizeOf(Session.NumPixelClocks)));
-     Thorlabs_CheckError( Session.CamHandle, 'is_PixelClock(IS_PIXELCLOCK_CMD_GET_LIST)',
+                    @Session.NumPixelClocks,SizeOf(Session.NumPixelClocks));
      is_PixelClock( Session.CamHandle,IS_PIXELCLOCK_CMD_GET_LIST,
-                    @Session.PixelClocks,Session.NumPixelClocks*4));
+                    @Session.PixelClocks,Session.NumPixelClocks*4);
      s := 'Pixel Clocks: ' ;
      for i := 0 to Session.NumPixelClocks-1 do begin
         s := s + format('%d',[Session.PixelClocks[i]]) ;
@@ -3086,9 +3075,8 @@ begin
     CameraInfo.Add(s) ;
 
      // Get default pixel clock
-     Thorlabs_CheckError( Session.CamHandle, 'is_PixelClock',
      is_PixelClock( Session.CamHandle,is_PixelClock_CMD_GET_DEFAULT,
-                    @DefaultPixelClockValue,SizeOf(DefaultPixelClockValue)));
+                    @DefaultPixelClockValue,SizeOf(DefaultPixelClockValue));
      Session.DefaultPixelClock := 0 ;
      for i := 0 to Session.NumPixelClocks-1 do begin
          if Session.PixelClocks[i] = DefaultPixelClockValue then Session.DefaultPixelClock := i ;
@@ -3098,10 +3086,9 @@ begin
 
      // Get shutter modes
 
-     Thorlabs_CheckError( Session.CamHandle, 'is_DeviceFeature',
      is_DeviceFeature( Session.CamHandle,
                        IS_DEVICE_FEATURE_CMD_GET_SUPPORTED_FEATURES,
-                       @DeviceFeatures,SizeOf(DeviceFeatures)));
+                       @DeviceFeatures,SizeOf(DeviceFeatures));
 
      if (DeviceFeatures and IS_DEVICE_FEATURE_CAP_SHUTTER_MODE_ROLLING) <> 0 then begin
         Session.ShutterModes[Session.NumShutterModes] := 'Rolling Shutter' ;
@@ -3193,8 +3180,7 @@ var
 begin
     for i  := 0 to Session.NumBinFactors-1 do begin
       if Session.BinFactors[i] = BinFactor then begin
-         Thorlabs_CheckError( Session.CamHandle, 'is_SetBinning',
-         is_SetBinning(Session.CamHandle, Session.BinFactorBits[i]));
+         is_SetBinning(Session.CamHandle, Session.BinFactorBits[i]);
          end;
       end;
     end;
@@ -3260,8 +3246,7 @@ begin
 
     if not Session.CameraOpen then Exit ;
 
-    Thorlabs_CheckError( Session.CamHandle, 'is_exitCamera',
-    is_exitCamera( Session.CamHandle )) ;
+    is_exitCamera( Session.CamHandle ) ;
 
     // Free DLL library
     if Session.LibraryLoaded then FreeLibrary(Session.libraryHnd) ;
@@ -3387,8 +3372,7 @@ begin
     AOI.s32Y := FrameTop div BinFactor ;
     AOI.s32Width := (FrameRight - FrameLeft + 1)  div BinFactor ;
     AOI.s32Height := (FrameBottom - FrameTop + 1)  div BinFactor ;
-    ThorLabs_CheckError( Session.CamHandle, 'is_aoi',
-    is_aoi( Session.CamHandle, IS_AOI_IMAGE_SET_AOI, @AOI, SizeOf(AOI)));
+    is_aoi( Session.CamHandle, IS_AOI_IMAGE_SET_AOI, @AOI, SizeOf(AOI));
 
     FrameWidth := (FrameRight - FrameLeft + 1) div BinFactor ;
     FrameHeight := (FrameBottom - FrameTop + 1) div BinFactor ;
@@ -3448,11 +3432,10 @@ begin
      if not Session.CameraOpen then Exit ;
 
      // Set shutter mode
-     ThorLabs_CheckError( Session.CamHandle, 'is_DeviceFeature',
      is_DeviceFeature( Session.CamHandle,
                        IS_DEVICE_FEATURE_CMD_SET_SHUTTER_MODE,
                        @Session.ShutterModeBit[Session.ShutterMode],
-                       SizeOf(Session.ShutterModeBit[Session.ShutterMode]))) ;
+                       SizeOf(Session.ShutterModeBit[Session.ShutterMode])) ;
 
     // Set binning
     Thorlabs_SetBinning( Session, BinFactor ) ;
@@ -3463,24 +3446,19 @@ begin
     AOI.s32Width := FrameWidth div BinFactor ;
     AOI.s32Height := FrameHeight div BinFactor ;
 
-    ThorLabs_CheckError( Session.CamHandle, 'is_aoi(IS_AOI_IMAGE_SET_AOI)',
-    is_aoi( Session.CamHandle, IS_AOI_IMAGE_SET_AOI, @AOI, SizeOf(AOI)));
+    is_aoi( Session.CamHandle, IS_AOI_IMAGE_SET_AOI, @AOI, SizeOf(AOI));
 
-    ThorLabs_CheckError( Session.CamHandle, 'is_SetSensorScaler',
-    is_SetSensorScaler( Session.CamHandle, 0, 1.0 ));
+    is_SetSensorScaler( Session.CamHandle, 0, 1.0 );
 
     // Set gain
-    ThorLabs_CheckError( Session.CamHandle, 'is_SetHardwareGain',
-    is_SetHardwareGain(Session.CamHandle, AmpGain, AmpGain, AmpGain, AmpGain) ) ;
+   is_SetHardwareGain(Session.CamHandle, AmpGain, AmpGain, AmpGain, AmpGain)  ;
 
      // Get default pixel clock
-     Thorlabs_CheckError( Session.CamHandle, 'is_PixelClock',
      is_PixelClock( Session.CamHandle,is_PixelClock_CMD_GET_DEFAULT,
-                    @PixelClock,SizeOf(PixelClock)));
+                    @PixelClock,SizeOf(PixelClock));
                     PixelClock := 20 ;
-     Thorlabs_CheckError( Session.CamHandle, 'is_PixelClock',
      is_PixelClock( Session.CamHandle,is_PixelClock_CMD_SET,
-                    @Session.PixelClocks[Session.PixelClock],SizeOf(PixelClock)));
+                    @Session.PixelClocks[Session.PixelClock],SizeOf(PixelClock));
 
      // Check frame interval
      // (Also ensures Session.ReadoutTime is set)
@@ -3489,71 +3467,62 @@ begin
     // Set exposure triggering
     if TriggerMode = CamFreeRun then begin
        // Set to free run mode
-       ThorLabs_CheckError( Session.CamHandle, 'is_SetExternalTrigger(IS_SET_TRIGGER_OFF))',
-                            is_SetExternalTrigger(Session.CamHandle, IS_SET_TRIGGER_OFF)) ;
+                            is_SetExternalTrigger(Session.CamHandle, IS_SET_TRIGGER_OFF) ;
 
        // Set frame interval
-       ThorLabs_CheckError( Session.CamHandle, 'is_SetFrameRate',
-       is_SetFrameRate(Session.CamHandle, (1.0/InterFrameTimeInterval), ActualFPS));
+       is_SetFrameRate(Session.CamHandle, (1.0/InterFrameTimeInterval), ActualFPS);
         ExposureTime := 0.0;//InterFrameTimeInterval*9500.0 ;
-       ThorLabs_CheckError( Session.CamHandle, 'is_Exposure',
-       is_Exposure(Session.CamHandle, IS_EXPOSURE_CMD_SET_EXPOSURE,@ExposureTime,SizeOf(ExposureTime)));
+       is_Exposure(Session.CamHandle, IS_EXPOSURE_CMD_SET_EXPOSURE,@ExposureTime,SizeOf(ExposureTime));
 
        end
     else begin
        // Set to external trigger mode
-       ThorLabs_CheckError( Session.CamHandle, 'is_SetExternalTrigger(IS_SET_TRIGGER_LO_HI)',
-       is_SetExternalTrigger(Session.CamHandle, IS_SET_TRIGGER_Lo_hi)) ;
-       ThorLabs_CheckError( Session.CamHandle, 'is_SetTriggerDelay(0)',
-       is_SetTriggerDelay(Session.CamHandle, 0)) ;
+       is_SetExternalTrigger(Session.CamHandle, IS_SET_TRIGGER_Lo_hi) ;
+       is_SetTriggerDelay(Session.CamHandle, 0) ;
 
        ExposureTime := (InterFrameTimeInterval-Session.ReadOutTime -5E-3)*1000.0 ;
-       ThorLabs_CheckError( Session.CamHandle, 'is_Exposure',
-       is_Exposure(Session.CamHandle, IS_EXPOSURE_CMD_SET_EXPOSURE,@ExposureTime,SizeOf(ExposureTime)));
+       is_Exposure(Session.CamHandle, IS_EXPOSURE_CMD_SET_EXPOSURE,@ExposureTime,SizeOf(ExposureTime));
 
        end ;
 
      //
     // Allocate image buffers
     Session.NumFramesInBuffer := Min(NumFramesInBuffer,High(Session.pImageBuf)) ;
-    ThorLabs_CheckError( Session.CamHandle, 'is_ClearSequence',
-                         is_ClearSequence( Session.CamHandle )) ;
+                         is_ClearSequence( Session.CamHandle ) ;
     for i := 0 to Session.NumFramesInBuffer-1 do begin
         // Allocate buffer
-        ThorLabs_CheckError( Session.CamHandle, 'is_AllocImageMem',
         is_AllocImageMem( Session.CamHandle,
                           FrameWidth,
                           FrameHeight,
                           Session.BitsPerPixel,
                           Session.pImageBuf[i],
-                          Session.ImageBufID[i]));
+                          Session.ImageBufID[i]);
         // Add to ring buffer
-        ThorLabs_CheckError( Session.CamHandle, 'is_AddToSequence',
         is_AddToSequence( Session.CamHandle,
                           Session.pImageBuf[i],
-                          Session.ImageBufID[i]));
+                          Session.ImageBufID[i]);
         end ;
 
     // Set into image queue capture mode
-    ThorLabs_CheckError( Session.CamHandle, 'is_InitImageQueue',
-    is_InitImageQueue(Session.CamHandle,0)) ;
+    is_InitImageQueue(Session.CamHandle,0) ;
 
     Session.FrameWidth := FrameWidth div Max(BinFactor,1) ;
     Session.FrameHeight := FrameHeight div Max(BinFactor,1) ;
     Session.NumBytesPerFrame :=  Session.FrameWidth*Session.FrameHeight*Session.NumBytesPerPixel ;
 
-    ThorLabs_CheckError( Session.CamHandle, 'is_GetImageMemPitch',
-    is_GetImageMemPitch( Session.CamHandle, Session.NumBytesPerLine));
+    is_GetImageMemPitch( Session.CamHandle, Session.NumBytesPerLine);
 
     Session.pFrameBuf := pFrameBuffer ;
     Session.FrameCounter := 0 ;
     Session.ActiveFrameCounter := 0 ;
     Session.CapturingImages := True ;
 
-    ThorLabs_CheckError( Session.CamHandle, 'is_CaptureVideo',
-    is_CaptureVideo(Session.CamHandle, IS_DONT_WAIT )) ;
+    is_CaptureVideo(Session.CamHandle, IS_DONT_WAIT ) ;
     nmiss := 0 ;
     tlast := 0 ;
+
+    // Enable error reports
+    is_setErrorReport(Session.CamHandle,IS_DISABLE_ERR_REP);
 
     Result := True ;
 
@@ -3606,21 +3575,18 @@ begin
      if not Session.CameraOpen then Exit ;
 
      // Set pixel clock
-     Thorlabs_CheckError( Session.CamHandle, 'is_PixelClock',
      is_PixelClock( Session.CamHandle,is_PixelClock_CMD_SET,
                     @Session.PixelClocks[Session.PixelClock],
-                    SizeOf(Session.PixelClocks[Session.PixelClock])));
+                    SizeOf(Session.PixelClocks[Session.PixelClock]));
 
-     ThorLabs_CheckError( Session.CamHandle, 'is_SetFrameRate',
-     is_GetFrameTimeRange(Session.CamHandle,TMin,TMax,TStep));
+     is_GetFrameTimeRange(Session.CamHandle,TMin,TMax,TStep);
      Session.ReadoutTime := TMin ;
      if TriggerMode <> camFreeRun then TMin := TMin*1.5 + 5E-3 ;
      ReadoutTime := TMin ;
      FrameInterval := Round(FrameInterval/TStep)*TStep ;
      FrameInterval := Min(Max(FrameInterval,TMin),TMax) ;
 
-     ThorLabs_CheckError( Session.CamHandle, 'is_SetFrameRate',
-     is_SetFrameRate(Session.CamHandle, (1.0/FrameInterval), ActualFPS));
+     is_SetFrameRate(Session.CamHandle, (1.0/FrameInterval), ActualFPS);
      FrameInterval := 1.0/ActualFPS ;
 
      Result := True ;
@@ -3641,6 +3607,7 @@ var
     t,status : DWORD ;
     Done : Boolean ;
     ActualFPS : double ;
+    CapStatus : TIS_CAPTURE_STATUS_INFO ;
 begin
 
     if not Session.CameraOpen then Exit ;
@@ -3649,10 +3616,8 @@ begin
     while not Done do begin
        Err := is_WaitForNextImage( Session.CamHandle, 0, pImageBuf, imageID) ;
        if Err = IS_CAPTURE_STATUS then begin
-          //outputdebugstring(pchar('err'));
-          is_CaptureStatus(Session.CamHandle, IS_CAPTURE_STATUS_INFO_CMD_GET,
-                           @tlast, Sizeof(tlast)) ;
-          //Err := is_WaitForNextImage( Session.CamHandle, 0, pImageBuf, imageID) ;
+          //is_CaptureStatus(Session.CamHandle, IS_CAPTURE_STATUS_INFO_CMD_GET,
+          //               @CapStatus, Sizeof(CapStatus)) ;
           Inc(nMiss);
           exit ;
           end;
@@ -3702,18 +3667,18 @@ begin
     if not Session.CapturingImages then Exit ;
     Session.CapturingImages := False ;
 
+     // Enable error reports
+     is_setErrorReport(Session.CamHandle,IS_DISABLE_ERR_REP);
+
     // Exit image queue mode
-    ThorLabs_CheckError( Session.CamHandle, 'is_ExitImageQueue',
-    is_ExitImageQueue(Session.CamHandle)) ;
+    is_ExitImageQueue(Session.CamHandle) ;
 
     // Clear image capture sequence
-    ThorLabs_CheckError( Session.CamHandle, 'is_ClearSequence',
-    is_ClearSequence( Session.CamHandle )) ;
+    is_ClearSequence( Session.CamHandle ) ;
     for i := 0 to Session.NumFramesInBuffer-1 do begin
-        ThorLabs_CheckError( Session.CamHandle, 'is_FreeImageMem',
         is_FreeImageMem( Session.CamHandle,
                          Session.pImageBuf[i],
-                         Session.ImageBufID[i]));
+                         Session.ImageBufID[i]);
         end ;
 
      end;
@@ -3728,14 +3693,15 @@ procedure ThorLabs_CheckError(
 // Report error
 // ------------
 var
-    ErrMsg : PANSIChar ;
+    ErrMsg : Pointer ;
     Err : Integer ;
 begin
   //  if ErrNum <> AT_SUCCESS then
   //     ShowMessage(format('%s Err=%d',[FuncName,ErrNum])) ;
+  exit ;
     if ErrNum <> IS_SUCCESS then begin
         is_GetError( CamHandle, Err, ErrMsg) ;
-        ShowMessage( FuncName + ': ' + ANSIString(ErrMsg)) ;
+        ShowMessage( FuncName + ': ' + ANSIString(PANSIChar(ErrMsg^))) ;
         end;
 
     end ;
