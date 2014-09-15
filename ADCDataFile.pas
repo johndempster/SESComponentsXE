@@ -44,7 +44,7 @@ unit ADCDataFile;
 // 11.03.13 FP error on import of CHT files now fixed. FChannelADCVoltageRange[] now read from YCch#= header variable
 // 31/07/13 Modified to compiled under Delphi XE2/3
 // 15/08/14 Gap free ABF files now set to have a single record equal to whole file
-// 04/09/14 ABF V2 files can now be read
+// 15/10/14 ABF V2 files can now be read using abffio.dll
 
 {$R 'adcdatafile.dcr'}
 interface
@@ -1712,7 +1712,7 @@ begin
 
 procedure TADCDataFile.LoadABF2Library  ;
 { -------------------------------------
-  Load AXDD1440.DLL library into memory
+  Load ABFFIO.DLL library into memory
   -------------------------------------}
 const
     LibName = 'abffio.dll' ;
@@ -2154,11 +2154,9 @@ begin
         end ;
 
      // Close  file
-     if FFileType = ftAxonABF2 then begin
-        ABF_Close( FileHandle, Err ) ;
-        end
-     else if FileHandle >= 0 then begin ;
-        FileClose( FileHandle ) ;
+     if FileHandle >= 0 then begin
+        if FFileType = ftAxonABF2 then ABF_Close( FileHandle, Err )
+        else FileClose( FileHandle ) ;
         end ;
      FileHandle := -1 ;
 

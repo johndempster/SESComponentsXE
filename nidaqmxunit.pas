@@ -53,6 +53,9 @@ unit NidaqMXUnit;
 //          for compatibility with USB-6002/3
 // 11.09.14 GetADCSamples now acquires samples as doubles allowing ADC with more than 16 resolution
 //          to be supported.
+// 15.09.14 A/D buffer samples/channel limited to 1 million to avoid unable to allocate error with
+//          simulated PCI-6281
+
 
 interface
 
@@ -3081,15 +3084,17 @@ begin
                                              SamplingRate,
                                              DAQmx_Val_Rising,
                                              SampleMode,
-                                             nSamples));
+                                             nSamples ));
 
      // Get clock rate set
      NIMX_CheckError( DAQmxGetSampClkRate( ADCTaskHandle, SamplingRate )) ;
      SamplingInterval := 1.0 / SamplingRate ;
      ADCSamplingIntervalInUse := SamplingInterval ; // Keep interval in use
 
-     // Configure buffer
-     NIMX_CheckError( DAQmxCfgInputBuffer ( ADCTaskHandle, nSamples )) ;
+     // Configure buffer (samples / channel limited to 1 million to avoid unable to allocate error with
+     // simulated PCI-6281
+
+     NIMX_CheckError( DAQmxCfgInputBuffer ( ADCTaskHandle, Min(nSamples,1000000)) ) ;
      // Enable immediate return with any available data within buffer
      NIMX_CheckError( DAQmxSetReadReadAllAvailSamp( ADCTaskHandle, True )) ;
 
