@@ -19,6 +19,7 @@ unit NIMAQDXUnit;
 // 09-7-14 IMAQDX_SetVideoMode() and IMAQDX_SetPixelFormat() now trap Session.CameraOpen = false
 // 22-7-14 OpenCamera now returns no. of cameras available
 //         Camera can be selected when more than one available
+// 11-9-14 pointer arithmetic calculation now 64 compatible (NativeUInt rather than Cardinal)
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, math, strutils ;
@@ -2126,8 +2127,8 @@ begin
        IMAQDX_CheckError( Err ) ;
        if Err = 0 then begin
           // If frame available copy to output to frame buffer
-          PToBuf := Pointer( (Session.BufferIndex*Session.NumBytesPerFrame)
-                             + Cardinal(Session.FrameBufPointer) ) ;
+          PToBuf := Pointer( NativeUInt(Session.BufferIndex)*NativeUInt(Session.NumBytesPerFrame)
+                             + NativeUInt(PByte(Session.FrameBufPointer)) ) ;
           i := 0 ;
           if Session.AOIAvailable then begin
               // In-camera AOI available... copy whole image to buffer

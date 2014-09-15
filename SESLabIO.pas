@@ -2599,7 +2599,7 @@ begin
           VP500_GetADCSamples( ADCBuf, FOutPointer ) ;
           end ;
        NIDAQMX : begin
-          NIMX_GetADCSamples( ADCBuf^, FOutPointer ) ;
+          NIMX_GetADCSamples( ADCBuf^, FOutPointer, FADCChannelVoltageRanges ) ;
           end ;
        Digidata1440 : begin
           DD1440_GetADCSamples( ADCBuf^, FOutPointer ) ;

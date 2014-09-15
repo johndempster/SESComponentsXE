@@ -23,6 +23,9 @@ unit AndorUnit;
 //             rather than Integer (possible cause of errors with 64 bit version)
 // 23.06.14 JD Now loads atmcd64d.dll in 64 bit version
 //             DLL now freed in Andor_CloseCamera
+// 10.09.14 JD GetDLLAddress now skipped if DLL not opened.
+// 11.09.14 Smallints changed to Integer,
+//          pointer arithmetic calculation now 64 compatible (NativeUInt rather than Cardinal)
 
 interface
 
@@ -135,11 +138,11 @@ TSetFullImage = function(
                 ): Integer ; stdcall ;
 
 TSetOutputAmplifier = function(
-                      AmpType : SmallInt
+                      AmpType : integer {smallint}
                       ): Integer ; stdcall ;
 
 TSetPhotonCounting = function(
-                      State : SmallInt
+                      State : integer {smallint}
                       ): Integer ; stdcall ;
 
 TGetAcquisitionTimings = function(
@@ -167,7 +170,7 @@ TSetTriggerMode = function(
 
 TInitialize = function(
               Dir : PANSIChar
-              ) : SmallInt ; stdcall ;	 //	read ini file to get head and card
+              ) : integer {smallint} ; stdcall ;	 //	read ini file to get head and card
 
 TShutDown = function : Integer ; stdcall ;
 
@@ -187,7 +190,7 @@ TGetTemperatureRange = function(
 TCoolerON = function : Integer ; stdcall ;
 
 TSetFanMode = function(
-              FanMode : SmallInt
+              FanMode : integer {smallint}
               ) : Integer ; stdcall ;
 
 TCoolerOFF = function : Integer ; stdcall ;
@@ -474,7 +477,7 @@ TSetRegisterDump = function(
                    ) : Integer ; stdcall ;
 
 TGetCameraSerialNumber = function(
-                         var Number : SmallInt
+                         var Number : integer {smallint}
                          ) : Integer ; stdcall ;
 
 TGetPixelSize = function(
@@ -489,7 +492,7 @@ TGetBitDepth = function(
 
 TGetHeadModel = function(
                 Name : PANSIChar
-                ) : SmallInt ; stdcall ;
+                ) : integer {smallint} ; stdcall ;
 
 TGetNewData16 = function(
                 Buf : PWordArray ;
@@ -995,6 +998,7 @@ begin
      LibraryHnd := LoadLibrary( PChar(Session.LibFileName));
      if LibraryHnd <= 0 then begin
         ShowMessage( Session.LibFileName + ' not found! (Copy to c:\Program Files\Winfluor folder') ;
+        Exit ;
         end ;
 
      @IdAndorDll := Andor_GetDLLAddress(LibraryHnd,'IdAndorDll') ;
@@ -1136,7 +1140,7 @@ var
     cBuf : Array[0..79] of ANSIChar ;
     s,ss : String ;
     i :Integer ;
-    SerialNumber : SmallInt ;
+    SerialNumber : integer {smallint} ;
     PixelHeight : Single ;
     NumHSSpeeds : Integer ;
     ShiftTime : Single ;
@@ -2006,8 +2010,8 @@ begin
     for ImageNum := FirstImageNum to LastImageNum do begin
 
         // Pointer to frame within circular buffer
-        PImageBuffer := Pointer( Cardinal(Session.PFrameBuffer) +
-                                 Session.FrameNum*Session.NumPixelsPerFrame*2 ) ;
+        PImageBuffer := Pointer( NativeUInt(PByte(Session.PFrameBuffer)) +
+                                 (NativeUInt(Session.FrameNum)*NativeUInt(Session.NumPixelsPerFrame)*2) ) ;
 
         // Copy image
         Err := GetImages16( ImageNum,

@@ -51,6 +51,8 @@ unit NidaqMXUnit;
 // 05.11.13 FDACVoltageRange now defaults to 10V when no DACs available
 // 14.08.14 DAQmx_Val_Rising changed to DAQmx_Val_Rising in DAQmxCfgSampClkTiming()
 //          for compatibility with USB-6002/3
+// 11.09.14 GetADCSamples now acquires samples as doubles allowing ADC with more than 16 resolution
+//          to be supported.
 
 interface
 
@@ -1050,7 +1052,8 @@ function NIMX_ADCToMemory(
 
 procedure NIMX_GetADCSamples(
           var ADCBuf : Array of SmallInt  ;
-          var OutPointer : Integer
+          var OutPointer : Integer ;
+          var ADCChannelVoltageRanges : Array of Single
           ) ;
 
 function NIMX_StopADC : Boolean ;
@@ -2096,7 +2099,7 @@ var
     DIGTaskHandle : Integer ;
     FDigClockSupported : LongBool ; // TRUE = Digital output clock controlled
     FNoTriggerOnSampleClock : LongBool ; // TRUE = Cannot trigger AI sampling from AO clock
-    InBuf : PIntArray ;
+    //InBuf : PIntArray ;
     DBuf : PDoubleArray ;
 
     FDigMinUpdateInterval : Double ;
@@ -2399,6 +2402,7 @@ begin
                                                   DValue)) ;
            FDACResolution := Round(DValue) ;
            FDACMaxValue := Round(Power(2.0,DValue-1.0)) - 1 ;
+           FDACMaxValue := Min( FDACMaxValue, 32767 ) ;       // Keep to 16 bits or less
            FDACMinValue := -FDACMaxValue - 1 ;
            Inc(FDACNumChannels) ;
            end ;
@@ -2423,8 +2427,9 @@ begin
     NIMX_EnableFPUExceptions ;
 
     // Create input buffer
-    GetMem(InBuf,MaxADCSamples*4) ;
-    New(DBuf) ;
+    //GetMem(InBuf,MaxADCSamples*4) ;
+    //New(DBuf) ;
+    GetMem(DBuf,MaxADCSamples*8) ;
 
     BoardInitialised := True ;
     Result := True ;
@@ -2465,23 +2470,24 @@ begin
         if Err = 0 then begin
 
            // A/D output range
-           NIMX_CheckError(DAQmxGetAIRngHigh( Task,
-                                              PANSIChar(ChannelName),
-                                              FADCMaxVolts ));
+           NIMX_CheckError( DAQmxGetAIRngHigh( Task,
+                            PANSIChar(ChannelName),
+                            FADCMaxVolts ));
 
            // Get D/A converter resolution
            NIMX_CheckError( DAQmxGetAIResolution( Task,
-                                                  PANSIChar(ChannelName),
-                                                  DValue)) ;
+                            PANSIChar(ChannelName),
+                            DValue)) ;
 
            // Channel scaling factors
            NIMX_CheckError( DAQmxGetAIDevScalingCoeff( Task,
-                                                PANSIChar(ChannelName),
-                                                FADCScaleFactors,
-                                                High(FADCScaleFactors)+1 )) ;
+                            PANSIChar(ChannelName),
+                            FADCScaleFactors,
+                            High(FADCScaleFactors)+1 )) ;
 
            FADCResolution := Round(DValue) ;
            FADCMaxValue := Round(Power(2.0,DValue-1.0)) - 1 ;
+           FADCMaxValue := Min( FADCMaxValue, 32767 ) ;       // Keep to 16 bits or less
            FADCMinValue := -FADCMaxValue - 1 ;
            FValidADCInputMode := ADCInputMode ;
 
@@ -2854,7 +2860,6 @@ begin
 
     FADCMaxVolts := ADCVoltageRanges[0] ;
 
-
     NIMX_EnableFPUExceptions ;
 
     if FADCNumChannels > 0 then begin
@@ -3157,18 +3162,19 @@ begin
 
 procedure NIMX_GetADCSamples(
           var ADCBuf : Array of SmallInt  ;
-          var OutPointer : Integer
+          var OutPointer : Integer ;
+          var ADCChannelVoltageRanges : Array of Single
           ) ;
 // -------------------------------------------------------------
 // Get latest A/D samples acquired and transfer to memory buffer
 // -------------------------------------------------------------
 var
-    i : Integer ;
+    i,j,ch : Integer ;
     ADCBufNumSamples : Integer ;
     ADCBufEnd : Integer ;
     NumSamplesRead : Integer ;
-    VScale,VOffset,VUnscale : Single ;
     ScaledValue,MaxVal,MinVal : Integer ;
+    VScale : Array[0..MaxADCChannels-1] of Single ;
 begin
 
     if not ADCActive then Exit ;
@@ -3181,29 +3187,34 @@ begin
     if (not FADCCircularBuffer) and (FADCNumSamplesAcquired >= ADCBufNumSamples) then Exit ;
 
     // Read data from A/D converter
-    NIMX_CheckError( DAQmxReadBinaryI32( ADCTaskHandle,
+    NIMX_CheckError( DAQmxReadAnalogF64( ADCTaskHandle,
                                 -1,
                                 DefaultTimeOut,
                                 DAQmx_Val_GroupByScanNumber,
-                                InBuf,
+                                DBuf,
                                 ADCBufNumSamples,
                                 NumSamplesRead,
                                 Nil )) ;
 
     // Apply calibration factors and copy to output buffer
 
-    VUnScale := FADCMaxValue/10.0 ;
-    VScale := FADCScaleFactors[1] ;
-    VOffset := FADCScaleFactors[0] ;
     MaxVal := FADCMaxValue - 1 ;
     MinVal := FADCMinValue + 1 ;
-    for i := 0 to NumSamplesRead*FADCNumChannels-1 do begin
-        ScaledValue := Round( (InBuf[i]*VScale + VOffset)*VUnScale ) ;
-        ADCBuf[FADCPointer] := Max( Min( ScaledValue, MaxVal ), MinVal ) ;
+
+    for ch := 0 to FADCNumChannels-1 do VScale[ch] := FADCMaxValue/ADCChannelVoltageRanges[ch] ;
+    j := 0 ;
+    for i := 0 to NumSamplesRead-1 do begin
+      for ch := 0 to FADCNumChannels-1 do begin
+        ScaledValue := Round(DBuf[j]*VScale[ch]) ;
+        if ScaledValue < MinVal then ScaledValue := MinVal ;
+        if ScaledValue > MaxVal then ScaledValue := MaxVal ;
+        ADCBuf[FADCPointer] := ScaledValue ;
         Inc(FADCPointer) ;
-        FADCNumSamplesAcquired := FADCPointer ;
-        if FADCPointer > ADCBufEnd then FADCPointer := 0 ;
-        end ;
+        inc(j) ;
+        end;
+      FADCNumSamplesAcquired := FADCPointer ;
+      if FADCPointer > ADCBufEnd then FADCPointer := 0 ;
+      end ;
 
     OutPointer := FADCPointer ;
 
@@ -3827,8 +3838,8 @@ begin
     // stop any running D/A task
     NIMX_StopDAC ;
 
-    FreeMem(InBuf) ;
-    Dispose( DBuf ) ;
+    //FreeMem(InBuf) ;
+    FreeMem( DBuf ) ;
 
     // Free NIDAQ-MX DLL library
     if LibraryLoaded then FreeLibrary( LibraryHnd ) ;

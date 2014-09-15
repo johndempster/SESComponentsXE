@@ -89,7 +89,7 @@ type
 TDATABUFFER = packed record
    uNumSamples : Cardinal ;      // Number of samples in this buffer.
    uFlags : Cardinal ;           // Flags discribing the data buffer.
-   pnData : Pointer ;         // The buffer containing the data.
+   pnData : Pointer ;            // The buffer containing the data.
    psDataFlags : Pointer ;      // Byte Flags split out from the data buffer.
    pNextBuffer : Pointer ;      // Next buffer in the list.
    pPrevBuffer : Pointer ;      // Previous buffer in the list.
@@ -149,7 +149,7 @@ TDD1440_Protocol = packed record
    pAIBuffers : Pointer ;
    uAIBuffers : Cardinal ;
    bDIEnable : ByteBool ;
-   bUnused1 : Array[1..3] of ByteBool ;        // (alignment padding)
+   bUnused1 : Array[1..3] of Byte ;        // (alignment padding)
 
    // Outputs:
    uAOChannels : Cardinal ;
@@ -157,7 +157,7 @@ TDD1440_Protocol = packed record
    pAOBuffers : Pointer ;
    uAOBuffers : Cardinal ;
    bDOEnable : ByteBool ;
-   bUnused2 : Array[1..3] of ByteBool ;        // (alignment padding)
+   bUnused2 : Array[1..3] of Byte ;        // (alignment padding)
 
    uChunksPerSecond : Cardinal ;   // Granularity of data transfer.
    uTerminalCount : Cardinal ;     // If DD1400_FLAG_STOP_ON_TC this is the count.
@@ -217,7 +217,6 @@ TDD1440_SetSerialNumber = Function (
 TDD1440_GetBufferGranularity =   Function  : Cardinal ;  cdecl;
 
 TDD1440_SetProtocol =   Function(
-                        
                         var DD1400_Protocol : TDD1440_Protocol
                         //DD1400_Protocol : Pointer
                         ) : ByteBool ;  cdecl;
@@ -238,12 +237,12 @@ TDD1440_GetAOPosition =   Function(
                           var uSequences : Int64) : ByteBool ;  cdecl;
 
 TDD1440_GetAIValue = Function(
-                     
+
                      uAIChannel : Cardinal ;
                      var nValue : SmallInt
                       ) : ByteBool ;  cdecl;
 TDD1440_GetDIValue = Function (
-                     
+
                      var wValue : Word
                      ) : ByteBool ;  cdecl;
 
@@ -278,17 +277,17 @@ TDD1440_GetTimeAtStartOfAcquisition =   procedure (
                                         ) ; cdecl;
 
 TDD1440_GetCalibrationParams =   Function (
-                                  
+
                                   var Params : TDD1440_Calibration
                                   ) : ByteBool ;  cdecl;
 
 TDD1440_SetCalibrationParams = Function (
-                               
+
                                const Params : TDD1440_Calibration
                                ) : ByteBool ;  cdecl;
 
 TDD1440_GetPowerOnData = Function(
-                         
+
                          var Data : TDD1440_PowerOnData
                          ) : ByteBool ;  cdecl;
 TDD1440_SetPowerOnData =   Function (
@@ -297,7 +296,7 @@ TDD1440_SetPowerOnData =   Function (
                            )  : ByteBool ;  cdecl;
 
 TDD1440_GetEepromParams =   Function (
-                            
+
                             pvEepromImage : pointer ;
                             uBytes : Cardinal
                             )  : ByteBool ;  cdecl;
@@ -468,6 +467,9 @@ var
    AIBuf : PSmallIntArray ;
    AIPointer : Integer ;
    AIBufNumSamples : Integer ;        // Input buffer size (no. samples)
+   DIBuf : PSmallIntArray ;
+   AIDFlags : PSmallIntArray ;
+   AODFlags : PSmallIntArray ;
 
    ADCActive : Boolean ;  // A/D sampling in progress flag
    DACActive : Boolean ;  // D/A output in progress flag
@@ -753,6 +755,8 @@ begin
     AIBuf := Nil ;
     AOBuf := Nil ;
     OutValues := Nil ;
+    AIDFlags := Nil ;
+    AODFlags := Nil ;
 
     DeviceInitialised := True ;
 
@@ -812,7 +816,7 @@ var
    i : Word ;
    ch,iPrev,iNext : Integer ;
    NumSamplesPerSubBuf : Integer ;
-   iPointer : Cardinal ;
+   iPointer,diPointer : Cardinal ;
 begin
      Result := False ;
      if not DeviceInitialised then DD1440_InitialiseBoard ;
@@ -824,6 +828,19 @@ begin
 
      // Clear protocol fClags
      Protocol.uFlags := 0 ;
+     protocol.dSequencePeriodUS :=0;
+     protocol.nScopeOutAIChannel := 0;
+     Protocol.nScopeOutThreshold := 0;
+     Protocol.nScopeOutHysteresis :=0;
+     Protocol.bScopeOutPolarity:=false ;
+
+     Protocol.bDIEnable := false ;
+     for i := 0 to High(Protocol.bUnused1) do Protocol.bUnused1[i] := 0 ;
+          for i := 0 to High(Protocol.bUnused1) do Protocol.bUnused2[i] := 0 ;
+     Protocol.bDOEnable := false ;
+     Protocol.uTerminalCount := 0;
+     Protocol.bSaveAI:= false ;
+          Protocol.bSaveAO := false ;
 
      // Sampling interval
      Protocol.dSequencePeriodUS := dt*1E6 ;
@@ -840,16 +857,26 @@ begin
      AIBufNumSamples := ((DeviceInfo[0].InputBufferSamples*2) div NumSamplesPerSubBuf)*NumSamplesPerSubBuf ;
      if AIBuf <> Nil then FreeMem(AIBuf) ;
      GetMem( AIBuf, AIBufNumSamples*2 ) ;
+     if DIBuf <> Nil then FreeMem(DIBuf) ;
+     GetMem( DIBuf, AIBufNumSamples*2 ) ;
+
+     if AODFlags <> Nil then FreeMem(AODFlags) ;
+     GetMem( AODFlags, AIBufNumSamples*2 ) ;
+     if AIDFlags <> Nil then FreeMem(AIDFlags) ;
+     GetMem( AIDFlags, AIBufNumSamples*2 ) ;
+
      Protocol.pAIBuffers := @AIBufs ;
 
      iPointer := Cardinal(AIBuf) ;
+     diPointer := Cardinal(DIBuf) ;
      Protocol.uAIBuffers := Min( AIBufNumSamples div NumSamplesPerSubBuf, High(AIBufs)+1 );
      for i := 0 to Protocol.uAIBuffers-1 do begin
         AIBufs[i].pnData := Pointer(iPointer) ;
         AIBufs[i].uNumSamples := NumSamplesPerSubBuf ;
         AIBufs[i].uFlags := 0 ;
-        AIBufs[i].psDataFlags := Nil ;
+        AIBufs[i].psDataFlags := AIDFlags ;
         iPointer := iPointer + NumSamplesPerSubBuf*2  ;
+        diPointer := diPointer + NumSamplesPerSubBuf*2  ;
         end ;
 
      // Previous/Next buffer pointers
@@ -875,7 +902,7 @@ begin
         AOBufs[i].pnData := Pointer(iPointer) ;
         AOBufs[i].uNumSamples := NumSamplesPerSubBuf ;
         AOBufs[i].uFlags := 0 ;
-        AOBufs[i].psDataFlags := Nil ;
+        AOBufs[i].psDataFlags := AODFlags ;
         iPointer := iPointer + NumSamplesPerSubBuf*2  ;
         end ;
 
@@ -895,7 +922,7 @@ begin
      Protocol.bDOEnable := True ;
 
      // No digital input
-     Protocol.bDIEnable := False ;
+     Protocol.bDIEnable := false ;
      Protocol.uChunksPerSecond := 20 ;
      Protocol.uTerminalCount := NumADCSamples ;
 
@@ -912,13 +939,14 @@ begin
 
         // Enable external start of sweep
         if TriggerMode = tmExtTrigger then Protocol.uFlags := DD1400_FLAG_EXT_TRIGGER
-                                      else  Protocol.uFlags := 0 ;
+                                      else Protocol.uFlags := 0 ;
         // Clear any existing waveform from output buffer
         DD1440_FillOutputBufferWithDefaultValues ;
 
         // Send protocol to device
         AOPointer := 0 ;
         DD1440_CheckError(DD1440_SetProtocol(Protocol)) ;
+
         // Start A/D conversion
         DD1440_CheckError(DD1440_StartAcquisition) ;
         DD1440_GetAOPosition(  AOPosition ) ;
@@ -1292,6 +1320,13 @@ begin
      AOBuf := Nil ;
      if AIBuf <> Nil then FreeMem( AIBuf ) ;
      AIBuf := Nil ;
+     if DIBuf <> Nil then FreeMem(DIBuf) ;
+     DIBuf := Nil ;
+
+     if AIDFlags <> Nil then FreeMem(AIDFlags) ;
+     AIDFlags := Nil ;
+     if AODFlags <> Nil then FreeMem(AODFlags) ;
+     AODFlags := Nil ;
 
      DeviceInitialised := False ;
      DACActive := False ;
