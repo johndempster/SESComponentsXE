@@ -3649,7 +3649,7 @@ begin
        end ;
 
     //nMiss := nMiss + is_CameraStatus(Session.CamHandle,IS_TRIGGER_MISSED, IS_GET_STATUS) ;
-          outputdebugstring(pchar(format('nmisses %d %d',[nmiss,tlast])));
+//          outputdebugstring(pchar(format('nmisses %d %d',[nmiss,tlast])));
     end ;
 
 

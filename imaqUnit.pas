@@ -13,6 +13,7 @@ unit imaqUnit;
 // 02-07-14 MoveMemory now used in GetImage() and updated for 64 bit
 // 22-08-14 Support for Vieworks VA-29MC-5M camera with CameraLink interface added
 // 25-08-14 Support for Vieworks VA-29MC-5M camera now working correctly
+// 03-10-14 Support for Orca-100 being added.
 
 interface
 
@@ -1040,10 +1041,29 @@ type
     GainMax : Integer ;
     MinExposureTime : Double ;
     MaxExposureTime : Double ;
+    ExposureTimeScale : Double ;
     BufferList: Array[0..255] of Pointer ;
     BufferFilled: Array[0..255] of Boolean ;
     BufferIndex : Integer ;
     CCDShiftSupported : Boolean ;
+    BinModeCom : ANSIString ;
+    BinModeVal : Array[0..15] of ANSIString ;
+    BinSizeCom : ANSIString ;
+    BinSizeVal : Array[0..15] of ANSIString ;
+    TriggerModeCom : ANSIString ;
+    TriggerModeValFreeRun : ANSIString ;
+    TriggerModeValExtTrig : ANSIString ;
+    TriggerSourceCom : ANSIString ;
+    TriggerSourceVal : ANSIString ;
+    TriggerPolarityCom : ANSIString ;
+    TriggerPolarityVal : ANSIString ;
+    ExposureModeCom : ANSIString ;
+    ExposureModeVal : ANSIString ;
+    ExposureTimeCom : ANSIString ;
+    FanModeCom : ANSIString ;
+    FanOn : ANSIString ;
+    FanOff : ANSIString ;
+    GainCom : ANSIString ;
     end ;
 
 //============================================================================
@@ -1518,6 +1538,15 @@ procedure IMAQ_SetBinning(
           var Session : TIMAQSession ;
           BinFactor : Integer ) ;
 
+function IMAQ_SetCameraAttributeString(
+         SessionID : Integer ;
+         Name : ANSIstring ;
+         Value : ANSIstring ) : Boolean ;
+
+function IMAQ_SetCameraAttributeNumeric(
+         SessionID : Integer ;
+         Name : ANSIstring ;
+         Value : Double ) : Boolean ;
 
 var
 
@@ -1723,7 +1752,6 @@ var
     wcBuf : Array[0..255] of Char ;
     InterfaceType : Integer ;
     ColourSupported : Integer ;
-    sBits : ANSIString ;
     asBuf : ANSIString ;
     InterfaceFileName,Key : string ;
     InterfaceFile : TextFile ;
@@ -1801,7 +1829,56 @@ begin
      if Session.CameraName = '' then Session.CameraName := 'Unknown' ;
      CameraInfo.Add('Camera: ' + Session.CameraName );
 
-     if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then begin
+     if ANSIContainsText(Session.CameraName, 'Orca') or
+        ANSIContainsText(Session.CameraName, '4742')then begin
+        // Orca -100
+        // Pixel bit depths
+        Session.PixelDepths[0] := 12 ;
+        Session.PixelDepths[1] := 10 ;
+        Session.NumPixelDepths := 1 ;
+        PixelDepth := Session.PixelDepths[0] ;
+        Session.GainMin := 0 ;
+        Session.GainMax := 255 ;
+        Session.MinExposureTime := 1E-5 ;
+        Session.MaxExposureTime := 100.0 ;
+        Session.ExposureTimeScale := 1.0/9.0 ; // Scale to frame intervals
+        Session.CCDShiftSupported := False ;
+        Session.BinFactorMax := 4 ;
+        BinFactorMax := Session.BinFactorMax ;
+
+        // Binning
+        Session.BinFactorMax := 8 ;
+        BinFactorMax := Session.BinFactorMax ;
+        Session.BinModeCom := 'Scan Mode' ;
+        Session.BinModeVal[0] := 'Normal' ;
+        for i := 1 to Session.BinFactorMax-1 do
+            Session.BinModeVal[i] := format('%dx%d Binning',[i+1]) ;
+        Session.BinSizeCom := '' ;
+
+        // Free run / externla triggering commands
+        Session.TriggerModeCom := 'Acquire Mode' ;
+        Session.TriggerModeValFreeRun := 'Normal';
+        Session.TriggerModeValExtTrig := 'External' ;
+        Session.TriggerSourceCom := '' ;
+        Session.TriggerSourceVal := '' ;
+        Session.TriggerPolarityCom := 'External Trigger Polarity' ;
+        Session.TriggerPolarityVal := 'Positive' ;
+
+        // Exposure time
+        Session.ExposureModeCom := 'Exposure Time Setting' ;
+        Session.ExposureModeVal := 'Frame Blanking' ;
+        Session.ExposureTimeCom := 'Frame Shutter Time' ;
+
+        Session.FanModeCom := '' ;
+        Session.FanOn := '' ;
+        Session.FanOff := '' ;
+
+        Session.GainCom := 'Contrast Enhance Gain' ;
+        Session.GainMin := 0 ;
+        Session.GainMax := 255 ;
+
+        end
+     else if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then begin
 
         // Initialisation for Vieworks VA-29MC-5M
 
@@ -1811,31 +1888,48 @@ begin
         Session.PixelDepths[2] := 8 ;
         Session.NumPixelDepths := 3 ;
         PixelDepth := Session.PixelDepths[0] ;
-        Session.GainMin := 0 ;
-        Session.GainMax := 899 ;
         Session.MinExposureTime := 1E-5 ;
         Session.MaxExposureTime := 100.0 ;
+        Session.ExposureTimeScale := 1E6 ;  // Scale to microseconds
         Session.CCDShiftSupported := True ;
+
+        // Binning
         Session.BinFactorMax := 4 ;
         BinFactorMax := Session.BinFactorMax ;
-        sBits := '2';
-        IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
-                                                     PANSIChar(ANSIString('Taps')),
-                                                     PANSIChar(sBits))) ;
-        sBits := '2';
-        IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
-                                                     PANSIChar(ANSIString('Bin Size')),
-                                                     PANSIChar(sBits))) ;
+        Session.BinModeCom := 'Mode' ;
+        Session.BinModeVal[0] := 'Normal' ;
+        for i := 1 to Session.BinFactorMax-1 do Session.BinModeVal[i] := 'Binning' ;
+        Session.BinSizeCom := 'Bin Size' ;
+        Session.BinSizeVal[0] := '' ;
+        for i := 1 to Session.BinFactorMax-1 do Session.BinSizeVal[i] := format('%dx%d',[i+1]) ;
 
-        sBits := '12 bit' ;
-        IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
-                                                     PANSIChar(ANSIString('Data Bit')),
-                                                     PANSIChar(sBits))) ;
+        // Free run / externla triggering commands
+        Session.TriggerModeCom := 'Trigger Mode' ;
+        Session.TriggerModeValFreeRun := 'Free Run';
+        Session.TriggerModeValExtTrig := 'Standard' ;
+        Session.TriggerSourceCom := 'Trigger Source' ;
+        Session.TriggerSourceVal := 'Ext' ;
+        Session.TriggerPolarityCom := 'Trigger Polarity' ;
+        Session.TriggerPolarityVal := 'Active High' ;
 
-        sBits := 'Normal';
-        IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
-                                                     PANSIChar(ANSIString('Mode')),
-                                                     PANSIChar(sBits))) ;
+        // Expsure time
+        Session.ExposureModeCom := '' ;
+        Session.ExposureModeVal := '' ;
+        Session.ExposureTimeCom := 'Exposure Time' ;
+
+        Session.FanModeCom := 'Fan' ;
+        Session.FanOn := 'On' ;
+        Session.FanOff := 'Off' ;
+
+        Session.GainCom := 'Analog Gain' ;
+        Session.GainMin := 0 ;
+        Session.GainMax := 899 ;
+
+        IMAQ_SetCameraAttributeString( Session.SessionID,'Taps','2') ;
+        IMAQ_SetCameraAttributeString( Session.SessionID,'Bin Size','2') ;
+        IMAQ_SetCameraAttributeString( Session.SessionID,'Data Bit','12') ;
+        IMAQ_SetCameraAttributeString( Session.SessionID,'Mode','Normal') ;
+
         end
      else begin
 
@@ -1851,7 +1945,7 @@ begin
         BinFactorMax := Session.BinFactorMax ;
         Session.CCDShiftSupported := False ;
 
-       // If this is a colour camera, set it to monochrome mode
+        // If this is a colour camera, set it to monochrome mode
 
        if imgGetAttribute( Session.SessionID, IMG_ATTR_COLOR, ColourSupported ) = 0 then begin
           if ColourSupported <> 0 then begin
@@ -1867,7 +1961,7 @@ begin
                                         else Session.MinExposureTime := (1.0/30.0)*0.999 ;
           end ;
 
-        end ;
+       end ;
 
      // Pixel depth
 //     if imgGetAttribute( Session.SessionID, IMG_ATTR_PIXDEPTH, PixelDepth ) <> 0 then
@@ -2009,12 +2103,9 @@ begin
         Session.BufferFilled[i] := False ;
         end ;
 
-    if Session.GainMin <> Session.GainMax then begin
+    if (Session.GainMin <> Session.GainMax) and (Session.GainCom <> '') then begin
        iGain := Session.GainMin + Round((Session.GainMax-Session.GainMin)*(AmpGain*0.01)) ;
-       IMAQ_CheckError( imgSetCameraAttributeNumeric(
-                        Session.SessionID,
-                        PANSIChar(ANSIString('Analog Gain')),
-                        iGain )) ;
+       IMAQ_SetCameraAttributeNumeric( Session.SessionID,PANSIChar(Session.GainCom),iGain) ;
        end ;
 
     if not Session.AnalogVideoBoard then begin
@@ -2034,44 +2125,30 @@ begin
              end;
 
           if ExternalTrigger = CamFreeRun then s := 'None' ;
-          IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
-                                                       PANSIChar(ANSIString('Sequence Mode')),
-                                                       PANSIChar(s))) ;
+          IMAQ_SetCameraAttributeString( Session.SessionID,'Sequence Mode',s) ;
           // Turn fan off for pixel shift modes
           if NumPixelShiftFrames > 1 then begin
-             s := 'Off' ;
-             IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
-                                                          PANSIChar(ANSIString('Fan')),
-                                                          PANSIChar(s))) ;
+             IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOff) ;
              end ;
           end;
 
        // Set exposure time
-       IMAQ_CheckError( imgSetCameraAttributeNumeric(
-                        Session.SessionID,
-                        PANSIChar(ANSIString('Exposure Time')),
-                        ExposureTime*1E6 )) ;
+       IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,Session.ExposureModeVal) ;
+       IMAQ_SetCameraAttributeNumeric( Session.SessionID,Session.ExposureTimeCom,
+                                       Max(Round(ExposureTime*Session.ExposureTimeScale),1.0)) ;
 
        // Internal/external triggering of frame capture
        if ExternalTrigger = CamFreeRun then begin
-          s := 'Free Run' ;
-          IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
-                                                       PANSIChar(ANSIString('Trigger Mode')),
-                                                       PANSIChar(s))) ;
+          // Free run mode
+          // -------------
+          IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValFreeRun) ;
           end
        else begin
-          s := 'Standard' ;
-          IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
-                                                       PANSIChar(ANSIString('Trigger Mode')),
-                                                       PANSIChar(s))) ;
-          s := 'Ext' ;
-          IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
-                                                       PANSIChar(ANSIString('Trigger Source')),
-                                                       PANSIChar(s))) ;
-          s := 'Active High' ;
-          IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
-                                                       PANSIChar(ANSIString('Trigger Polarity')),
-                                                       PANSIChar(s))) ;
+          // External Trigger
+          // ----------------
+          IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValExtTrig) ;
+          IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerSourceCom,Session.TriggerSourceVal) ;
+          IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerPolarityCom,Session.TriggerPolarityVal) ;
           end ;
       end
     else begin
@@ -2111,10 +2188,10 @@ begin
 
     // Set CCD readout region
     IMAQ_CheckError( imgSessionConfigureROI( Session.SessionID,
-                                               FrameTop div BinFactor,
-                                               FrameLeft div BinFactor,
-                                               FrameHeight div BinFactor,
-                                               FrameWidth div BinFactor )) ;
+                                             FrameTop div BinFactor,
+                                             FrameLeft div BinFactor,
+                                             FrameHeight div BinFactor,
+                                             FrameWidth div BinFactor )) ;
 
     // Set up ring buffer
     IMAQ_CheckError( imgRingSetup( Session.SessionID,
@@ -2140,29 +2217,17 @@ begin
 procedure IMAQ_SetBinning(
           var Session : TIMAQSession ;
           BinFactor : Integer ) ;
-var
-    s : ANSIString ;
+// ------------------
+// Set camera binning
+// ------------------
 begin
 
     if Session.BinFactorMax <= 1 then Exit ;
+    BinFactor := Min(Max(BinFactor,1),Session.BinFactorMax);
 
-    if BinFactor > 1 then begin
-       s := 'Binning' ;
-       IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
-                                                    PANSIChar(ANSIString('Mode')),
-                                                    PANSIChar(s))) ;
-       if BinFactor > 2 then s := '4x4'
-                        else s := '2x2' ;
-       IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
-                                                     PANSIChar(ANSIString('Bin Size')),
-                                                     PANSIChar(s))) ;
-       end
-    else begin
-       s := 'Normal' ;
-       IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
-                                                    PANSIChar(ANSIString('Mode')),
-                                                    PANSIChar(s))) ;
-       end ;
+    // Set binning/normal mode
+    IMAQ_SetCameraAttributeString(Session.SessionID,Session.BinModeCom,Session.BinModeVal[BinFactor-1]) ;
+    IMAQ_SetCameraAttributeString(Session.SessionID,Session.BinSizeCom,Session.BinSizeVal[BinFactor-1]) ;
 
     end ;
 
@@ -2172,8 +2237,6 @@ procedure IMAQ_StopCapture(
 // ------------------
 // Stop frame capture
 // ------------------
-var
-    s : ANSIString ;
 begin
 
      if not Session.AcquisitionInProgress then Exit ;
@@ -2184,16 +2247,42 @@ begin
      IMAQ_CheckError(imgInterfaceReset(Session.SessionID)) ;
 
      if not Session.AnalogVideoBoard then begin
-        // Ensure fan is on
-        s := 'On' ;
-        IMAQ_CheckError(imgSetCameraAttributeString( Session.SessionID,
-                                                     PANSIChar(ANSIString('Fan')),
-                                                     PANSIChar(s))) ;
+        IMAQ_SetCameraAttributeString(Session.SessionID,Session.FanModeCom,Session.FanOn) ;
         end ;
 
      Session.AcquisitionInProgress := False ;
 
      end;
+
+
+function IMAQ_SetCameraAttributeString(
+         SessionID : Integer ;
+         Name : ANSIstring ;
+         Value : ANSIstring ) : Boolean ;
+// --------------------
+// Set camera attribute
+// --------------------
+begin
+    Result := False ;
+    if (Name <> '') or (Value = '') then Exit ;
+    IMAQ_CheckError( imgSetCameraAttributeString(SessionID,PANSIChar(Name),PANSIChar(Value))) ;
+    Result := True ;
+    end ;
+
+
+function IMAQ_SetCameraAttributeNumeric(
+         SessionID : Integer ;
+         Name : ANSIstring ;
+         Value : double ) : Boolean ;
+// --------------------
+// Set camera attribute
+// --------------------
+begin
+    Result := False ;
+    if Name <> '' then Exit ;
+    IMAQ_CheckError( imgSetCameraAttributeNumeric(SessionID,PANSIChar(Name),Value)) ;
+    Result := True ;
+    end ;
 
 
 procedure IMAQ_GetImage(
@@ -2335,7 +2424,7 @@ begin
      i := 0 ;
      Result := '' ;
      while (cBuf[i] <> #0) and (i <= High(cBuf)) do begin
-         Result := Result + cBuf[i] ;
+         Result := Result + String(cBuf[i]) ;
          Inc(i) ;
          end ;
      end ;

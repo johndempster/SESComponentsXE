@@ -42,6 +42,7 @@ unit pvcam;
 // 9-7-14 pl_exp_stop_cont error check removed because it reports unnecessary error with Cascade camera
 // 22-7-14 OpenCamera now returns no. of cameras available
 //         Camera can be selected when more than one available
+// 10.10.14 OptiMOS minimum frame interval now 1.4 x readout time (not 2X)
 
 {OPTIMIZATION OFF}
 {$DEFINE USECONT}
@@ -1437,7 +1438,7 @@ begin
               pl_get_param( Session.Handle, PARAM_PIX_TIME, ATTR_CURRENT, @PixelReadoutTime ) ;
               if ANSIContainsText(Session.ChipName,'optimos') then begin
                  ReadoutTime := (FrameBottom - FrameTop+1)*10E-6 ;
-                 if ExternalTrigger = camExtTrigger then ReadoutTime := ReadoutTime*2.0 ;
+                 if ExternalTrigger = camExtTrigger then ReadoutTime := ReadoutTime*1.4 ;
                  end
               else begin
                 // Corrections to readout for binning and sub-region derived from
