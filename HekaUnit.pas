@@ -20,6 +20,8 @@ unit HekaUnit;
 // 27.06.14 ITC-18 Now works correctly with sampling buffers > 50000 samples
 //          Analog output buffer no longer corrupted
 // 30.06.14 ITC-18 Additional bugs fixed
+// 15.10.14 ITC-18 ADCActive no longer set TRUE by adctomemory() in tmWaveGen mode
+//                 Prevents time jitter and access violations with voltage step protocols.
 
 interface
 
@@ -1428,9 +1430,10 @@ begin
 
         FreeMem(DacValues) ;
         FreeMem(DigValues) ;
+        ADCActive := True ;
         end ;
+     Result := ADCActive ;
 
-     ADCActive := True ;
 
      end ;
 

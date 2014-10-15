@@ -127,6 +127,7 @@ unit SESLabIO;
   30.06.14 .DACAvailableWhileADCActive property added. Indicates that DAC can be restarted
            while ADC is active
   20.08.14 Support for Digidata 1550 added (not tested)
+  15.10.14 .StimulusTimerTime property added (elapsed stimulus interval time
   ================================================================================ }
 
 interface
@@ -363,6 +364,7 @@ type
     procedure SetADCChannelInputNumber( Chan : Integer ; Value : Integer ) ;
 
     function GetStimulusTimerPeriod : Single ;
+    function GetStimulusTimerTime : Single ;
     procedure SetStimulusTimerPeriod( Value : Single ) ;
 
     function GetTritonSource( Chan : Integer) : Integer ;
@@ -875,6 +877,7 @@ procedure TritonAutoCompensation(
     Property DIGInputs : Integer Read GetDIGInputs ;
 
     Property TimerPeriod : Single Read GetStimulusTimerPeriod Write SetStimulusTimerPeriod ;
+    Property TimerTime : Single Read GetStimulusTimerTime ;
     Property DigitalStimulusEnabled : Boolean Read FStimulusDigitalEnabled Write FStimulusDigitalEnabled ;
     Property TimerActive : Boolean Read FStimulusTimerActive ;
     Property StimulusTime : Single Read FStimulusTimeStarted ;
@@ -3626,6 +3629,15 @@ function TSESLabIO.GetStimulusTimerPeriod : Single ;
 begin
      Result := FStimulusStartTime*StimulusTimerTickInterval*1E-3 ;
      end ;
+
+function TSESLabIO.GetStimulusTimerTime : Single ;
+// -----------------------------------------
+// Get time interval between stimulus pulses
+// -----------------------------------------
+begin
+     Result := FStimulusTimerTicks*StimulusTimerTickInterval*1E-3 ;
+     end ;
+
 
 
 procedure TSESLabIO.StartTimer ;
