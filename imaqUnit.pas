@@ -1852,7 +1852,7 @@ begin
         Session.BinModeCom := 'Scan Mode' ;
         Session.BinModeVal[0] := 'Normal' ;
         for i := 1 to Session.BinFactorMax-1 do
-            Session.BinModeVal[i] := format('%dx%d Binning',[i+1]) ;
+            Session.BinModeVal[i] := format('%dx%d Binning',[i+1,i+1]) ;
         Session.BinSizeCom := '' ;
 
         // Free run / externla triggering commands
@@ -1901,7 +1901,7 @@ begin
         for i := 1 to Session.BinFactorMax-1 do Session.BinModeVal[i] := 'Binning' ;
         Session.BinSizeCom := 'Bin Size' ;
         Session.BinSizeVal[0] := '' ;
-        for i := 1 to Session.BinFactorMax-1 do Session.BinSizeVal[i] := format('%dx%d',[i+1]) ;
+        for i := 1 to Session.BinFactorMax-1 do Session.BinSizeVal[i] := format('%dx%d',[i+1,i+1]) ;
 
         // Free run / externla triggering commands
         Session.TriggerModeCom := 'Trigger Mode' ;
@@ -2264,7 +2264,7 @@ function IMAQ_SetCameraAttributeString(
 // --------------------
 begin
     Result := False ;
-    if (Name <> '') or (Value = '') then Exit ;
+    if (Name = '') or (Value = '') then Exit ;
     IMAQ_CheckError( imgSetCameraAttributeString(SessionID,PANSIChar(Name),PANSIChar(Value))) ;
     Result := True ;
     end ;
@@ -2279,7 +2279,7 @@ function IMAQ_SetCameraAttributeNumeric(
 // --------------------
 begin
     Result := False ;
-    if Name <> '' then Exit ;
+    if Name = '' then Exit ;
     IMAQ_CheckError( imgSetCameraAttributeNumeric(SessionID,PANSIChar(Name),Value)) ;
     Result := True ;
     end ;

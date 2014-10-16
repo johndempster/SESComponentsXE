@@ -1179,7 +1179,7 @@ begin
                                       FFrameInterval,FReadoutTime ) ;
 
              FBinFactor := 1 ;
-             FBinFactorMax := 1 ;
+             //FBinFactorMax := 1 ;
              FFrameWidth := FFrameWidthMax ;
              FFrameHeight := FFrameHeightMax ;
              FNumCameras := 1 ;
