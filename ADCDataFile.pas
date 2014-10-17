@@ -44,7 +44,8 @@ unit ADCDataFile;
 // 11.03.13 FP error on import of CHT files now fixed. FChannelADCVoltageRange[] now read from YCch#= header variable
 // 31/07/13 Modified to compiled under Delphi XE2/3
 // 15/08/14 Gap free ABF files now set to have a single record equal to whole file
-// 15/10/14 ABF V2 files can now be read using abffio.dll
+// 15/9/14 ABF V2 files can now be read using abffio.dll
+// 17/10/14 ASCII import now ignores blank lines without stopping and strips out <CR><CR><LF> line endings
 
 {$R 'adcdatafile.dcr'}
 interface
@@ -4652,8 +4653,7 @@ begin
            if not EndOfRecord then Inc(NumLinesPerRecord) ;
            LastTValue := TValue ;
            Inc(NumLines) ;
-           end
-        else Done := True ;
+           end ;
 
         end ;
 
@@ -4730,6 +4730,7 @@ procedure TADCDataFile.ASCReadLine(
 var
     Done : Boolean ;
     InChar,cSep : ANSIChar ;
+    s : string ;
     i : Integer ;
 begin
 
@@ -4747,6 +4748,10 @@ begin
            EOF := True ;
            Break ;
            end ;
+//        if InChar = #13 then s := '#13'
+//        else if InChar = #10 then s := '#10'
+//        else s := Char(Inchar);
+//        outputdebugstring(Pchar(s)) ;
 
         if InChar = cSep then begin
            // Item separator - increment to next item
@@ -4757,12 +4762,15 @@ begin
            Done := True ;
            end
         else if (InChar = #13) then begin
-           // Line ended by CR
-           // Discard LF (if one exists)
-           if FileRead(FileHandle,InChar,1) = 1 then begin
-              if InChar <> #10 then FileSeek( FileHandle, -1, 1 ) ;
+           // Line ended by CR (Discard additional CR or LF (if any exist))
+           Done := False ;
+           while not Done do begin
+              if FileRead(FileHandle,InChar,1) <> 1 then Done := True ;
+              if (InChar <> #10) and (InChar <> #13) and (not Done) then begin
+                 FileSeek( FileHandle, -1, 1 ) ;
+                 Done := True ;
+                 end ;
               end ;
-           Done := True ;
            end
         else begin
            // Add to line and items
