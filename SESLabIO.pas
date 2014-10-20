@@ -128,6 +128,8 @@ unit SESLabIO;
            while ADC is active
   20.08.14 Support for Digidata 1550 added (not tested)
   15.10.14 .StimulusTimerTime property added (elapsed stimulus interval time
+  17.10.14 Now FDACUpdateInterval := FADCSamplingInterval in SetDACUpdateInterval()
+           to fix stimulus protocol timing scaling error
   ================================================================================ }
 
 interface
@@ -3445,12 +3447,13 @@ begin
           end ;
        Digidata132X : begin
           FDACUpdateInterval := FADCSamplingInterval ;
-          if FStimulusDigitalEnabled then begin
-             FDACUpdateInterval := (FADCSamplingInterval*(FDACNumChannels+1))/FADCNumChannels ;
-             end
-          else begin
-             FDACUpdateInterval := (FADCSamplingInterval*FDACNumChannels)/FADCNumChannels ;
-             end ;
+//        Removed 17.10.14
+//          if FStimulusDigitalEnabled then begin
+//             FDACUpdateInterval := (FADCSamplingInterval*(FDACNumChannels+1))/FADCNumChannels ;
+//             end
+//          else begin
+//             FDACUpdateInterval := (FADCSamplingInterval*FDACNumChannels)/FADCNumChannels ;
+ //            end ;
           end ;
        Instrutech : begin
           FDACUpdateInterval := FADCSamplingInterval ;
