@@ -19,6 +19,7 @@ unit QCAMUnit;
 // 17.06.14 JD 64 bit library now detected
 // 01.07.14 JD GetCameraNameString() and GetSerialString() added
 // 09.07.14 JD Now detects 64 bit QCAM driver correctly
+// 17.12.14 JD ReadoutTime lower limit reduced from 20ms to 10ms in free run mode
 
 interface
 
@@ -1722,7 +1723,7 @@ begin
     // Minimum readout rate appears to be 20 ms
     ReadoutSpeed := Min(Max(ReadoutSpeed,0),Session.NumReadoutSpeeds-1) ;
     RScale := 20.0 / qcReadOutSpeeds[Session.ReadoutSpeeds[ReadoutSpeed]] ;
-    ReadoutTime := RScale * Max( (FrameHeight*9E-5 + 0.0037)+ 1E-3, 0.02 ) ;
+    ReadoutTime := RScale * Max( (FrameHeight*9E-5 + 0.0037)+ 1E-3, 0.01 {0.02}) ;
 
     if ExternalTrigger = CamExtTrigger then ReadoutTime := ReadoutTime + 5E-3 ;
     FrameInterval := Max( FrameInterval, ReadoutTime ) ;

@@ -46,6 +46,7 @@ unit ADCDataFile;
 // 15/08/14 Gap free ABF files now set to have a single record equal to whole file
 // 15/9/14 ABF V2 files can now be read using abffio.dll
 // 17/10/14 ASCII import now ignores blank lines without stopping and strips out <CR><CR><LF> line endings
+// 11.11.14 LoadADCBuffer() now returns correct number of A/D channel scans with ABF2 import
 
 {$R 'adcdatafile.dcr'}
 interface
@@ -2291,6 +2292,7 @@ begin
              end;
          iShift := StartAtScan*FNumChannelsPerScan ;
          for i := 0 to NumScans*FNumChannelsPerScan-1 do Buf[i] := iBuf[i+iShift] ;
+         Result := NumScans ;
 
          FreeMem(fBuf) ;
          FreeMem(iBuf) ;
