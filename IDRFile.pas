@@ -56,6 +56,9 @@ unit IDRFile;
 // 17.06.14 JD Error in DiskSpaceAvailable() causing false report of free disk space fixed
 //             SetWriteEnabled() EDR file now closed correctly (fixes inability to
 //             reselect existing file as a new data file.)
+// 19.01.15 JD File creation time properties (Hour,mins,seconds) added
+//             .CreateFileFrom() now uses current date/time as creation date
+
 interface
 
 uses
@@ -163,6 +166,9 @@ TChannel = record
     FYearCreated : Integer ;         // Creation date (year)
     FMonthCreated : Integer ;       // Creation date (month)
     FDayCreated : Integer ;         // Creation date (day)
+    FHourCreated : Integer ;        // Creation time (hour)
+    FMinuteCreated : Integer ;      // minute
+    FSecondCreated  : Integer ;     // second
 
     FLineScan : Boolean ;          // Line scan flag
     FLSTimeCoursePixel : Integer  ;  // Time course pixel
@@ -540,6 +546,10 @@ TChannel = record
     Property Year : Integer read FYearCreated ;
     Property Month : Integer read FMonthCreated ;
     Property Day : Integer read FDayCreated ;
+    Property Hour : Integer read FHourCreated ;
+    Property Minute : Integer read FMinuteCreated ;
+    Property Second : Integer read FSecondCreated ;
+
     Property WriteEnabled : Boolean read FWriteEnabled write SetWriteEnabled ;
     Property SpectralDataFile : Boolean read FSpectralDataFile
                                         write FSpectralDataFile ;
@@ -854,6 +864,9 @@ begin
     FYearCreated := YearOf(CurrentDate) ;
     FMonthCreated := MonthOfTheYear(CurrentDate) ;
     FDayCreated := DayofTheMonth(CurrentDate) ;
+    FHourCreated := HouroftheDay(CurrentDate) ;
+    FMinuteCreated := MinuteoftheHour(CurrentDate) ;
+    FSecondCreated := SecondoftheMinute(CurrentDate) ;
 
     Result := True ;
     FFileOpen := Result ;
@@ -872,6 +885,7 @@ var
     i : Integer ;
     EDRFileName : String ;
     ADCBuf : Array[0..MaxChannel] of SmallInt ;
+    CurrentDate : TDateTime ;
 begin
 
     Result := False ;
@@ -892,6 +906,15 @@ begin
 
     // Indicate that file can be written to
     FWriteEnabled := True ;
+
+    // Date of creation
+    CurrentDate := FileDateToDateTime(FileGetDate(FIDRFileHandle)) ;
+    FYearCreated := YearOf(CurrentDate) ;
+    FMonthCreated := MonthOfTheYear(CurrentDate) ;
+    FDayCreated := DayofTheMonth(CurrentDate) ;
+    FHourCreated := HouroftheDay(CurrentDate) ;
+    FMinuteCreated := MinuteoftheHour(CurrentDate) ;
+    FSecondCreated := SecondoftheMinute(CurrentDate) ;
 
     // Initialise file header`
     FFrameWidth := Source.FrameWidth ;
@@ -1025,6 +1048,8 @@ var
      ch : Integer ;
 begin
 
+     Result := False ;
+
      if FIDRFileHandle <> INVALID_HANDLE_VALUE then begin
        ShowMessage( 'A file is aready open ' ) ;
        Exit ;
@@ -1152,12 +1177,8 @@ procedure TIDRFile.GetIDRHeader ;
 // ------------------------
 var
 
-   i,j,ch,NumBytesInHeader : Integer ;
+   i,j,ch : Integer ;
    iValue : Integer ;
-   NumMarkers : Integer ;
-   MarkerTime : Single ;
-   MarkerText : String ;
-   FileDate : TDateTime ;
    NumFrameActual : Integer ;
    NumBytesPerFrame : Integer ;
    NumBytesInFile : Int64 ;
@@ -1179,6 +1200,9 @@ begin
      ReadInt( Header, 'YEAR=', FYearCreated ) ;
      ReadInt( Header, 'MONTH=', FMonthCreated ) ;
      ReadInt( Header, 'DAY=', FDayCreated ) ;
+     ReadInt( Header, 'HOUR=', FHourCreated ) ;
+     ReadInt( Header, 'MINUTE=', FMinuteCreated ) ;
+     ReadInt( Header, 'SECOND=', FSecondCreated ) ;
 
      // Frame parameters
      ReadFloat( Header, 'FI=', FFrameInterval ) ;
@@ -1416,6 +1440,9 @@ begin
      AppendInt( Header, 'YEAR=', FYearCreated ) ;
      AppendInt( Header, 'MONTH=', FMonthCreated ) ;
      AppendInt( Header, 'DAY=', FDayCreated ) ;
+     AppendInt( Header, 'HOUR=', FHourCreated ) ;
+     AppendInt( Header, 'MINUTE=', FMinuteCreated ) ;
+     AppendInt( Header, 'SECOND=', FSecondCreated ) ;
 
      { Get size of file header for this file }
      AppendInt( Header, 'NBH=', FNumIDRHeaderBytes ) ;
@@ -1882,7 +1909,7 @@ procedure TIDRFile.GetEDRHeader ;
 // ------------------------
 var
    Header : array[1..cNumEDRHeaderBytes] of ANSIChar ;
-   i,ch,NumBytesInHeader : Integer ;
+   ch : Integer ;
 begin
 
      if FEDRFileHandle  = INVALID_HANDLE_VALUE then Exit ;
@@ -2830,7 +2857,6 @@ function TIDRFile.IDRAsyncFileWrite(
 // ----------------------------
 var
      NumBytesWritten : Cardinal ;
-     OK : Boolean ;
      Err : Integer ;
 begin
 

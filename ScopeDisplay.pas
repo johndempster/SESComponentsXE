@@ -103,6 +103,8 @@ unit ScopeDisplay;
   04.09.12 ... JD Vertical tickmarks now computed correctly when Y axis scaling factor is negative
   13.11.13 ... JD .CopyDataToClipboard Line written limited to number of time points available
   11.06.14 ... JD Ratio channel names can now be split over two line by including '/' separator
+  22.06.14 ... JD DrawVerticalCursor() Vertical cursor no longer disappears when dragged to right
+                  edge of display
   }
 
 interface
@@ -1214,8 +1216,8 @@ begin
 
         // Display tick value
 
-        if iTick < (NumTicks-1) then s := format('%.4g',[XTick])
-                                else s := format('%.4g %s',[XTick,FTUnits]) ;
+        if iTick < (NumTicks-1) then s := format('%.6g',[XTick])
+                                else s := format('%.6g %s',[XTick,FTUnits]) ;
         Canv.TextOut( xPix - (Canv.TextWidth(s) div 2),
                       XAxisAt + TickSize + 1,
                       s ) ;
@@ -1593,7 +1595,7 @@ begin
 
      // Skip if off the display
      if (VertCursors[iCurs].Position < Max(Channel[0].XMin,0)) or
-        (VertCursors[iCurs].Position >= Min(Channel[0].XMax,FMaxPoints)) then Exit ;
+        (VertCursors[iCurs].Position > Min(Channel[0].XMax,FMaxPoints)) then Exit ;
 
      // Skip if channel disabled
      ChannelsAvailable := False ;

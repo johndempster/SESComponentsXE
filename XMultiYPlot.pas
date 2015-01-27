@@ -15,6 +15,7 @@ unit XMultiYPlot;
   05.08.08 Plots can be deleted individually
   14.05.09 Memory access violation blocked in .GetPoint when 0 points in line
   18.02.14 pXY defined as PANSIChar (to compile correctly under Delphi XEn)
+  26.01.15 Labels printed beside lines.
  }
 
 interface
@@ -86,6 +87,7 @@ type
               LineStyle : TPenStyle ;
               LineType : TLineType ;
               XYBuf : PANSIChar ;
+              Name : string ;
               end ;
 
     { Axis tick list object }
@@ -145,6 +147,7 @@ type
     FPrinterDisableColor : Boolean ;
     FMetafileWidth : Integer ;
     FMetafileHeight : Integer ;
+    FShowLineLabels : Boolean ;
 
     FMarkerText : TStringList ;   // Marker text list
 
@@ -295,7 +298,8 @@ type
     function CreateLine(
              Color : TColor ;
              MarkerStyle : TMarkerStyle ;
-             LineStyle : TPenStyle
+             LineStyle : TPenStyle ;
+             Name : string
               ) : Integer ;
 
     // Free all line objects in plot
@@ -451,6 +455,7 @@ type
              read FMetafileWidth write FMetafileWidth ;
     property MetafileHeight : Integer
              read FMetafileHeight write FMetafileHeight ;
+    property ShowLineLabels : Boolean read FShowLineLabels write FShowLineLabels ;
 
   end;
 
@@ -521,6 +526,7 @@ begin
          FLines[i].LineStyle := psSolid ;
          FLines[i].LineType := ltNone ;
          FLines[i].Color := clBlack ;
+         FLines[i].Name := '' ;
          end ;
 
      { Initial X axis settings }
@@ -564,6 +570,8 @@ begin
 
      FMetafileWidth := 500 ;
      FMetafileHeight := 400 ;
+
+     FShowLineLabels := True ;
 
      for i := 0 to High(VertCursors) do VertCursors[i].InUse := False ;
      FVertCursorActive := False ;
@@ -666,7 +674,8 @@ begin
 function TXMultiYPlot.CreateLine(
          Color : TColor ;
          MarkerStyle : TMarkerStyle ;
-         LineStyle : TPenStyle
+         LineStyle : TPenStyle ;
+         Name : string
          ) : Integer ;
 { -----------------------------
   Create a new line on the plot
@@ -689,6 +698,7 @@ begin
         FLines[LineIndex].MarkerStyle := MarkerStyle ;
         FLines[LineIndex].LineType := ltLine ;
         FLines[LineIndex].Color := Color ;
+        FLines[LineIndex].Name := Name ;
         Result := LineIndex ;
         // Increment no. of lines on plot
         Inc(FNumLines) ;
@@ -1817,18 +1827,23 @@ procedure TXMultiYPlot.DrawLines(
    Draw lines on plot
   -------------------}
 var
-   xPix,yPix,i,L,iPlot : Integer ;
+   xPix,yPix,i,L,iPlot,Temp : Integer ;
    x, y : single ;
    OutOfRange, LineBreak : Boolean ;
    SavePen : TPen ;
+   SaveFont : TFont ;
    pXY : pANSIChar ;
+   LineName : string ;
 begin
      { Create objects }
      SavePen := TPen.Create ;
+     SaveFont := TFont.Create ;
 
      try
         { Save current pen settings }
         SavePen.Assign(Canv.Pen) ;
+        SaveFont.Assign(Canv.Font) ;
+        Canv.Font.Size := (3*Canv.Font.Size) div 4 ;
 
         { Plot all lines within plotting data list }
 
@@ -1850,6 +1865,8 @@ begin
                Canv.Pen.Style := FLines[L].LineStyle ;
                LineBreak := True ;
                { Plot line }
+               LineName := FLines[L].Name ;
+               if not FShowLineLabels then LineName := '' ;
                for i := 0 to FLines[L].NumPoints-1 do begin
 
                    { Get point from buffer }
@@ -1870,6 +1887,12 @@ begin
                       if LineBreak then Canv.MoveTo( xPix, yPix ) ;
                                         Canv.LineTo( xPix, yPix ) ;
                       LineBreak := False ;
+                      if LineName <> '' then begin
+                        Canv.Font.Color := FLines[L].Color ;
+                        Canv.TextOut(xPix+2, yPix, LineName);
+                        Canv.MoveTo( xPix, yPix ) ;
+                        LineName := '' ;
+                        end;
                       end
                    else LineBreak := True ;
                    end ;
@@ -1877,9 +1900,11 @@ begin
             end ;
         { Restore original pen settings }
         Canv.Pen.Assign(SavePen) ;
+        Canv.Font.Assign(SaveFont);
      finally
             { Dispose of objects }
             SavePen.Free ;
+            SaveFont.Free ;
             end ;
      end ;
 
