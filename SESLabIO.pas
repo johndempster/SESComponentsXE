@@ -130,6 +130,7 @@ unit SESLabIO;
   15.10.14 .StimulusTimerTime property added (elapsed stimulus interval time
   17.10.14 Now FDACUpdateInterval := FADCSamplingInterval in SetDACUpdateInterval()
            to fix stimulus protocol timing scaling error
+  09.02.15 Tecella_WriteDACsAndDigitalPort() now returns ADCActive flag.
   ================================================================================ }
 
 interface
@@ -2518,7 +2519,7 @@ begin
           end ;
 
        Triton: begin
-          Triton_WriteDACsAndDigitalPort(FLastDACVolts,FLastDACNumChannels,FLastDigValue) ;
+          FADCActive := Triton_WriteDACsAndDigitalPort(FLastDACVolts,FLastDACNumChannels,FLastDigValue) ;
           end ;
 
        HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,

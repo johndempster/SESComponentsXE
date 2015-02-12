@@ -40,6 +40,10 @@ unit TritonUnit;
 // 07.08.13 Updated to compile with Delphi XE3
 // 14.04.14 FPU exceptions disabled to avoid divide by zero error which occurs with Triton plus
 //          Padding at end of sweep reduced to 100 ms (to speed up repeat rate)
+// 09.02.15 WriteDACsAndDigitalPort() now returns ADCActive flag.
+//          ADC Buffer size increased to SESLabIO limit (8 Mbyte)
+// 11.02.15 Bugs in Triton_MemoryToDACStimulus() fixed. Now works correctly with Triton+
+
 interface
 
 uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math, classes, strutils ;
@@ -801,11 +805,11 @@ function  Triton_MemoryToDACAndDigitalOut(
   function Triton_GetDACUpdateInterval : double ;
 
   function Triton_StopDAC : ByteBool ;
-  procedure Triton_WriteDACsAndDigitalPort(
+  function Triton_WriteDACsAndDigitalPort(
             var DACVolts : array of Single ;
             nChannels : Integer ;
             DigValue : Integer
-            ) ;
+            ) : Boolean ;
 
   function  Triton_GetLabInterfaceInfo(
             var Model : string ; { Laboratory interface model name/number }
@@ -981,6 +985,8 @@ var
     FConfigInUse : Integer ;             // Config currently in use
     FICLAMPOn : Boolean ;
     GetADCSamplesInUse : Boolean ;
+    ADCActive : Boolean ;
+
 FPUExceptionMask : Set of TFPUException ;
 
         tecella_enumerate : Ttecella_enumerate ;
@@ -1271,7 +1277,7 @@ begin
      ADCVoltageRanges[0] := 1.0 ;
      NumADCVoltageRanges := 1 ;
      FADCMaxVolts := ADCVoltageRanges[0] ;
-     ADCBufferLimit := 32768*2 ;
+     //ADCBufferLimit := 32768*2 ;
 
      // Note. Set to to 1 mV/pA less than range returned by
      // stimulus_value_max because negative limits clips
@@ -1314,8 +1320,6 @@ var
     HWProps : Ttecella_hw_props ;
     CalibrationFile : String ;
 begin
-
-
 
      DeviceInitialised := False ;
 
@@ -1388,6 +1392,7 @@ begin
      FVHold := 0.0 ;
      FUtilityDAC := 0.0 ;
      FCircularBufferMode := False ;
+     ADCActive := False ;
 
      end ;
 
@@ -1569,12 +1574,16 @@ begin
     FOutPointer := 0 ;
 
     // Set Triton internal buffer size
+//   Triton_CheckError( 'tecella_acquire_set_buffer_size',
+//                       tecella_acquire_set_buffer_size( TecHandle, Min(nSamples,32768 div 2)*SamplingIntervalMultiplier*4) ) ;
+
+   // Buffer now set to a fixed size
    Triton_CheckError( 'tecella_acquire_set_buffer_size',
-                       tecella_acquire_set_buffer_size( TecHandle, nSamples*SamplingIntervalMultiplier*4) ) ;
+                       tecella_acquire_set_buffer_size( TecHandle, 32768*8 )) ;
 
     // Clear any samples in queue
     iBuf := Nil ;
-    for ch := 1 to nChannels-1 do begin
+    for ch := 1 to HardwareProps.nchans do begin
         // Get no. of samples in queue
         Triton_CheckError( 'tecella_acquire_samples_available',
                            tecella_acquire_samples_available( TecHandle,
@@ -1630,7 +1639,7 @@ begin
                                                   start_stimuli,
                                                   continuous_stimuli,
                                                   start_on_trigger )) ;
-
+      ADCActive := True ;
       end ;
 
     GetADCSamplesInUse := False ;
@@ -1642,12 +1651,14 @@ function Triton_StopADC : ByteBool ;
 // Stop A/D sampling
 // -----------------
 begin
-     Result := False ;
-     if not DeviceInitialised then Exit ;
+    Result := False ;
+    if not DeviceInitialised then Exit ;
+    if not ADCActive then Exit ;
 
     // Clear A/D data buffer
     Triton_CheckError( 'tecella_acquire_stop',
                        tecella_acquire_stop(TecHandle)) ;
+    ADCActive := False ;
 
     end ;
 
@@ -1697,6 +1708,7 @@ begin
        for i:= iVmStart to Min(iVmStart + NumSamplesAvailable,FNumSamples) -1 do begin
            OutBuf[i*FNumChannels] := VmBuf^[i] ;
            end ;
+
        end
     else begin
        // Set voltage to holding level (all other trigger modes)
@@ -1721,14 +1733,14 @@ begin
                                 NumSamplesRead,
                                 LastSampleTimeStamp,
                                 LastSampleFlag ) ;
-    //outputDebugString( PChar(format('%d %d %d',[Err,NumSamplesAvailable,NumSamplesRead]))) ;
 
         // Copy to output buffer
         if not FCircularBufferMode then begin
            // Single sweep acquisition
+           j := FOutPointer + ch ;
            for i := 0 to NumSamplesRead-1 do begin
-               j := FOutPointer + (i*FNumChannels) + ch ;
                if j <= EndOfBuf then OutBuf[j] := iBuf^[i] ;
+               j := j + FNumChannels ;
                end ;
            end
         else begin
@@ -1742,7 +1754,7 @@ begin
            end ;
 
         end ;
-    //i := FOutPointer ;
+
     FOutPointer := FOutPointer  + NumSamplesRead*FNumChannels ;
     if FOutPointer > EndOfBuf then begin
        if not FCircularBufferMode then begin
@@ -1976,15 +1988,6 @@ begin
                   RampDuration := RampDuration + Levels[j].Count*DACUpdateInterval ;
               StimDuration := StimDuration + RampDuration ;
 
-              // Determine step size
-             { RampsStepSize := Min(Max(
-                               (Levels[iRampEnd].V - Levels[iRampStart].V)/200.0,
-                               HardwarePropsEX01.stimulus_ramp_step_size_min),
-                               HardwarePropsEX01.stimulus_ramp_step_size_max) ;}
-             { RampsStepSize := HardwareProps.stimulus_value_lsb*
-                               Sign(Levels[iRampEnd].V - Levels[iRampStart].V)*
-                               Max(Round(Abs(RampsStepSize)/HardwareProps.stimulus_value_lsb),1) ;
-              if RampsStepSize = 0. then RampsStepSize := HardwareProps.stimulus_value_lsb ; }
               // Bug workaround for fixed step size.
               if not FCurrentClampMode then begin
                  RampsStepSize := 0.0005*Sign(Levels[iRampEnd].V - Levels[iRampStart].V) ;
@@ -2007,7 +2010,7 @@ begin
                     StimSegments[NumStimSegments].SegmentType := TECELLA_STIMULUS_SEGMENT_RAMP ;
                     StimSegments[NumStimSegments].Value_Delta := RampsStepSize ;
                     StimSegments[NumStimSegments].Value := VStart ;
-                    StimSegments[NumStimSegments].Ramp_Steps := Min(NumRampSteps,256) ;
+                    StimSegments[NumStimSegments].Ramp_Steps := Min(NumRampSteps,255) ;
                     NumRampSteps := NumRampSteps - StimSegments[NumStimSegments].Ramp_Steps ;
                     VStart := VStart + StimSegments[NumStimSegments].Ramp_Steps*RampsStepSize ;
                     NumStimSegments := Min(NumStimSegments+1,(MaxStimSegments-3)) ;
@@ -2027,10 +2030,10 @@ begin
 
     // Pad end of sweep
     // (Not sure if this is really necessary or not to avoid hardware buffer overflow errods
-    StimSegments[NumStimSegments].SegmentType := TECELLA_STIMULUS_SEGMENT_SET ;
-    StimSegments[NumStimSegments].value := StimSegments[NumStimSegments-1].value ;
-    StimSegments[NumStimSegments].duration := 0.1;//1.0 ; 0.5 ; 0.002 ;
-    Inc(NumStimSegments) ;
+//    StimSegments[NumStimSegments].SegmentType := TECELLA_STIMULUS_SEGMENT_SET ;
+//    StimSegments[NumStimSegments].value := StimSegments[NumStimSegments-1].value ;
+//    StimSegments[NumStimSegments].duration := 0.1;//1.0 ; 0.5 ; 0.002 ;
+//    Inc(NumStimSegments) ;
 
     // Set holding voltage
     Index := 0 ;
@@ -2052,9 +2055,9 @@ begin
                                              Index ) ;
 
       // Start recording sweep
-      ContinuousRecording := False ;
+      ContinuousRecording := True; ;
       start_stimuli := True ;
-      continuous_stimuli := False ;
+      continuous_stimuli := True; ;
       start_on_trigger := False ;
 
       FSamplingInterval := DACUpdateInterval ;
@@ -2064,12 +2067,12 @@ begin
 
       Triton_CheckError( 'tecella_acquire_start  : ',
                           tecella_acquire_start ( TecHandle,
-                                                           SamplingIntervalMultiplier,
-                                                           ContinuousRecording,
-                                                           start_stimuli,
-                                                           continuous_stimuli,
-                                                           start_on_trigger )) ;
-
+                                                  SamplingIntervalMultiplier,
+                                                  ContinuousRecording,
+                                                  start_stimuli,
+                                                  continuous_stimuli,
+                                                  start_on_trigger )) ;
+      ADCActive := True ;
       FreeMem( Levels ) ;
 
       Result := True ;
@@ -2197,7 +2200,7 @@ begin
                                                            start_stimuli,
                                                            continuous_stimuli,
                                                            start_on_trigger )) ;
-
+      ADCActive := True ;
       FreeMem( StreamBuf ) ;
       Result := True ;
 
@@ -2217,22 +2220,29 @@ function Triton_StopDAC : ByteBool ;
 begin
     Result := False ;
     if not DeviceInitialised then Exit ;
+    if not ADCActive then Exit ;
+
     // Note. stops both D/A and A/D
 
     Triton_CheckError( 'tecella_acquire_stop',
                        tecella_acquire_stop(TecHandle)) ;
-
+    ADCActive := False ;
     end ;
 
 
-procedure Triton_WriteDACsAndDigitalPort(
+function Triton_WriteDACsAndDigitalPort(
             var DACVolts : array of Single ;
             nChannels : Integer ;
             DigValue : Integer
-            ) ;
+            ) : Boolean ;
 begin
 
     if not DeviceInitialised then Exit ;
+
+    if ADCActive then begin
+       Result := Triton_StopADC ;
+       end;
+
     FVHold := DACVolts[0] ;
     tecella_stimulus_set_hold( TecHandle,FVHold,0) ;
 
@@ -2243,6 +2253,8 @@ begin
 
     FDigitalOutputs := DigValue ;
     tecella_utility_trigger_out( TecHandle, DigValue ) ;
+
+    Result := ADCActive ;
 
     end ;
 
