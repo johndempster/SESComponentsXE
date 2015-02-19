@@ -1230,8 +1230,8 @@ begin
         NumBytesInFile := IDRGetFileSize ;
         NumFrameActual := Integer( (NumBytesInFile - Int64(FNumIDRHeaderBytes))
                                    div Int64(NumBytesPerFrame) ) ;
-        outputdebugstring(pchar(format('Numbytesinfile=%d,NumFramesActual=%d,NumFrames=%d'
-        ,[NumBytesInFile,NumFrameActual,FNumFrames])));
+//        outputdebugstring(pchar(format('Numbytesinfile=%d,NumFramesActual=%d,NumFrames=%d'
+//        ,[NumBytesInFile,NumFrameActual,FNumFrames])));
         end;
 
      // Line scan flag
@@ -1579,12 +1579,6 @@ begin
         ShowMessage( 'WinFluor data file header write failed ' ) ;
 
      if HeaderFull then ShowMessage('WinFluor data file header capacity exceeded') ;
-
-//          n := 0 ;
-//     for i:= 1 to High(Header) do if Header[i] <> #0 then Inc(n) ;
-//     OutputdebugString(pchar(format('Header size=%d',[n])));
-//     ShowMessage(format('Header size=%d',[n]));
-
 
      end ;
 
@@ -2897,9 +2891,9 @@ begin
                          NumBytesWritten,
                          False ) ;
 
-    outputdebugString(PChar(format('Async write %d %d %d',
-    [FileOffset,Cardinal(AsyncWriteOverlap.OffsetHigh),
-    Cardinal(AsyncWriteOverlap.Offset)]))) ;
+//    outputdebugString(PChar(format('Async write %d %d %d',
+//    [FileOffset,Cardinal(AsyncWriteOverlap.OffsetHigh),
+//    Cardinal(AsyncWriteOverlap.Offset)]))) ;
 
     FAsyncWriteInProgess := True ;
     AsyncNumBytesToWrite := NumBytesToWrite ;

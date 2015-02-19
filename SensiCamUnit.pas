@@ -13,6 +13,9 @@ unit SensiCamUnit;
 // 24-7-13 JD Now compiles unders Delphi XE2/3 as well as 7. (not tested)
 // 16.05.14 JD SensiCam_GetDLLAddress: Handle now defined as THandle
 //             rather than Integer (possible cause of errors with 64 bit version)
+// 18.02.15 JD Changes to see if it resolves problems
+//             Read_Image_12Bit() Buffer point now calculated using NativeUInt rather than Integer
+
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem ;
@@ -334,7 +337,7 @@ begin
         LibraryLoaded := True ;
         end
      else begin
-          MessageDlg( 'SensiCam: ' + LibFileName + ' not found!', mtWarning, [mbOK], 0 ) ;
+          ShowMessage( 'SensiCam: ' + LibFileName + ' not found!' ) ;
           LibraryLoaded := False ;
           end ;
 
@@ -350,7 +353,7 @@ function SensiCam_GetDLLAddress(
 begin
     Result := GetProcAddress(Handle,PChar(ProcName)) ;
     if Result = Nil then
-       MessageDlg('SENNTCAM.DLL: ' + ProcName + ' not found',mtWarning,[mbOK],0) ;
+       ShowMessage('SENNTCAM.DLL: ' + ProcName + ' not found') ;
     end ;
 
 
@@ -461,9 +464,6 @@ procedure SensiCam_CloseCamera(
 // ----------------
 // Shut down camera
 // ----------------
-var
-    Err : Integer ;
-
 begin
 
     if Session.CameraOpen then begin
@@ -543,11 +543,12 @@ var
     Mode              : Integer ;
     HBin              : Integer ;
     VBin              : Integer ;
-    CamStatus         : Integer;
-    ReadoutTime,
-    rot               : Double ;
+    ReadoutTime       : Double ;
 
 begin
+
+     Result := False ;
+
      // Disable timer if it is running
      if Session.TimerID >= 0 then begin
        timeKillEvent( Session.TimerID ) ;
@@ -678,9 +679,6 @@ procedure SensiCam_TimerProc(
 { ----------------------------------------------
   Timer scheduled events, called a 10ms intervals
   ---------------------------------------------- }
-var
-    Err : Integer ;
-
 begin
 
     if Session^.TimerProcInUse then Exit ;
@@ -731,7 +729,7 @@ begin
     // transfer the image(s) form the grabber to main memory
     Repeat
       err := Read_Image_12Bit(0, width, height,
-                              Pointer( Integer(Session.PFrameBuffer) +
+                              Pointer( NativeUInt(PByte(Session.PFrameBuffer)) +
                               Session.FrameCounter * Session.NumBytesPerFrame ));
 
       if err = 0 then begin
@@ -752,9 +750,6 @@ procedure SensiCam_StopCapture(
 // ------------------
 // Stop frame capture
 // ------------------
-var
-    Err : Integer ;
-    BufStatus : Integer ;
 begin
 
      if not Session.CapturingImages then Exit ;
@@ -776,9 +771,6 @@ procedure SensiCamCheckFrameInterval( var Session : TSensiCamSession;   // Camer
 // -----------------------
 // Return CCD readout time
 // -----------------------
-
-var
-    err : integer;
 begin
 
  // SensiCam_CheckError( 'CheckFrameInterval: FrameInterval ' + FloatToStr(FrameInterval), 999 ) ;
@@ -864,9 +856,7 @@ begin
       else Report := '' ;
       end ;
 
-    MessageDlg( format( 'SensiCam: %s (%d) %s',
-                        [FuncName,ErrNum,Report] ),
-                mtWarning, [mbOK], 0 ) ;
+    ShowMessage( format( 'SensiCam: %s (%d) %s',[FuncName,ErrNum,Report] ));
 
     end ;
 
