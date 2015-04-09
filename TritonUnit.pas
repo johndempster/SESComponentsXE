@@ -43,6 +43,8 @@ unit TritonUnit;
 // 09.02.15 WriteDACsAndDigitalPort() now returns ADCActive flag.
 //          ADC Buffer size increased to SESLabIO limit (8 Mbyte)
 // 11.02.15 Bugs in Triton_MemoryToDACStimulus() fixed. Now works correctly with Triton+
+// 20.03.15 Manual corrections to patch clamp current gain factors can now be applied by placing list of factors in file
+//          C:\Users\Public\Documents\SESLABIO\tecella gain correction table.txt
 
 interface
 
@@ -51,6 +53,7 @@ uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math, classes, strutils ;
 const
 
   TECELLA_CalibrationFileName = 'tecella Calibration.cal' ;
+  TECELLA_GainCorrectionFileName = 'tecella gain correction table.txt' ;
   SamplingMultiplierMax = 10000 ;
 
 	TECELLA_HW_MODEL_AUTO_DETECT = 0 ;
@@ -968,6 +971,8 @@ var
     FADCMaxSamplingInterval : Double ;
     FADCMaxVolts : Single ;
     FIScaleMin : Array[0..127] of Double ;
+    FChannelGainIndex : Array[0..127] of Integer ;
+    FGainCorrectionFactor : Array[0..127] of Single ; // Gain correction table
     FNumChannels : Integer ;       // No. of channels in sweep
     fNumSamples : Integer ;        // No. samples/channel in sweep
     FSamplingInterval : Double ;   // Sampling interval (s)
@@ -984,6 +989,7 @@ var
     FTriggerMode : Integer ;
     FConfigInUse : Integer ;             // Config currently in use
     FICLAMPOn : Boolean ;
+
     GetADCSamplesInUse : Boolean ;
     ADCActive : Boolean ;
 
@@ -1312,13 +1318,15 @@ procedure Triton_InitialiseBoard ;
 // Initial interface board
 // -----------------------
 var
-    Err,ch : Integer ;
+    Err,ch,i : Integer ;
     Enabled : ByteBool ;
     DeviceIndex : Integer ;
     NumDevices : Integer ;
     LibProps : Ttecella_lib_PROPS ;
     HWProps : Ttecella_hw_props ;
     CalibrationFile : String ;
+    GainCorrectionFile : String ;
+    F : TextFile ;
 begin
 
      DeviceInitialised := False ;
@@ -1386,6 +1394,21 @@ begin
                                                   PANSIChar(ANSIString(SettingsDirectory)),
                                                   PANSIChar(ANSIString(TECELLA_CalibrationFileName))) ) ;
         end ;
+
+     // Load gain correction factors (if file exists in settings directory)
+     GainCorrectionFile :=  SettingsDirectory + TECELLA_GainCorrectionFileName ;
+     for i := 0 to High(FGainCorrectionFactor) do FGainCorrectionFactor[i] := 1.0 ;
+     for i := 0 to High(FChannelGainIndex) do FChannelGainIndex[i] := 0 ;
+     if FileExists( GainCorrectionFile ) then begin
+        AssignFile( F, GainCorrectionFile ) ;
+        Reset( F ) ;
+        i := 0 ;
+        while not EOF(F) do begin
+            Read(F, FGainCorrectionFactor[i] ) ;
+            if i < High(FGainCorrectionFactor) then Inc(i) ;
+            end;
+        CloseFile(F) ;
+        end;
 
      // Set to config 0
      TritonSetUserConfig( 0 ) ;
@@ -2372,8 +2395,6 @@ function Triton_CurrentGain(
 // ----------------------------------
 // Returns current calibration factor
 // ----------------------------------
-//var
-//    iGain : Integer ;
 var
       IScale : Double ;
 begin
@@ -2384,7 +2405,8 @@ begin
                           tecella_acquire_i2d_scale(TecHandle,Chan,IScale)) ;
        end
     else IScale := 1.0 ;
-    Result := FIScaleMin[Chan]/IScale  ;
+
+    Result := (FIScaleMin[Chan]/IScale)*FGainCorrectionFactor[FChannelGainIndex[Chan]] ;  ;
 
     end ;
 
@@ -2621,6 +2643,7 @@ begin
                         tecella_chan_set_gain( TecHandle,
                                                Chan,
                                                iGain )) ;
+    FChannelGainIndex[Chan] := iGain ;
     end ;
 
 

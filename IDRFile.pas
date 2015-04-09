@@ -2708,6 +2708,9 @@ var
 
 begin
 
+    Result := True ;
+    //exit ;
+
      // Get drive
      DriveLetter := UpperCase(ExtractFileDrive(FFileName)) ;
      DiskIndex := Pos( LeftStr(DriveLetter,1), DriverLetterList ) ;
