@@ -47,6 +47,7 @@ unit ADCDataFile;
 // 15/9/14 ABF V2 files can now be read using abffio.dll
 // 17/10/14 ASCII import now ignores blank lines without stopping and strips out <CR><CR><LF> line endings
 // 11.11.14 LoadADCBuffer() now returns correct number of A/D channel scans with ABF2 import
+// 10.04.15 ABF files sampling interval for multi-channel files now imported correctly was X No. Channels X too large)
 
 {$R 'adcdatafile.dcr'}
 interface
@@ -56,7 +57,6 @@ uses
 
 const
   ChannelLimit = 127 ;
-  //WCPChannelLimit = 7 ;
   WCPMaxChannels = 128 ;
   WCPMaxAnalysisBytesPerRecord = 10240 ;
   WCPMaxBytesInFileHeader = 10240 ;
@@ -66,8 +66,7 @@ const
   WCPMaxRecordTypeChars = 4 ;
   WCPMaxRecordStatusChars = 8 ;
 
-
-       WCPvRecord = 0 ;
+     WCPvRecord = 0 ;
      WCPvGroup = 1 ;
      WCPvTime = 2 ;
      WCPvAWCPverage = 3 ;
@@ -128,8 +127,6 @@ const
      ABF_STATS_REGIONS =    8 ;             // The number of independent statistics regions.
     ABF_BASELINE_REGIONS = 1 ;             // The number of independent baseline regions.
     ABF_STATS_NUM_MEASUREMENTS =18 ;       // The total number of supported statistcs measurements.
-
-
 
 type
   TByteDynArray         = array of Byte ;
@@ -3779,7 +3776,7 @@ begin
     FNumBytesPerSample := 2 ;
     FNumBytesPerScan := FNumChannelsPerScan*FNumBytesPerSample ;
 
-    FScanInterval := ABF2Header.fADCSequenceInterval*1E-6*FNumChannelsPerScan ;
+    FScanInterval := ABF2Header.fADCSequenceInterval*1E-6 {*FNumChannelsPerScan removed 10/4/15} ;
     FADCVoltageRange := ABF2Header.fADCRange ;
 
     FMaxADCValue := 32767 ;

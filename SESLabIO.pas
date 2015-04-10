@@ -131,6 +131,8 @@ unit SESLabIO;
   17.10.14 Now FDACUpdateInterval := FADCSamplingInterval in SetDACUpdateInterval()
            to fix stimulus protocol timing scaling error
   09.02.15 Tecella_WriteDACsAndDigitalPort() now returns ADCActive flag.
+  10.04.15 ADCChannelZeroAt no longer stored in "amplifier settings.xml" file
+           and set to -1 (fixed zero level as default at start up)
   ================================================================================ }
 
 interface
@@ -4825,7 +4827,7 @@ begin
         AddElementFloat( iNode, 'GAIN', FADCChannelGain[i] ) ;
         AddElementFloat( iNode, 'UNITSPERBIT', FADCChannelUnitsPerBit[i] ) ;
         AddElementInt( iNode, 'ZEROLEVEL', FADCChannelZero[i] ) ;
-        AddElementInt( iNode, 'ZEROAT', FADCChannelZeroAt[i] ) ;
+//        AddElementInt( iNode, 'ZEROAT', FADCChannelZeroAt[i] ) ;
         AddElementInt( iNode, 'CHANNELOFFSET', FADCChannelOffset[i] ) ;
         AddElementBool( iNode, 'VISIBLE', FADCChannelVisible[i] ) ;
         AddElementFloat( iNode, 'DISPLAYMIN', FADCChannelYMin[i] ) ;
@@ -4967,7 +4969,7 @@ begin
            GetElementFloat( iNode, 'GAIN', FADCChannelGain[i] ) ;
            GetElementFloat( iNode, 'UNITSPERBIT', FADCChannelUnitsPerBit[i] ) ;
            GetElementInt( iNode, 'ZEROLEVEL', FADCChannelZero[i] ) ;
-           GetElementInt( iNode, 'ZEROAT', FADCChannelZeroAt[i] ) ;
+//           GetElementInt( iNode, 'ZEROAT', FADCChannelZeroAt[i] ) ;
            GetElementInt( iNode, 'CHANNELOFFSET', FADCChannelOffset[i] ) ;
            GetElementBool( iNode, 'VISIBLE', FADCChannelVisible[i] ) ;
            GetElementFloat( iNode, 'DISPLAYMIN', FADCChannelYMin[i] ) ;
