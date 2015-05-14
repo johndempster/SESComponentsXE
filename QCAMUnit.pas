@@ -20,6 +20,7 @@ unit QCAMUnit;
 // 01.07.14 JD GetCameraNameString() and GetSerialString() added
 // 09.07.14 JD Now detects 64 bit QCAM driver correctly
 // 17.12.14 JD ReadoutTime lower limit reduced from 20ms to 10ms in free run mode
+// 14.05.15 JD FrameInterval checking against readout time can be disabled.
 
 interface
 
@@ -870,7 +871,8 @@ procedure QCAMAPI_CheckROIBoundaries(
          var FrameHeight : Integer ;
          ExternalTrigger : Integer ;         // True = camera in External trigger mode
          var FrameInterval : Double ;
-         var ReadoutTime : Double ) ;
+         var ReadoutTime : Double ;
+         DisableExposureIntervalLimit : boolean) ;
 
 procedure QCAMAPI_Wait( Delay : Single ) ;
 
@@ -1668,7 +1670,9 @@ procedure QCAMAPI_CheckROIBoundaries(
          var FrameHeight : Integer ;         // Image height
          ExternalTrigger : Integer ;         // True = camera in External trigger mode
          var FrameInterval : Double ;        // Time interval between frames (s)
-         var ReadoutTime : Double ) ;        // Frame readout time (s)
+         var ReadoutTime : Double ;
+         DisableExposureIntervalLimit : boolean
+         ) ;        // Frame readout time (s)
 // ----------------------------------------------------------
 // Check and set CCD ROI boundaries and return valid settings
 // (Also calculates minimum readout time)
@@ -1724,9 +1728,11 @@ begin
     ReadoutSpeed := Min(Max(ReadoutSpeed,0),Session.NumReadoutSpeeds-1) ;
     RScale := 20.0 / qcReadOutSpeeds[Session.ReadoutSpeeds[ReadoutSpeed]] ;
     ReadoutTime := RScale * Max( (FrameHeight*9E-5 + 0.0037)+ 1E-3, 0.01 {0.02}) ;
-
     if ExternalTrigger = CamExtTrigger then ReadoutTime := ReadoutTime + 5E-3 ;
-    FrameInterval := Max( FrameInterval, ReadoutTime ) ;
+
+    if not DisableExposureIntervalLimit then begin
+       FrameInterval := Max( FrameInterval, ReadoutTime ) ;
+       end ;
 
     end ;
 

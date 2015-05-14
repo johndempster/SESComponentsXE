@@ -65,6 +65,8 @@ unit SESCam;
  20.08.14 JD   Cam1.DefaultReadoutSpeed added
  22.08.14 JD   Support for Thorlabs DCx added and .NumPixelShiftFrames added
                Support for Vieworks VA-29MC-5M camera with CameraLink interface added
+ 14.05.15 JD   .DisableExposureIntervalLimit property added.
+               FrameInterval checking against readout time can be disabled.
   ================================================================================ }
 {$OPTIMIZATION OFF}
 {$POINTERMATH ON}
@@ -168,6 +170,7 @@ type
     FTriggerType : Integer ;      // Camera trigger type
     FAdditionalReadoutTime : Double ; // Additional readout time
     FShortenExposureBy : Double ;     // Shorten exposure
+    FDisableExposureIntervalLimit : Boolean ;
 
     FPixeldepth : Integer ;     // No. of bits per pixel
     FGreyLevelMin : Integer ;   // Minimum pixel grey level value
@@ -380,7 +383,7 @@ type
     Property ADCGain : Integer read FADCGain write SetADCGain ;
     Property CCDVerticalShiftSpeed : Integer read FCCDVerticalShiftSpeed write SetCCDVerticalShiftSpeed ;
     Property NumPixelShiftFrames : Integer read FNumPixelShiftFrames write FNumPixelShiftFrames ;
-
+    Property DisableExposureIntervalLimit : Boolean read FDisableExposureIntervalLimit write FDisableExposureIntervalLimit ;
   end;
 
 procedure Register;
@@ -455,6 +458,7 @@ begin
      FShortenExposureBy := 0.0 ;
      FDisableEMCCD := False ;
      FCameraRestartRequired := False ;
+     FDisableExposureIntervalLimit := False ;
 
      // Initialise ITEX control record
      ITEX.ConfigFileName := '' ;
@@ -1626,7 +1630,8 @@ begin
                                           FFrameHeight,
                                           FTriggerMode,
                                           FFrameInterval,
-                                          FReadoutTime ) ;
+                                          FReadoutTime,
+                                          FDisableExposureIntervalLimit ) ;
               end ;
           DCAM : begin
               DCAMAPI_CheckROIBoundaries( DCAMSession,
@@ -2450,7 +2455,8 @@ begin
                                       FFrameHeight,
                                       FTriggerMode,
                                       FFrameInterval,
-                                      FReadoutTime ) ;
+                                      FReadoutTime,
+                                      DisableExposureIntervalLimit ) ;
           end ;
 
        DCAM : begin
