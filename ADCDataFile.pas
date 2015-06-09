@@ -155,7 +155,8 @@ type
                 ftPNM,
                 ftCHT,
                 ftWAV,
-                ftHEK ) ;
+                ftHEK,
+                ftMAT ) ;
 
   TpClampV5 = packed record { Note. FETCHEX format header block }
 	    par : Array[0..79] of single ;
