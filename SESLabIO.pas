@@ -449,6 +449,10 @@ type
     procedure EPC9SetAmplifier( Value : Integer ) ;
     function  EPC9GetAmplifier  : Integer ;
     function  EPC9GetNumAmplifiers  : Integer ;
+    procedure EPC9SetCurrentADCInput( Value : Integer ) ;
+    function  EPC9GetCurrentADCInput  : Integer ;
+    procedure EPC9SetVoltageADCInput( Value : Integer ) ;
+    function  EPC9GetVoltageADCInput  : Integer ;
 
     // XML procedures
 
@@ -813,6 +817,7 @@ procedure TritonAutoCompensation(
 
     Property EPC9NumAmplifiers : Integer
                                  read EPC9GetNumAmplifiers ;
+
     Property DACAvailableWhileADCActive : Boolean read GetDACAvailableWhileADCActive ;
 
   published
@@ -1943,6 +1948,7 @@ begin
                               FADCVoltageRanges[FADCVoltageRangeIndex],
                               FADCTriggerMode,
                               FADCCircularBuffer,
+                              FADCChannelInputNumber,
                               FLastDACVolts,
                               FLastDACNumChannels,
                               FLastDigValue ) ;
@@ -2456,7 +2462,7 @@ begin
 
        HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,
        HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
-          Result := Heka_ReadADC( Channel ) ;
+          Result := Heka_ReadADC( FADCChannelInputNumber,Channel ) ;
           end ;
 
        else Result := 0 ;
@@ -2986,7 +2992,7 @@ begin
 
       HekaEPC9,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,
       HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
-          Heka_CheckSamplingInterval( FADCSamplingInterval,FADCNumChannels, FDACMaxChannels ) ;
+          Heka_CheckSamplingInterval( FADCSamplingInterval,FADCNumChannels, FDACNumChannels ) ;
           end ;
 
        end ;
@@ -4719,6 +4725,27 @@ procedure TSESLabIO.EPC9FlushCache ;
 begin
      Heka_FlushCache ;
      end;
+
+procedure TSESLabIO.EPC9SetCurrentADCInput( Value : Integer ) ;
+begin
+    Heka_EPC9SetCurrentADCInput( Value ) ;
+    end;
+
+function TSESLabIO.EPC9GetCurrentADCInput  : Integer ;
+begin
+    Heka_EPC9GetCurrentADCInput( Result ) ;
+    end;
+
+procedure TSESLabIO.EPC9SetVoltageADCInput( Value : Integer ) ;
+begin
+    Heka_EPC9SetVoltageADCInput( Value ) ;
+    end;
+
+function  TSESLabIO.EPC9GetVoltageADCInput  : Integer ;
+begin
+    Heka_EPC9GetVoltageADCInput( Result ) ;
+    end;
+
 
 function TSESLabIO.GetDACAvailableWhileADCActive : Boolean ;
 // --------------------------------------------------------

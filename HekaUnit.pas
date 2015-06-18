@@ -22,12 +22,18 @@ unit HekaUnit;
 // 30.06.14 ITC-18 Additional bugs fixed
 // 15.10.14 ITC-18 ADCActive no longer set TRUE by adctomemory() in tmWaveGen mode
 //                 Prevents time jitter and access violations with voltage step protocols.
+// 17.06.15 User-defined ADC input channel mapping now possible. Mapping of
+//          of logical channels 0 (current) and 1 (voltage) to physical ADC channels used in EPC9/10
+//          can now be modified by user
 
 interface
 
   uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math, classes ;
 
 const
+
+MaxEPC9Amplifiers = 4 ;
+
 // defines for DA and AD channel numbering:
 LIH_MaxAdcChannels =       16 ;
 LIH_MaxDacChannels =       8 ;
@@ -490,7 +496,6 @@ TLIH_SetDac= function(
              Value : Integer ): LongInt ; stdcall ;
 
 TLIH_SetDigital= function(
-            Channel : Integer ;
             Value : Word
             ): LongInt ; stdcall ;
 
@@ -536,7 +541,6 @@ TLIH_GetBoardInfo= function(
              var NumberOfDacs : Integer ;
              var NumberOfAdcs : Integer ): LongInt ; stdcall ;
 
-
 TTIB14_Present= function : LongInt ; stdcall ;
 
 TTIB14_Initialize= function : LongInt ; stdcall ;
@@ -571,6 +575,7 @@ TEPC9_DLLVersion= function : LongInt ; stdcall ;
             ADCVoltageRange : Single ;
             TriggerMode : Integer ;
             CircularBuffer : Boolean ;
+            var ADCChannelInputNumber : Array of Integer ; // Physical ADC channel mapping
             DefDACVolts : Array of Single ;            // Default DAC voltage settings
             NumDACChannels : Integer ;              // No. DAC channels
             DefDigValue : Integer                     // Digital output word
@@ -627,7 +632,9 @@ TEPC9_DLLVersion= function : LongInt ; stdcall ;
 
   function HEKA_GetMaxDACVolts : single ;
 
-  function HEKA_ReadADC( Channel : Integer ) : SmallInt ;
+  function HEKA_ReadADC( var ADCChannelInputNumber : Array of Integer ; // Physical ADC channel mapping
+                         Channel : Integer
+                         ) : SmallInt ;
 
   procedure HEKA_GetChannelOffsets(
             var Offsets : Array of Integer ;
@@ -724,6 +731,15 @@ function EPC9_LoadFileProcType(
     procedure Heka_AutoRsComp ;
     procedure Heka_FlushCache ;
 
+    procedure Heka_EPC9GetCurrentADCInput( var Value : Integer ) ;
+    procedure Heka_EPC9SetCurrentADCInput( var Value : Integer ) ;
+    procedure Heka_EPC9GetVoltageADCInput( var Value : Integer ) ;
+    procedure Heka_EPC9SetVoltageADCInput( var Value : Integer ) ;
+    procedure HEKA_SetChannelMappings( var ADCChannelInputNumber : Array of Integer ) ;
+
+
+
+
 implementation
 
 uses seslabio ;
@@ -786,6 +802,8 @@ var
    DACDefaultValue : Array[0..LIH_MaxDacChannels-1] of SmallInt ;
    ScaleData : Array[0..49999] of Byte ;
    EPC9MinCurrentGain : Double ;
+   EPC9CurrentADCInput : Word ;
+   EPC9VoltageADCInput : Word ;
 
    GentleModeChange : Byte ;  // 1=0 gentle mode change
 
@@ -970,6 +988,10 @@ begin
                         AOMaxChannels,
                         AIMaxChannels );
 
+     // Note. Min. interval doubled to avoid slowing down of data transfer and buffer overflow
+     // which occurred with 0.06 ms per sample points
+     MinSamplingInterval := MinSamplingInterval*2.0 ;
+
      ADCMaxChannels :=  AIMaxChannels ;
      DACMaxChannels :=  AOMaxChannels ;
 
@@ -994,6 +1016,10 @@ begin
 
      GentleModeChange := 0 ;
 
+     // Default EPC9/10 current and voltage input channels
+     EPC9CurrentADCInput := 0 ;
+     EPC9VoltageADCInput := 3 ;
+
      Model := ' Board:' + BoardName ;
      if SerialNumber <> '' then Model := Model + ' s/n ' + SerialNumber ;
      Model := Model + ' ' + format( ' (epc.dll V.%d)',[EPC9_DLLVersion]) ;
@@ -1005,7 +1031,7 @@ begin
 
 procedure HEKA_LoadLibrary  ;
 { -------------------------------------
-  Load AXDD1440.DLL library into memory
+  Load EPCDLL.DLL library into memory
   -------------------------------------}
 var
      DLLName : String ; // DLL file paths
@@ -1297,36 +1323,8 @@ begin
 
      // Initialise ADC data buffers
      for ch := 0 to AIMaxChannels-1 do begin
-         GetMem( AIDataBufs[ch], FIFOMaxPoints*2 ) ;
+         GetMem( AIDataBufs[ch], FIFOMaxPoints*4 ) ;
          end;
-
-     // Set channel mappings
-
-     // Input
-     if EPC9Available then begin
-       // EPC-9/10 mappings
-       for i := 0 to High(AIChannelList) do AIChannelList[i] := 0 ;
-       AIChannelList[0] := 0 ;
-       AIChannelList[1] := 3 ;
-       AIChannelList[2] := 2 ;
-       AIChannelList[3] := 1 ;
-       AIChannelList[4] := 4 ;
-       AIChannelList[5] := 5 ;
-       AIChannelList[6] := 6 ;
-       AIChannelList[7] := 7 ;
-
-       // Output
-       for i := 0 to High(AOChannelList) do AOChannelList[i] := 0 ;
-       AOChannelList[0] := 3 ;
-       AOChannelList[1] := 1 ;
-       AOChannelList[2] := 2 ;
-       AOChannelList[3] := 0 ;
-       end
-     else begin
-       // Board-only mappings
-       for  ch := 0  to High(AIChannelList) do AIChannelList[ch] := ch ;
-       for  ch := 0  to High(AOChannelList) do AOChannelList[ch] := ch ;
-       end ;
 
      AIBuf := Nil ;
      AOBuf := Nil ;
@@ -1334,6 +1332,44 @@ begin
      ADCActive := False ;
      DACActive := False ;
      DeviceInitialised := True ;
+
+     end ;
+
+
+procedure HEKA_SetChannelMappings(
+          var ADCChannelInputNumber : Array of Integer // Physical ADC input channel map
+          ) ;
+// -----------------------------------
+// Set AI and AO channel mapping lists
+// -----------------------------------
+var
+    ch : Integer ;
+begin
+
+     // Default setting of AO channel mapping
+     for ch := 0 to High(AOChannelList) do AOChannelList[ch] := 0 ;
+
+     if EPC9Available then begin
+        // EPC-9/10 current/voltage channel mappings
+        // Re-map current and voltage input channels to default settings if channels are unmapped
+        // Ch.0->AI 0,Ch.0->AI 1
+        if (ADCChannelInputNumber[0] = 0) and (ADCChannelInputNumber[1] = 1) then begin
+           ADCChannelInputNumber[0] := EPC9CurrentADCInput ;
+//           ADCChannelInputNumber[EPC9CurrentADCInput] := 0 ;
+           ADCChannelInputNumber[1] := EPC9VoltageADCInput ;
+//           ADCChannelInputNumber[EPC9VoltageADCInput] := 1 ;
+           end;
+
+       // Output : Map Analog out 3 to AO 0
+       AOChannelList[0] := 3 ;
+       AOChannelList[1] := 1 ;
+       AOChannelList[2] := 2 ;
+       AOChannelList[3] := 0 ;
+
+       end ;
+
+     // Copy to internal AI mapping array
+     for  ch := 0  to High(AIChannelList) do AIChannelList[ch] := ADCChannelInputNumber[ch] ;
 
      end ;
 
@@ -1356,6 +1392,7 @@ function HEKA_ADCToMemory(
           ADCVoltageRange : Single ;              { A/D input voltage range= function(V)= function(IN) }
           TriggerMode : Integer ;                 { A/D sweep trigger mode= function(IN) }
           CircularBuffer : Boolean ;               { Repeated sampling into buffer= function(IN) }
+          var ADCChannelInputNumber : Array of Integer ; // Physical ADC channel mapping
           DefDACVolts : Array of Single ;            // Default DAC voltage settings
           NumDACChannels : Integer ;              // No. DAC channels
           DefDigValue : Integer                     // Digital output word
@@ -1388,6 +1425,9 @@ begin
      AINumSamples := NumADCSamples ;
      AICircularBuffer := CircularBuffer ;
      AIPointer := 0 ;
+
+     // Set channel mappings
+     HEKA_SetChannelMappings(ADCChannelInputNumber) ;
 
      SamplingInterval := dt ;
      Heka_CheckSamplingInterval( SamplingInterval,NumADCChannels, NumDACChannels ) ;
@@ -1472,9 +1512,8 @@ begin
 
      if not ADCActive then exit ;
      NewSamples := LIH_AvailableStimAndSample(StillRunning);
-
      if NewSamples <= 0 then Exit ;
-
+//     outputdebugstring(pchar(format('NP=%d',[NewSamples])));
      // Get A/D samples
      DoHalt := 0 ;
      LIH_ReadStimAndSample( NewSamples, DoHalt, @AIDataBufs ) ;
@@ -1492,6 +1531,7 @@ begin
              end;
          end;
      OutBufPointer := AIPointer ;
+
      // Add same number of data points to output buffer
 
      MaxAOPointer := AONumSamples*AONumChannels - 1 ;
@@ -1550,7 +1590,7 @@ const
     MinBufferDuration = 1.0 ;
 var
    i,j,k,ch,iTo,iFrom,DigCh,MaxOutPointer,NPWrite,AcquisitionMode,NPDACValues,MaxAOPointer : Integer ;
-   AODataBufs : Array[0..LIH_MaxDacChannels-1] of PSmallIntArray ;
+   AODataBufs : Array[0..LIH_MaxDacChannels] of PSmallIntArray ;
    OK : LongInt ;
    SetStimEnd,ReadContinuously,Immediate :Byte ;
 begin
@@ -1560,8 +1600,18 @@ begin
     if not DeviceInitialised then Exit ;
 
     AONumChannels := Min(Max(NumDACChannels,1),LIH_MaxDacChannels) ;
+    for ch := 0 to AONumChannels-1 do AOChannelList[ch] := ch ;
+    if EPC9Available then begin
+       AOChannelList[0] := 3 ;
+       AOChannelList[3] := 0 ;
+       end;
     AONumSamples := NumDACPoints ;
     AOCircularBuffer := RepeatWaveform ;
+
+    if DigitalInUse then begin
+       AOChannelList[AONumChannels] := LIH_DigitalOutChannel ;
+       Inc(AONumChannels) ;
+       end;
 
     // Create internal AO buffer (ensure that the buffer has data for MinBufferDuration (s))
     // Set internal buffer size (at least as large as MinBufferDuration)
@@ -1574,8 +1624,13 @@ begin
     iFrom := 0 ;
     iTo := 0 ;
     for i := 0 to AONumSamples-1 do begin
-       for ch := 0 to AONumChannels-1 do begin
-          AOBuf^[iTo] := DACValues[(iFrom*AONumChannels)+ch] ;
+       for ch := 0 to NumDACChannels-1 do begin
+          AOBuf^[iTo] := DACValues[(iFrom*NumDACChannels)+ch] ;
+          Inc(iTo) ;
+          end;
+       if DigitalInUse then begin
+          // Add digital data
+          AOBuf^[iTo] := DIGValues[iFrom] ;
           Inc(iTo) ;
           end;
        Inc(iFrom) ;
@@ -1716,14 +1771,15 @@ begin
 
      // Set digital outputs
      DigWord := DigValue ;
-     //if not ADCActive then  LIH_SetDigital( 0, DigWord ) ;
+     if not ADCActive then  LIH_SetDigital( DigWord ) ;
      DIGDefaultValue := DigValue ;
 
      end ;
 
 
 function HEKA_ReadADC(
-         Channel : Integer // A/D channel
+         var ADCChannelInputNumber : Array of Integer ; // Physical ADC channel mapping
+         Channel : Integer                              // A/D channel
          ) : SmallInt ;
 // ---------------------------
 // Read Analogue input channel
@@ -1736,6 +1792,8 @@ begin
      Result := Value ;
      if not DeviceInitialised then HEKA_InitialiseBoard ;
      if not DeviceInitialised then Exit ;
+
+     Heka_SetChannelMappings(ADCChannelInputNumber) ;
 
      //HEKA_GetAIValue( Channel, Value ) ;
      Result := LIH_ReadADC( Channel )  ;
@@ -2291,6 +2349,34 @@ procedure Heka_FlushCache ;
 begin
      if not DeviceInitialised then Exit ;
      EPC9_FlushCache ;
+     end;
+
+procedure Heka_EPC9GetCurrentADCInput(
+          var Value : Integer ) ;
+begin
+     if not DeviceInitialised then Exit ;
+     Value := EPC9CurrentADCInput ;
+     end;
+
+procedure Heka_EPC9SetCurrentADCInput(
+          var Value : Integer ) ;
+begin
+     if not DeviceInitialised then Exit ;
+     EPC9CurrentADCInput := Value ;
+     end;
+
+procedure Heka_EPC9GetVoltageADCInput(
+          var Value : Integer ) ;
+begin
+     if not DeviceInitialised then Exit ;
+     Value := EPC9VoltageADCInput ;
+     end;
+
+procedure Heka_EPC9SetVoltageADCInput(
+          var Value : Integer ) ;
+begin
+     if not DeviceInitialised then Exit ;
+     EPC9VoltageADCInput := Value ;
      end;
 
 
