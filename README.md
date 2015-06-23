@@ -9,7 +9,7 @@ To install the package:
 
 1) Clone the SESComponentsXE GitHub repository into the folder ..\My Documents\RAD Studio\Projects\SESComponentsXE
 2) Select File/Open Project
-3) Select Files of Type "*.dpk"
+3) Select Files of Type "*.dpk
 4) Select the "SESComponentsXE" Folder
 5) Select "SESCOMPONENTS.dpk"
 6) Select Project->Build SESComponents
