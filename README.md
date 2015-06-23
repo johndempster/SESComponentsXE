@@ -3,7 +3,7 @@ SESComponents
 
 Shared component package used by Strathclyde Software application programs.
 
-The component package SESCOMPONENT must be installed on the Delphi XE toolbar before building/editing applications.
+The component package SESCOMPONENTS must be installed on the Delphi XE toolbar before building/editing applications.
 
 To install the package:
 
