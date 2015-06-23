@@ -15,3 +15,5 @@ To install the package:
 6) Select Project->Build SESComponents
 7) Select Tools->Options and add ..\My Documents\RAD Studio\Projects\SESComponentsXE to the Delphi Options-Library list.
 8) Select Component->Install Packages Add ..\Public Documents\Rad Studio\<Delphi Version No.>\BPL\SESCOMPONENTS.BPL
+
+
