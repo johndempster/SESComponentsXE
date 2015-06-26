@@ -102,7 +102,6 @@ contains
   AndorSDK3Unit in 'AndorSDK3Unit.pas',
   HekaUnit in 'HekaUnit.pas',
   ThorLabsUnit in 'ThorLabsUnit.pas',
-  dd1550 in 'dd1550.pas',
-  MG17MotorLib_TLB in 'I:\Science\SIPBS\Dempster\My Documents\RAD Studio\10.0\Imports\MG17MotorLib_TLB.pas';
+  dd1550 in 'dd1550.pas';
 
 end.
