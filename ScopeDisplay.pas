@@ -105,6 +105,8 @@ unit ScopeDisplay;
   11.06.14 ... JD Ratio channel names can now be split over two line by including '/' separator
   22.06.14 ... JD DrawVerticalCursor() Vertical cursor no longer disappears when dragged to right
                   edge of display
+  06.07.15 ... JD No. of trace points displayed now limited to 2X no of X x pixels to
+                  improve performance of plotting when very large traces plotted
   }
 
 interface
@@ -901,25 +903,68 @@ procedure TScopeDisplay.PlotRecord(
   Plot a signal record on to a canvas
   ----------------------------------- }
 var
-   ch,n,i,j : Integer ;
-   y : single ;
+   ch,n,i,j,iStart,iEnd,iStep,iPlot : Integer ;
+   XPix,XPixRange,YMin,YMax,y,iYMin,iYMax : Integer ;
 begin
 
      // Exit if no buffer
      if FBuf = Nil then Exit ;
 
+     iStart := Round(FXMin) ;
+     iEnd := Min(Round(FXMax),FNumPoints-1) ;
+
      { Plot each active channel }
      for ch := 0 to FNumChannels-1 do if Channels[ch].InUse then begin
          Canv.Pen.Color := Channels[ch].Color ;
          n := 0 ;
-         for i := Round(FXMin) to Min(Round(FXMax),FNumPoints-1) do begin
 
+         XPixRange := Min( XToCanvasCoord( Channel[ch], iEnd ), Channel[ch].Right )
+                      - Max( XToCanvasCoord( Channel[ch], iStart ), Channel[ch].Left ) ;
+         XPixRange := Max(XPixRange,1) ;
+
+         i := iStart ;
+         j := (i*FNumChannels) + Channel[ch].ADCOffset ;
+         iStep := Max((iEnd - iStart) div (XPixRange*2),1) ;
+         iPlot := iStart ;
+         YMin := High(YMin) ;
+         YMax := Low(YMax) ;
+         repeat
              j := (i*FNumChannels) + Channels[ch].ADCOffset ;
              if FNumBytesPerSample > 2 then y := PIntArray(FBuf)^[j]
                                        else y := PSmallIntArray(FBuf)^[j] ;
              xy[n].y := YToCanvasCoord( Channels[ch], y) ;
              xy[n].x := XToCanvasCoord( Channels[ch],i ) ;
              Inc(n) ;
+
+             if y < Ymin then begin
+                iYMin := i ;
+                YMin := y ;
+                end;
+             if y > Ymax then begin
+                iYmax := i ;
+                YMax := y ;
+                end;
+
+             if i = iPlot then begin
+                XPix := XToCanvasCoord( Channel[ch], i ) ;
+                if iYMin < iYMax then begin
+                   xy[n].y := YToCanvasCoord( Channels[ch], yMin) ;
+                   xy[n].x := XPix ;
+                   Inc(n) ;
+                   xy[n].y := YToCanvasCoord( Channels[ch], yMax) ;
+                   xy[n].x := XPix ;
+                   end
+                else begin
+                   xy[n].y := YToCanvasCoord( Channels[ch], yMax) ;
+                   xy[n].x := XPix ;
+                   Inc(n) ;
+                   xy[n].y := YToCanvasCoord( Channels[ch], yMin) ;
+                   xy[n].x := XPix ;
+                   end ;
+                YMin := High(YMin) ;
+                YMax := Low(YMax) ;
+                iPlot := Min(iPlot + iStep,iEnd) ;
+                end;
 
              { If line exceeds 16000 output a partial line to canvas,
                since polyline function seems to be unable to handle more than 16000 points }
@@ -929,7 +974,10 @@ begin
                 n := 1 ;
                 end ;
 
-             end ;
+             Inc(i) ;
+             j := j + FNumChannels ;
+             until i >= iEnd ;
+
          Polyline( Canv.Handle, xy, n ) ;
 
          // Display lines indicating area from which "From Record" zero level is derived
@@ -1354,9 +1402,9 @@ procedure TScopeDisplay.DisplayNewPoints(
   Plot a new block of A/D samples of display
   -----------------------------------------}
 var
-   i,j,ch : Integer ;
-   StartAt,EndAt,XPix : Integer ;
-   y : single ;
+   i,iStep,j,ch,iPlot : Integer ;
+   StartAt,EndAt,XPix,XPixRange,XPixLeft,XPixRight,YMin,YMax,y,iYMin,iYMax : Integer ;
+//   y : single ;
 begin
 
      { Start plot lines at last point in buffer }
@@ -1364,8 +1412,14 @@ begin
      { End plot at newest point }
      FNumPoints := NewPoints ;
      EndAt := FNumPoints-1 ;
+
      for ch := 0 to FNumChannels-1 do
          if Channel[ch].InUse and (FBuf <> Nil) then begin
+
+         XPixRange := Min( XToCanvasCoord( Channel[ch], EndAt ), Channel[ch].Right )
+                      - Max( XToCanvasCoord( Channel[ch], StartAt ), Channel[ch].Left ) ;
+         XPixRange := Max(XPixRange,1) ;
+
          Canvas.Pen.Color := Channel[ch].Color ;
          j := (StartAt*FNumChannels) + Channel[ch].ADCOffset ;
          if FNumBytesPerSample > 2 then y := PIntArray(FBuf)^[j]
@@ -1374,15 +1428,44 @@ begin
          XPix := Max( XToCanvasCoord( Channel[ch], StartAt ), Channel[ch].Left ) ;
          Canvas.MoveTo( XPix,YToCanvasCoord( Channel[ch], y) ) ;
 
-         for i := StartAt to EndAt do begin
-             j := (i*FNumChannels) + Channel[ch].ADCOffset ;
+         i := StartAt ;
+         j := (i*FNumChannels) + Channel[ch].ADCOffset ;
+         iStep := Max((EndAt - StartAt) div (XPixRange*2),1) ;
+         iPlot := StartAt ;
+         YMin := High(YMin) ;
+         YMax := Low(YMax) ;
+         XPixLeft := Channel[ch].Left ;
+         XPixRight := Channel[ch].Right ;
+         repeat
              if FNumBytesPerSample > 2 then y := PIntArray(FBuf)^[j]
                                        else y := PSmallIntArray(FBuf)^[j] ;
+             if y < Ymin then begin
+                iYMin := i ;
+                YMin := y ;
+                end;
+             if y > Ymax then begin
+                iYmax := i ;
+                YMax := y ;
+                end;
              XPix := XToCanvasCoord( Channel[ch], i ) ;
-             if (XPix >= Channel[ch].Left) and (XPix <= Channel[ch].Right) then begin
-                Canvas.LineTo( XPix, YToCanvasCoord( Channel[ch], y) ) ;
-                end ;
-            end ;
+             if i = iPlot then begin
+                 if (XPix >= XPixLeft) and (XPix <= XPixRight) then begin
+                    if iYMin < iYMax then begin
+                       Canvas.LineTo( XPix, YToCanvasCoord( Channel[ch], yMin) ) ;
+                       Canvas.LineTo( XPix, YToCanvasCoord( Channel[ch], yMax) ) ;
+                       end
+                    else begin
+                       Canvas.LineTo( XPix, YToCanvasCoord( Channel[ch], yMax) ) ;
+                       Canvas.LineTo( XPix, YToCanvasCoord( Channel[ch], yMin) ) ;
+                       end ;
+                    end ;
+                 YMin := High(YMin) ;
+                 YMax := Low(YMax) ;
+                 iPlot := Min(iPlot + iStep,EndAt) ;
+                 end;
+            Inc(i) ;
+            j := j + FNumChannels ;
+            until i >= EndAt ;
          end ;
 
      ResizeZoomBox( ZoomRect.Right, ZoomRect.Bottom ) ;
