@@ -413,7 +413,7 @@ TDD1440_ADCtoVolts = Function(
             var ADCBufferLimit : Integer ;      { Max. no. samples in A/D buffer }
             var DACMaxVolts : Single ; { Positive limit of bipolar D/A voltage range }
             var DACMinUpdateInterval : Double ;{Min. D/A update interval }
-            SettingsDirectory : string
+            SettingsDirectoryIn : string
             ) : Boolean ;
 
   function DD1440_GetMaxDACVolts : single ;
@@ -486,6 +486,7 @@ var
 
 
    Calibration : TDD1440_Calibration ; // Calibration parameters
+   SettingsDirectory : String ;
 
    NumOutChannels : Integer ;          // No. of channels in O/P buffer
    NumOutPoints : Integer ;            // No. of time points in O/P buffer
@@ -557,7 +558,7 @@ function  DD1440_GetLabInterfaceInfo(
             var ADCBufferLimit : Integer ;      { Max. no. samples in A/D buffer }
             var DACMaxVolts : Single ; { Positive limit of bipolar D/A voltage range }
             var DACMinUpdateInterval : Double ;{Min. D/A update interval }
-            SettingsDirectory : string
+            SettingsDirectoryIn : string
             ) : Boolean ;
 { --------------------------------------------
   Get information about the interface hardware
@@ -567,7 +568,7 @@ var
     ch : Integer ;
     F : TextFile ;
 begin
-
+     SettingsDirectory := SettingsDirectoryIn ;
      if not DeviceInitialised then DD1440_InitialiseBoard ;
      if not DeviceInitialised then begin
         Result := DeviceInitialised ;
@@ -579,13 +580,13 @@ begin
      AssignFile( F, CalibrationSettingsFile ) ;
      ReWrite( F ) ;
      for ch := 0 to High(Calibration.anADCGains) do begin
-         s := format('Ch.% ADCGain=%d, ADC Offset=%d',
-              [Calibration.anADCGains[ch],Calibration.anADCOffsets[ch]]);
+         s := format('Ch.%d ADCGain=%d, ADC Offset=%.3g mV',
+              [ch,Calibration.anADCGains[ch],0.1*Calibration.anADCOffsets[ch]]);
          WriteLn(F,s) ;
          end ;
      for ch := 0 to High(Calibration.afDACGains) do begin
-         s := format('Ch.% DACGain=%.5g, ADC Offset=%d',
-              [Calibration.afDACGains[ch],Calibration.anADCOffsets[ch]]);
+         s := format('Ch.%d DACGain=%.5g, DAC Offset=%d (bits)',
+              [ch,Calibration.afDACGains[ch],Calibration.anDACOffsets[ch]]);
          WriteLn(F,s) ;
          end ;
      CloseFile(F) ;
@@ -730,7 +731,10 @@ procedure DD1440_InitialiseBoard ;
   Initialise Digidata 1440 interface hardware
   -------------------------------------------}
 var
-   ch : Integer ;
+   ch,ichar : Integer ;
+   F : TextFile ;
+   FileName,s : string ;
+   VOffset : single ;
 begin
 
      DeviceInitialised := False ;
@@ -765,7 +769,23 @@ begin
          if Calibration.afDACGains[ch] = 0.0 then Calibration.afDACGains[ch] := 1.0 ;
      DACActive := False ;
 
-
+     // Load A/D offsets (if file exists in settings directory)
+     FileName := SettingsDirectory + 'Digidata 1440 adc offsets.txt' ;
+     if fileExists(FileName) then begin
+        AssignFile( F, FileName ) ;
+        Reset( F ) ;
+        ch := 0 ;
+        while (not EOF(F)) and (ch<High(Calibration.anADCOffsets)) do begin
+            Readln(F, s ) ;
+            if s <> '' then begin
+               Val(s, VOffset, iChar ) ;
+               if iChar = 0 then Calibration.anADCOffsets[ch] := Round(VOffset*10) ;
+            end;
+            inc(ch) ;
+            end;
+        CloseFile(F) ;
+        DD1440_setCalibrationParams( Calibration ) ;
+        end;
 
 
     // Set output buffers to default values
@@ -1023,7 +1043,7 @@ begin
         // Circular buffer mode
         for i := 1 to NewSamples do begin
             ch := FOutPointer mod Protocol.uAIChannels ;
-            OutBuf[FOutPointer] := AIBuf[AIPointer] -  Calibration.anADCOffsets[ch] ;
+            OutBuf[FOutPointer] := AIBuf[AIPointer]  ;
             Inc(AIPointer) ;
             if AIPointer = AIBufNumSamples then AIPointer := 0 ;
             Inc(FOutPointer) ;
@@ -1035,8 +1055,7 @@ begin
         for i := 1 to NewSamples do if
             (FOutPointer < FNumSamplesRequired) then begin
             ch := FOutPointer mod Protocol.uAIChannels ;
-            OutBuf[FOutPointer] := AIBuf[AIPointer] -  Calibration.anADCOffsets[ch] ;
-//            OutBuf[FOutPointer] := AIBuf[AIPointer]  ;
+            OutBuf[FOutPointer] := AIBuf[AIPointer] ;
             Inc(AIPointer) ;
             if AIPointer = AIBufNumSamples then AIPointer := 0 ;
             Inc(FOutPointer) ;
