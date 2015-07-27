@@ -631,12 +631,12 @@ begin
         end;
 
      // Is Axon FPGA file present?
-     FPGACodeFile :=  ExtractFilePath(ParamStr(0)) + 'DD1550Afpga.bin' ;
+     FPGACodeFile :=  ProgramDir +  'DD1550Afpga.bin' ;
      if not FileExists(FPGACodeFile) then begin
-        ShowMessage( FPGACodeFile + ' missing from ' + ExtractFilePath(ParamStr(0)));
+        ShowMessage( FPGACodeFile + ' missing from ' + ProgramDir );
         end ;
 
-     DIGD1550APath := ExtractFilePath(ParamStr(0)) + 'DD1550A.DLL' ;
+     DIGD1550APath := ProgramDir +  'DD1550A.DLL' ;
 
      // Load main library
      LibraryHnd := LoadLibrary(PChar(DIGD1550APath)) ;

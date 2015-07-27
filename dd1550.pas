@@ -11,6 +11,7 @@ unit dd1550;
 //          but no trigger occurs.
 //          Bug in AI channel mapping. If analog input number is not >= channel number
 //          channel mapping is mixed up. High channel numbers can NOT be mapped to low analog inputs
+// 13.07.15 64/32 bit version of wdapi1140.dll created when O/S detected
 
 interface
 
@@ -608,22 +609,34 @@ procedure DIGD1550_LoadLibrary  ;
   Load AXDIGD1550.DLL library into memory
   -------------------------------------}
 var
-     DIGD1550Path,AxonDLL,FPGACodeFile : String ; // file paths
+     DIGD1550Path,AxonDLL,FPGACodeFile,ProgramDir : String ; // file paths
 begin
 
+     ProgramDir := ExtractFilePath(ParamStr(0)) ;
+
      // Is Axon DLL file present?
-     AxonDLL :=  ExtractFilePath(ParamStr(0)) + 'AxDD1550.DLL' ;
+     AxonDLL :=  ProgramDir + 'AxDD1550.DLL' ;
      if not FileExists(AxonDLL) then begin
-        ShowMessage( AxonDLL + ' missing from ' + ExtractFilePath(ParamStr(0)));
+        ShowMessage( AxonDLL + ' missing from ' + ProgramDir );
         end ;
+
+     // Create 32/64 bit wdapi1140.dll depending on O/S
+     if SysUtils.TOSVersion.Architecture = arIntelX64 then begin
+        CopyFile( PChar(ProgramDir + 'wdapi1140.dll.64'),
+                  PChar(ProgramDir + 'wdapi1140.dll'), False ) ;
+        end
+     else begin
+        CopyFile( PChar(ProgramDir + 'wdapi1140.dll.32'),
+                  PChar(ProgramDir + 'wdapi1140.dll'), False ) ;
+        end;
 
      // Is Axon FPGA file present?
-     FPGACodeFile :=  ExtractFilePath(ParamStr(0)) + 'DD1550fpga.bin' ;
+     FPGACodeFile :=  ProgramDir + 'DD1550fpga.bin' ;
      if not FileExists(FPGACodeFile) then begin
-        ShowMessage( FPGACodeFile + ' missing from ' + ExtractFilePath(ParamStr(0)));
+        ShowMessage( FPGACodeFile + ' missing from ' +ProgramDir );
         end ;
 
-     DIGD1550Path := ExtractFilePath(ParamStr(0)) + 'DD1550.DLL' ;
+     DIGD1550Path := ProgramDir +  'DD1550.DLL' ;
 
      // Load main library
      LibraryHnd := LoadLibrary(PChar(DIGD1550Path)) ;

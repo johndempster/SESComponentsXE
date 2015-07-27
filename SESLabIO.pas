@@ -1525,7 +1525,8 @@ begin
                                     FADCNumVoltageRanges,
                                     FADCBufferLimit,
                                     FDACVoltageRange,
-                                    FDACMinUpdateInterval ) ;
+                                    FDACMinUpdateInterval,
+                                    SettingsDirectory ) ;
           FDACMinValue := FADCMinValue ;
           FDACMaxValue := FADCMaxValue ;
           if FLabInterfaceAvailable then begin

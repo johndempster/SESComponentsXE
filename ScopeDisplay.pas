@@ -107,6 +107,9 @@ unit ScopeDisplay;
                   edge of display
   06.07.15 ... JD No. of trace points displayed now limited to 2X no of X x pixels to
                   improve performance of plotting when very large traces plotted
+  22.07.15 ... JD Up to 32 lines can now be added display.
+  24.07.15 ... JD Length of vertical cursors now restricted to top - bottom of displayed traces.
+                  SetChanVisible() now invalidates display to force update
   }
 
 interface
@@ -122,6 +125,7 @@ const
      MaxPoints = 131072 ;
      ScopeDisplayMaxPoints = 131072 ;
      MaxVerticalCursorLinks = 32 ;
+     MaxScopeLines = 32 ;
 type
     TPointArray = Array[0..MaxPoints-1] of TPoint ;
     TSinglePoint = record
@@ -129,6 +133,17 @@ type
         y : single ;
         end ;
     TSinglePointArray = Array[0..MaxPoints-1] of TSinglePoint ;
+    TScopeSingleArray = Array[0..MaxPoints-1] of Single ;
+    PScopeSingleArray = ^TScopeSingleArray  ;
+
+    TScopeLine = record
+      Channel : Integer ;
+      x : PScopeSingleArray ;
+      y : PScopeSingleArray ;
+      Count : integer ;
+      Pen : TPen ;
+      end ;
+
     TScopeChannel = record
          xMin : single ;
          xMax : single ;
@@ -232,10 +247,10 @@ type
     FMetafileHeight : Integer ;
     FTitle : TStringList ;
     { Additional line }
-    FLine : ^TSinglePointArray ;
-    FLineCount : Integer ;
-    FLineChannel : Integer ;
-    FLinePen : TPen ;
+    FLines : Array[0..MaxScopeLines] of TScopeLine ;
+//    FLineCount : Integer ;
+//    FLineChannel : Integer ;
+//    FLinePen : TPen ;
     { Display storage mode internal variables }
     FStorageMode : Boolean ;
     FStorageFileName : Array[0..255] of char ;
@@ -436,12 +451,19 @@ type
     procedure Print ;
     procedure ClearPrinterTitle ;
     procedure AddPrinterTitleLine( Line : string);
-    procedure CreateLine( Ch : Integer ;
-                          iColor : TColor ;
-                          iStyle : TPenStyle ;
-                          Width : Integer ) ;
+    function CreateLine(
+             Ch : Integer ;                    { Display channel to be drawn on [IN] }
+             iColor : TColor ;                 { Line colour [IN] }
+             iStyle : TPenStyle ;               { Line style [IN] }
+             Width : Integer                   // Line width (IN)
+             ) : Integer ;
+    procedure AddPointToLine(
+              iLine : Integer ;
+              x : single ;
+              y : single
+              ) ;
 
-    procedure AddPointToLine(x : single ; y : single ) ;
+    procedure ClearLines ;
 
     procedure DisplayNewPoints( NewPoints : Integer ) ;
 
@@ -604,11 +626,19 @@ begin
      FTitle := TStringList.Create ;
 
      { Create an empty line array }
-     FLine := Nil ;
+     for i := 0 to High(FLines) do begin
+       FLines[i].Channel := 0 ;
+       FLines[i].X := Nil ;
+       FLines[i].Y := Nil ;
+       FLines[i].Count := 0 ;
+       FLines[i].Pen := TPen.Create ;
+       FLines[i].Pen.Assign(Canvas.Pen) ;
+       end;
+{     FLine := Nil ;
      FLineCount := 0 ;
      FLineChannel := 0 ;
      FLinePen := TPen.Create;
-     FLinePen.Assign(Canvas.Pen) ;
+     FLinePen.Assign(Canvas.Pen) ;}
 
      FGridColor := clLtGray ;
      FTraceColor := clBlue ;
@@ -701,9 +731,12 @@ begin
 
 
 destructor TScopeDisplay.Destroy ;
+
 { ------------------------------------
    Tidy up when component is destroyed
    ----------------------------------- }
+var
+  i: Integer;
 begin
      { Destroy internal objects created by TScopeDisplay.Create }
      FBuf := Nil ;
@@ -715,13 +748,20 @@ begin
      inherited Destroy ;
 
      FTitle.Free ;
-     FLinePen.Free ;
+//     FLinePen.Free ;
+
+     for i := 0 to High(FLines) do begin
+        FLines[i].Pen.Free ;
+        if FLines[i].x <> Nil then  Dispose(FLines[i].x) ;
+        if FLines[i].y <> Nil then  Dispose(FLines[i].y) ;
+        end;
+
      if FStorageFile <> Nil then begin
         FStorageFile.Destroy ;
         DeleteFile( FStorageFileName ) ;
         FStorageFile := Nil ;
         end ;
-     if FLine <> Nil then Dispose(FLine) ;
+//     if FLine <> Nil then Dispose(FLine) ;
 
      FMarkerText.Free ;
 
@@ -735,7 +775,7 @@ procedure TScopeDisplay.Paint ;
 const
      pFilePrefix : PChar = 'SCD' ;
 var
-   i,ch,Rec,NumBytesPerRecord : Integer ;
+   i,j,ch,Rec,NumBytesPerRecord,iChan : Integer ;
 
    SaveColor : TColor ;
    KeepPen : TPen ;
@@ -840,15 +880,16 @@ begin
         PlotRecord( BackBitmap.Canvas, Channel, xy^ ) ;
 
        { Plot external line on selected channel }
-       if (FLine <> Nil) and (FLineCount > 1) then begin
-          if Channel[FLineChannel].InUse then begin
+       for i := 0 to High(FLines) do if (FLines[i].Count > 0) then begin
+          iChan := FLines[i].Channel ;
+          if Channel[iChan].InUse then begin
              KeepPen.Assign(BackBitmap.Canvas.Pen) ;
-             BackBitmap.Canvas.Pen.Assign(FLinePen) ;
-             for i := 0 to FLineCount-1 do begin
-                  xy^[i].x := XToCanvasCoord( Channel[FLineChannel], FLine^[i].x ) ;
-                  xy^[i].y := YToCanvasCoord( Channel[FLineChannel], FLine^[i].y ) ;
+             BackBitmap.Canvas.Pen.Assign(FLines[i].Pen) ;
+             for j := 0 to FLines[i].Count-1 do begin
+                  xy^[j].x := XToCanvasCoord( Channel[iChan], FLines[i].x^[j] ) ;
+                  xy^[j].y := YToCanvasCoord( Channel[iChan], FLines[i].y^[j] ) ;
                   end ;
-             Polyline( BackBitmap.Canvas.Handle, xy^, FLineCount ) ;
+             Polyline( BackBitmap.Canvas.Handle, xy^, FLines[i].Count ) ;
              BackBitmap.Canvas.Pen.Assign(KeepPen) ;
              end ;
           end ;
@@ -1135,10 +1176,10 @@ begin
             end
          else begin
             { All channel cursors }
+            for ch := FNumChannels-1 downto 0 do if Channel[ch].InUse then VertCursors[i].Top := Channel[ch].Top ;
+            for ch := 0 to FNumChannels-1 do if Channel[ch].InUse then VertCursors[i].Bottom := Channel[ch].Bottom ;
             VertCursors[i].Left := Channel[LastActiveChannel].Left ;
             VertCursors[i].Right := Channel[LastActiveChannel].Right ;
-            VertCursors[i].Top := FTopOfDisplayArea ;
-            VertCursors[i].Bottom := FBottomOfDisplayArea ;
             VertCursors[i].xMin := Channel[LastActiveChannel].xMin ;
             VertCursors[i].xMax := Channel[LastActiveChannel].xMax ;
             VertCursors[i].xScale := Channel[LastActiveChannel].xScale ;
@@ -2198,6 +2239,7 @@ procedure TScopeDisplay.SetChanVisible(
 begin
      if (ch < 0) or (ch > ScopeChannelLimit) then Exit ;
      Channel[Ch].InUse := Value ;
+     Invalidate ;
      end ;
 
 
@@ -3130,9 +3172,11 @@ begin
 
      // Determine size of and allocate string buffer
      // No. of lines in table
-     NumLines := Max( Min(FXMax,NumPoints) - FXMin + 1, FLineCount ) ;
      BufSize := 1 ;
-     if FLineCount > 0 then BufSize := BufSize + 2 ;
+     for i := 0 to High(FLines) do begin
+         NumLines := Max( Min(FXMax,NumPoints) - FXMin + 1, FLines[i].Count ) ;
+         if FLines[i].Count > 0 then BufSize := BufSize + 2 ;
+         end;
      for ch := 0 to FNumChannels-1 do if Channel[ch].InUse then BufSize := BufSize + 1 ;
      BufSize := BufSize*NumBytesPerNumber*NumLines ;
      CopyBuf := StrAlloc( BufSize ) ;
@@ -3165,11 +3209,11 @@ begin
               for ch := 0 to FNumChannels-1 do if Channel[ch].InUse then StrCat(CopyBuf,PChar(#9)) ;
               end ;
 
-           if FLineCount > 0 then begin
-              if Line < FLineCount then begin
+           for i := 0 to High(FLines) do if FLines[i].Count > 0 then begin
+              if Line < FLines[i].Count then begin
                  StrCat(CopyBuf,PChar(format( #9'%.4g'#9'%.4g',
-                 [ FLine^[Line].x*FTScale,
-                  (FLine^[Line].y - Channel[FLineChannel].ADCZero)*Channel[FLineChannel].ADCScale
+                 [ FLines[i].x^[Line]*FTScale,
+                  (FLines[i].y^[Line] - Channel[FLines[i].Channel].ADCZero)*Channel[FLines[i].Channel].ADCScale
                  ] ))) ;
                  end
               else begin
@@ -3203,10 +3247,9 @@ procedure TScopeDisplay.Print ;
   Copy signal on display to printer
   ---------------------------------}
 var
-   i,ch,LastCh,YPix,xPix,Rec,NumBytesPerRecord : Integer ;
+   i,j,ch,ichan,LastCh,YPix,xPix,Rec,NumBytesPerRecord : Integer ;
    YTotal : single ;
    LeftMarginShift, XPos,YPos : Integer ;
-   OK : Boolean ;
    ChannelHeight,cTop,NumInUse,AvailableHeight : Integer ;
    PrChan : Array[0..ScopeChannelLimit] of TScopeChannel ;
    xy : ^TPointArray ;
@@ -3313,16 +3356,16 @@ begin
            PlotRecord( Printer.Canvas, PrChan, xy^ ) ;
            end ;
 
-
        { Plot external line on selected channel }
-       if (FLine <> Nil) and (FLineCount > 1) then begin
-           Printer.Canvas.Pen.Assign(FLinePen) ;
+       for i := 0 to High(FLines) do if FLines[i].Count > 0 then begin
+           Printer.Canvas.Pen.Assign(FLines[i].Pen) ;
            Printer.Canvas.Pen.Width := FPrinterPenWidth ;
-           for i := 0 to FLineCount-1 do begin
-               xy^[i].x := XToCanvasCoord( PrChan[FLineChannel], FLine^[i].x ) ;
-               xy^[i].y := YToCanvasCoord( PrChan[FLineChannel], FLine^[i].y ) ;
+           iChan := FLines[i].Channel ;
+           for j := 0 to FLines[i].Count-1 do begin
+               xy^[j].x := XToCanvasCoord( PrChan[iChan], FLines[i].x^[j] ) ;
+               xy^[j].y := YToCanvasCoord( PrChan[iChan], FLines[i].y^[j]  ) ;
                end ;
-           OK := Polyline( Printer.Canvas.Handle, xy^, FLineCount ) ;
+           Polyline( Printer.Canvas.Handle, xy^, FLines[i].Count ) ;
            Printer.Canvas.Pen.Assign(DefaultPen) ;
            end ;
 
@@ -3424,10 +3467,9 @@ procedure TScopeDisplay.CopyImageToClipboard ;
   Copy signal image on display to clipboard
   -----------------------------------------}
 var
-   i,ch,LastCh,yPix,xPix,Rec,NumBytesPerRecord : Integer ;
+   i,j,ch,iChan,LastCh,yPix,xPix,Rec,NumBytesPerRecord : Integer ;
    YTotal : single ;
    LeftMarginShift : Integer ;
-   OK : Boolean ;
    ChannelHeight,cTop,NumInUse,AvailableHeight : Integer ;
    MFChan : Array[0..ScopeChannelLimit] of TScopeChannel ;
    xy : ^TPointArray ;
@@ -3548,15 +3590,16 @@ begin
                end ;
 
             { Plot external line on selected channel }
-            if (FLine <> Nil) and (FLineCount > 1) then begin
-               TMFC.Pen.Assign(FLinePen) ;
-               for i := 0 to FLineCount-1 do begin
-                   xy^[i].x := XToCanvasCoord( MFChan[FLineChannel], FLine^[i].x ) ;
-                   xy^[i].y := YToCanvasCoord( MFChan[FLineChannel], FLine^[i].y ) ;
-                   end ;
-               OK := Polyline( TMFC.Handle, xy^, FLineCount ) ;
-               TMFC.Pen.Assign(DefaultPen) ;
-               end ;
+            for i := 0 to High(FLines) do if FLines[i].Count > 0 then begin
+                TMFC.Pen.Assign(FLines[i].Pen) ;
+                iChan := FLines[i].Channel ;
+                for j := 0 to FLines[i].Count-1 do begin
+                    xy^[j].x := XToCanvasCoord( MFChan[iChan], FLines[i].x^[j] ) ;
+                    xy^[j].y := YToCanvasCoord( MFChan[iChan], FLines[i].y^[j]  ) ;
+                    end ;
+                Polyline( TMFC.Handle, xy^, FLines[i].Count ) ;
+                TMFC.Pen.Assign(DefaultPen) ;
+                end ;
 
             { Draw baseline levels }
             if FPrinterShowZeroLevels then begin
@@ -3805,27 +3848,41 @@ begin
      end ;
 
 
-procedure TScopeDisplay.CreateLine(
+function TScopeDisplay.CreateLine(
           Ch : Integer ;                    { Display channel to be drawn on [IN] }
           iColor : TColor ;                 { Line colour [IN] }
           iStyle : TPenStyle ;               { Line style [IN] }
           Width : Integer                   // Line width (IN)
-          ) ;
+          ) : Integer ;
 { -----------------------------------------------
   Create a line to be superimposed on the display
   -----------------------------------------------}
+var
+    iLine : Integer ;
 begin
      { Create line data array }
-     if FLine = Nil then New(FLine) ;
-     FLineCount := 0 ;
-     FLineChannel := IntLimitTo(Ch,0,FNumChannels-1) ;
-     FLinePen.Color := iColor ;
-     FLinePen.Style := iStyle ;
-     FLinePen.Width := Width ;
+     iLine := 0 ;
+     while (FLines[iLine].x <> Nil) and (iLine < High(FLines)) do Inc(iLine) ;
+     if iLine >= High(FLines) then begin
+        Result := -1 ;
+        exit ;
+        end;
+
+     New(FLines[iLine].x) ;
+     New(FLines[iLine].y) ;
+     FLines[iLine].Count := 0 ;
+     FLines[iLine].Channel := Min(Max(ch,0),FNumChannels-1) ;
+     FLines[iLine].Pen.Color := iColor ;
+     FLines[iLine].Pen.Style := iStyle ;
+     FLines[iLine].Pen.Width := Width ;
+
+     Result := iLine ;
+
      end ;
 
 
 procedure TScopeDisplay.AddPointToLine(
+          iLine : Integer ;
           x : single ;
           y : single
           ) ;
@@ -3833,35 +3890,57 @@ procedure TScopeDisplay.AddPointToLine(
   Add a point to end of line
   ---------------------------}
 var
-   xPix, yPix : Integer ;
+   xPix, yPix,iChan,nCount : Integer ;
    KeepPen : TPen ;
 begin
 
+     if FLines[iLine].x = Nil then exit ;
+
      KeepPen := TPen.Create ;
 
-     if FLine <> Nil then begin
-        { Add x,y point to array }
-        FLine^[FLineCount].x := x ;
-        FLine^[FLineCount].y := y ;
-        { Add line to end of plot }
-        if FLineCount > 0 then begin
-           KeepPen.Assign(Canvas.Pen) ;
-           Canvas.Pen.Assign(FLinePen) ;
-           xPix := XToCanvasCoord( Channel[FLineChannel], FLine^[FLineCount-1].x ) ;
-           yPix := YToCanvasCoord( Channel[FLineChannel], FLine^[FLineCount-1].y ) ;
-           Canvas.MoveTo( xPix, yPix ) ;
-           xPix := XToCanvasCoord( Channel[FLineChannel], x ) ;
-           yPix := YToCanvasCoord( Channel[FLineChannel], y ) ;
-           Canvas.LineTo( xPix, yPix ) ;
-           Canvas.Pen.Assign(KeepPen) ;
-           end ;
-        { Increment counter }
-        if FLineCount < High(TSinglePointArray) then Inc(FLineCount) ;
+     { Add x,y point to array }
+     nCount := FLines[iLine].Count ;
+     iChan := FLines[iLine].Channel ;
+     FLines[iLine].x^[nCount] := x ;
+     FLines[iLine].y^[nCount] := y ;
+
+     { Add line to end of plot }
+     if nCount > 0 then begin
+        KeepPen.Assign(Canvas.Pen) ;
+        Canvas.Pen.Assign(FLines[iLine].Pen) ;
+        xPix := XToCanvasCoord( Channel[iChan], FLines[iLine].x^[nCount] ) ;
+        yPix := YToCanvasCoord( Channel[iChan], FLines[iLine].y^[nCount] ) ;
+        Canvas.MoveTo( xPix, yPix ) ;
+        xPix := XToCanvasCoord( Channel[iChan], x ) ;
+        yPix := YToCanvasCoord( Channel[iChan], y ) ;
+        Canvas.LineTo( xPix, yPix ) ;
+        Canvas.Pen.Assign(KeepPen) ;
         end ;
 
+     if nCount < High(TSinglePointArray) then Inc(nCount) ;
+     FLines[iLine].Count := nCount ;
      KeepPen.Free ;
-
      end ;
+
+procedure TScopeDisplay.ClearLines ;
+// -----------------
+// Clear added lines
+// -----------------
+var
+    i : Integer ;
+begin
+    for i := 0 to High(Flines) do begin
+        if FLines[i].x <> Nil then begin
+           Dispose(FLines[i].x) ;
+           FLines[i].x := Nil ;
+           end;
+        if FLines[i].y <> Nil then begin
+           Dispose(FLines[i].y) ;
+           FLines[i].y := Nil ;
+           end;
+        FLines[i].Count := 0 ;
+        end;
+    end ;
 
 
 procedure TScopeDisplay.DrawZoomButton(
