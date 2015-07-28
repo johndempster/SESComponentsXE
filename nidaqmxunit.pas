@@ -55,6 +55,8 @@ unit NidaqMXUnit;
 //          to be supported.
 // 15.09.14 A/D buffer samples/channel limited to 1 million to avoid unable to allocate error with
 //          simulated PCI-6281
+// 29.07.15 NIMX_GetChannelOffsets() no longer calls NIMX_CheckMaxADCChannels() to avoid it messing up
+//          existing ADC task setups
 
 
 interface
@@ -2899,11 +2901,14 @@ var
     i,ADCModeCode : Integer ;
 begin
 
-    ADCModeCode := NIMX_GetADCInputModeCode( ADCInputMode ) ;
-    FADCNumChannels := NIMX_CheckMaxADCChannels( ADCModeCode ) ;
-    NumChannels := Min(FADCNumChannels,NumChannels) ;
+//    ADCModeCode := NIMX_GetADCInputModeCode( ADCInputMode ) ;
+//    FADCNumChannels := NIMX_CheckMaxADCChannels( ADCModeCode ) ;
+//    NumChannels := Min(FADCNumChannels,NumChannels) ;
+//    for i := 0 to NumChannels-1 do Offsets[i] := i ;
+//  No longer checks for number of channels, just fills array with incrementing number 29.07.15
+//  to avoid NIMX_CheckMaxADCChannels() messing up
 
-    for i := 0 to NumChannels-1 do Offsets[i] := i ;
+    for i := 0 to High(Offsets) do Offsets[i] := i ;
 
     end ;
 
@@ -3193,13 +3198,13 @@ begin
 
     // Read data from A/D converter
     NIMX_CheckError( DAQmxReadAnalogF64( ADCTaskHandle,
-                                -1,
-                                DefaultTimeOut,
-                                DAQmx_Val_GroupByScanNumber,
-                                DBuf,
-                                ADCBufNumSamples,
-                                NumSamplesRead,
-                                Nil )) ;
+                     -1,
+                     DefaultTimeOut,
+                     DAQmx_Val_GroupByScanNumber,
+                     DBuf,
+                     ADCBufNumSamples,
+                     NumSamplesRead,
+                     Nil )) ;
 
     // Apply calibration factors and copy to output buffer
 
@@ -3552,11 +3557,11 @@ begin
      ClockSource := '/' + DeviceName + '/ao/SampleClock' ;
      UpdateRate := 1.0/UpdateInterval ;
      Err := DAQmxCfgSampClkTiming( DIGTaskHandle,
-                                             PANSIChar(ClockSource),
-                                             1.0/UpdateRate,
-                                             DAQmx_Val_Falling ,
-                                             SampleMode,
-                                             nPoints) ;
+                                   PANSIChar(ClockSource),
+                                   1.0/UpdateRate,
+                                   DAQmx_Val_Falling ,
+                                   SampleMode,
+                                   nPoints) ;
 
      // Exit if clocked digital output not supported
      if Err <> 0 then begin

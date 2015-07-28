@@ -2913,8 +2913,10 @@ procedure TSESLabIO.SetADCNumChannels( Value : Integer ) ;
 // ---------------------------------
 // Set the number A/D input channels
 // ---------------------------------
+var
+    OldValue : Integer ;
 begin
-
+     OldValue := FADCNumChannels ;
      FADCNumChannels := IntLimit(Value,1,FADCMaxChannels) ;
 
      // Ensure sampling interval remains valid

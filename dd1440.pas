@@ -17,6 +17,9 @@ unit dd1440;
 // 20.11.13 External trigger flag now ensured to be off when acquisition restarted
 //          by WriteDac or at end of protocol.
 // 05.12.13 Compiled under Delphi XE
+// 27.07.15 Calibration.anADCOffsets[] can now be updated from file Digidata 1440 adc offsets.txt
+//          in folder U:\users\public\public documents\seslabio. File Digidata 1440 Calibrations factors.txt
+//          also created in this folder and lists calibration factors.
 
 interface
 
@@ -1028,7 +1031,7 @@ procedure DD1440_GetADCSamples(
           var OutBufPointer : Integer       { Latest sample pointer [OUT]}
           ) ;
 var
-    i,ch,MaxOutPointer,NewPoints,NewSamples : Integer ;
+    i,MaxOutPointer,NewPoints,NewSamples : Integer ;
     NewAOPosition,NewAIPosition : Int64 ;
 begin
 
@@ -1042,7 +1045,6 @@ begin
      if FCircularBuffer then begin
         // Circular buffer mode
         for i := 1 to NewSamples do begin
-            ch := FOutPointer mod Protocol.uAIChannels ;
             OutBuf[FOutPointer] := AIBuf[AIPointer]  ;
             Inc(AIPointer) ;
             if AIPointer = AIBufNumSamples then AIPointer := 0 ;
@@ -1054,7 +1056,6 @@ begin
         // Single sweep mode
         for i := 1 to NewSamples do if
             (FOutPointer < FNumSamplesRequired) then begin
-            ch := FOutPointer mod Protocol.uAIChannels ;
             OutBuf[FOutPointer] := AIBuf[AIPointer] ;
             Inc(AIPointer) ;
             if AIPointer = AIBufNumSamples then AIPointer := 0 ;
@@ -1324,7 +1325,7 @@ begin
      if not DeviceInitialised then Exit ;
 
      DD1440_GetAIValue( Channel, Value ) ;
-     Result := Value - Calibration.anADCOffsets[Channel];
+     Result := Value ;
 
      end ;
 
