@@ -110,6 +110,8 @@ unit ScopeDisplay;
   22.07.15 ... JD Up to 32 lines can now be added display.
   24.07.15 ... JD Length of vertical cursors now restricted to top - bottom of displayed traces.
                   SetChanVisible() now invalidates display to force update
+  04.08.15 ... JD PlotRecords() now plots traces correctly on clipboard and to printer.
+                  Fixes problem introduced 06.07.15
   }
 
 interface
@@ -959,12 +961,12 @@ begin
          Canv.Pen.Color := Channels[ch].Color ;
          n := 0 ;
 
-         XPixRange := Min( XToCanvasCoord( Channel[ch], iEnd ), Channel[ch].Right )
-                      - Max( XToCanvasCoord( Channel[ch], iStart ), Channel[ch].Left ) ;
+         XPixRange := Min( XToCanvasCoord( Channels[ch], iEnd ), Channels[ch].Right )
+                      - Max( XToCanvasCoord( Channels[ch], iStart ), Channels[ch].Left ) ;
          XPixRange := Max(XPixRange,1) ;
 
          i := iStart ;
-         j := (i*FNumChannels) + Channel[ch].ADCOffset ;
+         j := (i*FNumChannels) + Channels[ch].ADCOffset ;
          iStep := Max((iEnd - iStart) div (XPixRange*2),1) ;
          iPlot := iStart ;
          YMin := High(YMin) ;
@@ -973,9 +975,6 @@ begin
              j := (i*FNumChannels) + Channels[ch].ADCOffset ;
              if FNumBytesPerSample > 2 then y := PIntArray(FBuf)^[j]
                                        else y := PSmallIntArray(FBuf)^[j] ;
-             xy[n].y := YToCanvasCoord( Channels[ch], y) ;
-             xy[n].x := XToCanvasCoord( Channels[ch],i ) ;
-             Inc(n) ;
 
              if y < Ymin then begin
                 iYMin := i ;
@@ -987,7 +986,7 @@ begin
                 end;
 
              if i = iPlot then begin
-                XPix := XToCanvasCoord( Channel[ch], i ) ;
+                XPix := XToCanvasCoord( Channels[ch], i ) ;
                 if iYMin < iYMax then begin
                    xy[n].y := YToCanvasCoord( Channels[ch], yMin) ;
                    xy[n].x := XPix ;
