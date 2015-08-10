@@ -112,6 +112,8 @@ unit ScopeDisplay;
                   SetChanVisible() now invalidates display to force update
   04.08.15 ... JD PlotRecords() now plots traces correctly on clipboard and to printer.
                   Fixes problem introduced 06.07.15
+  07.08.15 ... JD .MaxPoints no longer limited to 131072
+  10.08.15 ... JD .PlotRecord now correctly displays min/max points for large records (rather than just min.)
   }
 
 interface
@@ -969,10 +971,12 @@ begin
          j := (i*FNumChannels) + Channels[ch].ADCOffset ;
          iStep := Max((iEnd - iStart) div (XPixRange*2),1) ;
          iPlot := iStart ;
+         iYMin := 0 ;
+         iYMax := 1 ;
          YMin := High(YMin) ;
          YMax := Low(YMax) ;
          repeat
-             j := (i*FNumChannels) + Channels[ch].ADCOffset ;
+
              if FNumBytesPerSample > 2 then y := PIntArray(FBuf)^[j]
                                        else y := PSmallIntArray(FBuf)^[j] ;
 
@@ -981,7 +985,7 @@ begin
                 YMin := y ;
                 end;
              if y > Ymax then begin
-                iYmax := i ;
+                iYMax := i ;
                 YMax := y ;
                 end;
 
@@ -993,6 +997,7 @@ begin
                    Inc(n) ;
                    xy[n].y := YToCanvasCoord( Channels[ch], yMax) ;
                    xy[n].x := XPix ;
+                   Inc(n) ;
                    end
                 else begin
                    xy[n].y := YToCanvasCoord( Channels[ch], yMax) ;
@@ -1000,6 +1005,7 @@ begin
                    Inc(n) ;
                    xy[n].y := YToCanvasCoord( Channels[ch], yMin) ;
                    xy[n].x := XPix ;
+                   Inc(n) ;
                    end ;
                 YMin := High(YMin) ;
                 YMax := Low(YMax) ;
@@ -1141,7 +1147,6 @@ begin
                          ButtonSize,
                          cEnabledButton,
                          ch ) ;
-
          end ;
 
      { Update horizontal cursor limits/scale factors to match channel settings }
@@ -1444,7 +1449,6 @@ procedure TScopeDisplay.DisplayNewPoints(
 var
    i,iStep,j,ch,iPlot : Integer ;
    StartAt,EndAt,XPix,XPixRange,XPixLeft,XPixRight,YMin,YMax,y,iYMin,iYMax : Integer ;
-//   y : single ;
 begin
 
      { Start plot lines at last point in buffer }
@@ -1917,7 +1921,7 @@ procedure TScopeDisplay.SetNumPoints(
   Set the number of points per channel
   ------------------------------------ }
 begin
-     FNumPoints := IntLimitTo(Value,0,High(TSmallIntArray)) ;
+     FNumPoints :=  Max(Value,1);//IntLimitTo(Value,0,High(TSmallIntArray)) ;
      end ;
 
 
@@ -1928,7 +1932,7 @@ procedure TScopeDisplay.SetMaxPoints(
   Set the maximum number of points per channel
   ------------------------------------------- }
 begin
-     FMaxPoints := IntLimitTo(Value,1,High(TSmallIntArray)) ;
+     FMaxPoints := Max(Value,1) ;//IntLimitTo(Value,1,High(TSmallIntArray)) ;
      end ;
 
 
