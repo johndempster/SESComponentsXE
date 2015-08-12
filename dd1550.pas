@@ -636,16 +636,11 @@ begin
         ShowMessage( FPGACodeFile + ' missing from ' +ProgramDir );
         end ;
 
-     DIGD1550Path := ProgramDir +  'DD1550.DLL' ;
-
      // Load main library
+     DIGD1550Path := ProgramDir +  'DD1550.DLL' ;
      LibraryHnd := LoadLibrary(PChar(DIGD1550Path)) ;
-     if LibraryHnd <= 0 then
-        ShowMessage( format('%s library not found',[DIGD1550Path])) ;
-
-     { Get addresses of procedures in library }
      if LibraryHnd > 0 then begin
-
+        { Get addresses of procedures in library }
         @DIGD1550_CountDevices := DIGD1550_LoadProcedure(LibraryHnd,'DIGD1550_CountDevices') ;
         @DIGD1550_FindDevices := DIGD1550_LoadProcedure(LibraryHnd,'DIGD1550_FindDevices') ;
         @DIGD1550_GetErrorText := DIGD1550_LoadProcedure(LibraryHnd,'DIGD1550_GetErrorText') ;
@@ -686,7 +681,7 @@ begin
         LibraryLoaded := True ;
         end
      else begin
-          ShowMessage( 'DD1550.DLL library not found' ) ;
+          ShowMessage( format('Unable to load %s library',[DIGD1550Path])) ;
           LibraryLoaded := False ;
           end ;
      end ;

@@ -20,6 +20,7 @@ unit dd1440;
 // 27.07.15 Calibration.anADCOffsets[] can now be updated from file Digidata 1440 adc offsets.txt
 //          in folder U:\users\public\public documents\seslabio. File Digidata 1440 Calibrations factors.txt
 //          also created in this folder and lists calibration factors.
+// 12.08.15 64/32 bit version of wdapi1140.dll created when O/S detected
 
 interface
 
@@ -637,20 +638,29 @@ procedure DD1440_LoadLibrary  ;
   Load AXDD1440.DLL library into memory
   -------------------------------------}
 var
-     DD1440Path,AxonDLL : String ; // DLL file paths
+     DD1440Path,AxonDLL,ProgramDir : String ; // DLL file paths
 begin
 
-     AxonDLL :=  ExtractFilePath(ParamStr(0)) + 'AxDD1400.DLL' ;
+     ProgramDir := ExtractFilePath(ParamStr(0)) ;
+
+     AxonDLL :=  ProgramDir + 'AxDD1400.DLL' ;
      if not FileExists(AxonDLL) then begin
         ShowMessage( AxonDLL + ' missing from ' + ExtractFilePath(ParamStr(0))) ;
         end ;
 
-     DD1440Path := ExtractFilePath(ParamStr(0)) + 'DD1440.DLL' ;
+     // Create 32/64 bit wdapi1140.dll depending on O/S
+     if SysUtils.TOSVersion.Architecture = arIntelX64 then begin
+        CopyFile( PChar(ProgramDir + 'wdapi1140.dll.64'),
+                  PChar(ProgramDir + 'wdapi1140.dll'), False ) ;
+        end
+     else begin
+        CopyFile( PChar(ProgramDir + 'wdapi1140.dll.32'),
+                  PChar(ProgramDir + 'wdapi1140.dll'), False ) ;
+        end;
 
      // Load main library
+     DD1440Path := ProgramDir + 'DD1440.DLL' ;
      LibraryHnd := LoadLibrary(PChar(DD1440Path)) ;
-     if LibraryHnd <= 0 then
-        ShowMessage( format('%s library not found',[DD1440Path])) ;
 
      { Get addresses of procedures in library }
      if LibraryHnd > 0 then begin
@@ -695,7 +705,7 @@ begin
         LibraryLoaded := True ;
         end
      else begin
-          ShowMessage( 'DD1440.DLL library not found' ) ;
+          ShowMessage( format('Unable to load %s library ',[DD1440Path])) ;
           LibraryLoaded := False ;
           end ;
      end ;
