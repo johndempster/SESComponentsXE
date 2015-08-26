@@ -12,6 +12,8 @@ unit dd1550;
 //          Bug in AI channel mapping. If analog input number is not >= channel number
 //          channel mapping is mixed up. High channel numbers can NOT be mapped to low analog inputs
 // 13.07.15 64/32 bit version of wdapi1140.dll created when O/S detected
+// 21.08.15 AXdd1500.dll, wdapi1140.dll & DD1550fpga.bin now acquired from PCLAMP or AXOCLAMP folder and copied
+//          to settings folder C:\Users\Public\Documents\SESLABIO
 
 interface
 
@@ -407,7 +409,8 @@ TDIGD1550_ADCtoVolts = Function(
             var ADCBufferLimit : Integer ;      { Max. no. samples in A/D buffer }
             var DACMaxChannels : Integer ;      // Max. no. of D/A channels
             var DACMaxVolts : Single ; { Positive limit of bipolar D/A voltage range }
-            var DACMinUpdateInterval : Double {Min. D/A update interval }
+            var DACMinUpdateInterval : Double ;{Min. D/A update interval }
+            SettingsDirectoryIn : string
             ) : Boolean ;
 
   function DIGD1550_GetMaxDACVolts : single ;
@@ -474,8 +477,8 @@ var
    NumDevices : Integer ;
    DeviceInfo : Array[0..7] of TDIGD1550_Info ;
 
-
    Calibration : TDIGD1550_Calibration ; // Calibration parameters
+   SettingsDirectory : String ;
 
    NumOutChannels : Integer ;          // No. of channels in O/P buffer
    NumOutPoints : Integer ;            // No. of time points in O/P buffer
@@ -548,13 +551,16 @@ function  DIGD1550_GetLabInterfaceInfo(
             var ADCBufferLimit : Integer ;      { Max. no. samples in A/D buffer }
             var DACMaxChannels : Integer ;      // Max. no. of D/A channels
             var DACMaxVolts : Single ; { Positive limit of bipolar D/A voltage range }
-            var DACMinUpdateInterval : Double {Min. D/A update interval }
+            var DACMinUpdateInterval : Double ;{Min. D/A update interval }
+            SettingsDirectoryIn : string
             ) : Boolean ;
 { --------------------------------------------
   Get information about the interface hardware
   -------------------------------------------- }
 
 begin
+
+     SettingsDirectory := SettingsDirectoryIn ;
 
      if not DeviceInitialised then DIGD1550_InitialiseBoard ;
      if not DeviceInitialised then begin
@@ -609,36 +615,77 @@ procedure DIGD1550_LoadLibrary  ;
   Load AXDIGD1550.DLL library into memory
   -------------------------------------}
 var
-     DIGD1550Path,AxonDLL,FPGACodeFile,ProgramDir : String ; // file paths
+     DD1550Path,AxonDLL,FPGACodeFile,ProgramDir,FileName,SYSDrive : String ; // DLL file paths
+     SourcePath,TrialPath : string ;
+     Path : Array[0..255] of Char ;
+     VMaj,VMin : Integer ;
+
 begin
 
      ProgramDir := ExtractFilePath(ParamStr(0)) ;
+     GetSystemDirectory( Path, High(Path) ) ;
+     SYSDrive := ExtractFileDrive(String(Path)) ;
 
-     // Is Axon DLL file present?
-     AxonDLL :=  ProgramDir + 'AxDD1550.DLL' ;
-     if not FileExists(AxonDLL) then begin
-        ShowMessage( AxonDLL + ' missing from ' + ProgramDir );
-        end ;
+//   Find Axdd1550.dll and copy to settings folder
+     AxonDLL :=  'AxDD1550.DLL' ;
+     SourcePath := '' ;
+     for VMaj := 7 to 15 do for VMin := 0 to 9 do begin
+         // Check for PCLAMP installation
+         TrialPath := format( '%s\Program Files\Molecular Devices\pCLAMP%d.%d\',
+                               [SYSDrive,VMaj,VMin,AxonDLL]);
+         if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
+
+         TrialPath := format( '%s\Program Files (x86)\Molecular Devices\pCLAMP%d.%d\',
+                               [SYSDrive,VMaj,VMin,AxonDLL]);
+         if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
+
+          // Check for Axoscope installation
+         TrialPath := format( '%s\Program Files\Molecular Devices\Axoscope%d.%d\',
+                               [SYSDrive,VMaj,VMin,AxonDLL]);
+         if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
+
+         TrialPath := format( '%s\Program Files\Molecular Devices (x86)\Axoscope%d.%d\',
+                               [SYSDrive,VMaj,VMin,AxonDLL]);
+         if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
+
+         if SourcePath <> '' then Break ;
+           end;
+
+     // If not available, use version from installation
+     if SourcePath = '' then begin
+        TrialPath := ProgramDir ;
+        if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
+        end;
+
+     // Copy to settings folder
+     if SourcePath <> '' then begin
+        CopyFile( PChar(SourcePath+AXonDLL), PChar(SettingsDirectory+AXonDLL), false ) ;
+        CopyFile( PChar(SourcePath+'wdapi1140.dll'), PChar(SettingsDirectory+'wdapi1140.dll'), false ) ;
+        CopyFile( PChar(SourcePath+'DD1550fpga.bin'), PChar(SettingsDirectory+'DD1550fpga.bin'), false ) ;
+        end
+     else ShowMessage( AxonDLL + ' missing from ' + SettingsDirectory ) ;
 
      // Create 32/64 bit wdapi1140.dll depending on O/S
-     if SysUtils.TOSVersion.Architecture = arIntelX64 then begin
+{     if SysUtils.TOSVersion.Architecture = arIntelX64 then begin
         CopyFile( PChar(ProgramDir + 'wdapi1140.dll.64'),
                   PChar(ProgramDir + 'wdapi1140.dll'), False ) ;
         end
      else begin
         CopyFile( PChar(ProgramDir + 'wdapi1140.dll.32'),
                   PChar(ProgramDir + 'wdapi1140.dll'), False ) ;
-        end;
+        end;}
 
      // Is Axon FPGA file present?
-     FPGACodeFile :=  ProgramDir + 'DD1550fpga.bin' ;
+{     FPGACodeFile :=  ProgramDir + 'DD1550fpga.bin' ;
      if not FileExists(FPGACodeFile) then begin
         ShowMessage( FPGACodeFile + ' missing from ' +ProgramDir );
-        end ;
+        end ;}
 
      // Load main library
-     DIGD1550Path := ProgramDir +  'DD1550.DLL' ;
-     LibraryHnd := LoadLibrary(PChar(DIGD1550Path)) ;
+     DD1550Path := SettingsDirectory + 'DD1550.DLL' ;
+     CopyFile( PChar(ProgramDir + 'dd1550.dll'), PChar(DD1550Path), False ) ;
+     LibraryHnd := LoadLibrary(PChar(DD1550Path)) ;
+
      if LibraryHnd > 0 then begin
         { Get addresses of procedures in library }
         @DIGD1550_CountDevices := DIGD1550_LoadProcedure(LibraryHnd,'DIGD1550_CountDevices') ;
@@ -681,7 +728,7 @@ begin
         LibraryLoaded := True ;
         end
      else begin
-          ShowMessage( format('Unable to load %s library',[DIGD1550Path])) ;
+          ShowMessage( format('Unable to load %s library',[DD1550Path])) ;
           LibraryLoaded := False ;
           end ;
      end ;

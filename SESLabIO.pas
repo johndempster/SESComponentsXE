@@ -134,6 +134,7 @@ unit SESLabIO;
   10.04.15 ADCChannelZeroAt no longer stored in "amplifier settings.xml" file
            and set to -1 (fixed zero level as default at start up)
   03.07.15 DD1550A.pas Support for Digidata 1550A added (tested with 1550A) DD1550 support updated (not tested)
+  21.08.15 SettingsDirectory now passed to DD1550 and DD1550A
   ================================================================================ }
 
 interface
@@ -1559,7 +1560,8 @@ begin
                                     FADCBufferLimit,
                                     FDACMaxChannels,
                                     FDACVoltageRange,
-                                    FDACMinUpdateInterval ) ;
+                                    FDACMinUpdateInterval,
+                                    SettingsDirectory ) ;
           FDACMinValue := FADCMinValue ;
           FDACMaxValue := FADCMaxValue ;
           if FLabInterfaceAvailable then begin
@@ -1592,7 +1594,8 @@ begin
                                     FADCBufferLimit,
                                     FDACMaxChannels,
                                     FDACVoltageRange,
-                                    FDACMinUpdateInterval ) ;
+                                    FDACMinUpdateInterval,
+                                    SettingsDirectory ) ;
           FDACMinValue := FADCMinValue ;
           FDACMaxValue := FADCMaxValue ;
           if FLabInterfaceAvailable then begin

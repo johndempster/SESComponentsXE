@@ -114,6 +114,7 @@ unit ScopeDisplay;
                   Fixes problem introduced 06.07.15
   07.08.15 ... JD .MaxPoints no longer limited to 131072
   10.08.15 ... JD .PlotRecord now correctly displays min/max points for large records (rather than just min.)
+  17.08.15 ... JD Added lines no longer printed or copied to clipboard on non-visible channels
   }
 
 interface
@@ -3361,15 +3362,17 @@ begin
 
        { Plot external line on selected channel }
        for i := 0 to High(FLines) do if FLines[i].Count > 0 then begin
-           Printer.Canvas.Pen.Assign(FLines[i].Pen) ;
-           Printer.Canvas.Pen.Width := FPrinterPenWidth ;
            iChan := FLines[i].Channel ;
-           for j := 0 to FLines[i].Count-1 do begin
-               xy^[j].x := XToCanvasCoord( PrChan[iChan], FLines[i].x^[j] ) ;
-               xy^[j].y := YToCanvasCoord( PrChan[iChan], FLines[i].y^[j]  ) ;
-               end ;
-           Polyline( Printer.Canvas.Handle, xy^, FLines[i].Count ) ;
-           Printer.Canvas.Pen.Assign(DefaultPen) ;
+           if PrChan[iChan].InUse then begin
+              Printer.Canvas.Pen.Assign(FLines[i].Pen) ;
+              Printer.Canvas.Pen.Width := FPrinterPenWidth ;
+              for j := 0 to FLines[i].Count-1 do begin
+                  xy^[j].x := XToCanvasCoord( PrChan[iChan], FLines[i].x^[j] ) ;
+                  xy^[j].y := YToCanvasCoord( PrChan[iChan], FLines[i].y^[j]  ) ;
+                  end ;
+              Polyline( Printer.Canvas.Handle, xy^, FLines[i].Count ) ;
+              Printer.Canvas.Pen.Assign(DefaultPen) ;
+              end;
            end ;
 
        { Draw baseline levels }
@@ -3513,7 +3516,6 @@ begin
             { ** NOTE ALSO The above two lines MUST come
               BEFORE the setting of the plot margins next }
 
-
             // Determine number of channels in use
              NumInUse := 0 ;
              YTotal := 0.0 ;
@@ -3594,14 +3596,16 @@ begin
 
             { Plot external line on selected channel }
             for i := 0 to High(FLines) do if FLines[i].Count > 0 then begin
-                TMFC.Pen.Assign(FLines[i].Pen) ;
                 iChan := FLines[i].Channel ;
-                for j := 0 to FLines[i].Count-1 do begin
-                    xy^[j].x := XToCanvasCoord( MFChan[iChan], FLines[i].x^[j] ) ;
-                    xy^[j].y := YToCanvasCoord( MFChan[iChan], FLines[i].y^[j]  ) ;
-                    end ;
-                Polyline( TMFC.Handle, xy^, FLines[i].Count ) ;
-                TMFC.Pen.Assign(DefaultPen) ;
+                if MFChan[iChan].InUse then begin
+                   TMFC.Pen.Assign(FLines[i].Pen) ;
+                   for j := 0 to FLines[i].Count-1 do begin
+                       xy^[j].x := XToCanvasCoord( MFChan[iChan], FLines[i].x^[j] ) ;
+                       xy^[j].y := YToCanvasCoord( MFChan[iChan], FLines[i].y^[j]  ) ;
+                       end ;
+                   Polyline( TMFC.Handle, xy^, FLines[i].Count ) ;
+                   TMFC.Pen.Assign(DefaultPen) ;
+                   end;
                 end ;
 
             { Draw baseline levels }
