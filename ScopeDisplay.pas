@@ -115,6 +115,9 @@ unit ScopeDisplay;
   07.08.15 ... JD .MaxPoints no longer limited to 131072
   10.08.15 ... JD .PlotRecord now correctly displays min/max points for large records (rather than just min.)
   17.08.15 ... JD Added lines no longer printed or copied to clipboard on non-visible channels
+  14.09.15 ... JD Gaps in display traces when updating fixed.
+  29.09.15 ... JD Cursor link line now displays correctly when all-channel spanning cursors mode in use
+                  trailing ', ' now removed from cursor text.
   }
 
 interface
@@ -173,6 +176,8 @@ type
          ChanNum : Integer ;
          ZeroLevel : Boolean ;
          YSize : Single ;
+         xLast : Integer ;
+         yLast : Integer ;
          end ;
     TMousePos = ( TopLeft,
               TopRight,
@@ -385,7 +390,8 @@ type
     function CanvasToXCoord( var Chan : TScopeChannel ; xPix : Integer ) : Integer  ;
     function YToCanvasCoord( var Chan : TScopeChannel ; Value : single ) : Integer  ;
     function CanvasToYCoord( var Chan : TScopeChannel ; yPix : Integer ) : Integer  ;
-    procedure PlotRecord( Canv : TCanvas ; var Channels : Array of TScopeChannel ;
+    procedure PlotRecord( Canv : TCanvas ;
+                          var Channels : Array of TScopeChannel ;
                           var xy : Array of TPoint ) ;
 
     procedure CodedTextOut(
@@ -851,7 +857,7 @@ begin
                  { Read buffer }
                  FStorageFile.Read( FBuf^, NumBytesPerRecord ) ;
                  { Plot record on display }
-                 PlotRecord( BackBitmap.Canvas, Channel, xy^ ) ;
+                 PlotRecord( BackBitmap.Canvas, Channel, xy^) ;
                  Inc(Rec) ;
                  end ;
 
@@ -943,8 +949,7 @@ begin
 procedure TScopeDisplay.PlotRecord(
           Canv : TCanvas ;                        { Canvas to be plotted on }
           var Channels : Array of TScopeChannel ; { Channel definition array }
-          var xy : Array of TPoint                { Work array }
-          ) ;
+          var xy : Array of TPoint ) ;               { Work array }
 { -----------------------------------
   Plot a signal record on to a canvas
   ----------------------------------- }
@@ -998,6 +1003,8 @@ begin
                    Inc(n) ;
                    xy[n].y := YToCanvasCoord( Channels[ch], yMax) ;
                    xy[n].x := XPix ;
+                   Channels[ch].xLast := i ;
+                   Channels[ch].yLast := yMax ;
                    Inc(n) ;
                    end
                 else begin
@@ -1006,6 +1013,8 @@ begin
                    Inc(n) ;
                    xy[n].y := YToCanvasCoord( Channels[ch], yMin) ;
                    xy[n].x := XPix ;
+                   Channels[ch].xLast := i ;
+                   Channels[ch].yLast := yMin ;
                    Inc(n) ;
                    end ;
                 YMin := High(YMin) ;
@@ -1453,7 +1462,7 @@ var
 begin
 
      { Start plot lines at last point in buffer }
-     StartAt := Max( FNumPoints - 2,0 ) ;
+     StartAt := Max( FNumPoints - 1,0 ) ;
      { End plot at newest point }
      FNumPoints := NewPoints ;
      EndAt := FNumPoints-1 ;
@@ -1466,12 +1475,16 @@ begin
          XPixRange := Max(XPixRange,1) ;
 
          Canvas.Pen.Color := Channel[ch].Color ;
-         j := (StartAt*FNumChannels) + Channel[ch].ADCOffset ;
-         if FNumBytesPerSample > 2 then y := PIntArray(FBuf)^[j]
-                                   else y := PSmallIntArray(FBuf)^[j] ;
 
-         XPix := Max( XToCanvasCoord( Channel[ch], StartAt ), Channel[ch].Left ) ;
-         Canvas.MoveTo( XPix,YToCanvasCoord( Channel[ch], y) ) ;
+         if StartAt = 0 then begin
+            if FNumBytesPerSample > 2 then y := PIntArray(FBuf)^[ch]
+                                      else y := PSmallIntArray(FBuf)^[ch] ;
+            Canvas.MoveTo( Channel[ch].Left, YToCanvasCoord( Channel[ch], y) ) ;
+            end
+         else begin
+            Canvas.MoveTo( XToCanvasCoord( Channel[ch],Channel[ch].xLast ),
+                           YToCanvasCoord( Channel[ch],Channel[ch].yLast ) ) ;
+            end;
 
          i := StartAt ;
          j := (i*FNumChannels) + Channel[ch].ADCOffset ;
@@ -1482,26 +1495,30 @@ begin
          XPixLeft := Channel[ch].Left ;
          XPixRight := Channel[ch].Right ;
          repeat
-             if FNumBytesPerSample > 2 then y := PIntArray(FBuf)^[j]
-                                       else y := PSmallIntArray(FBuf)^[j] ;
-             if y < Ymin then begin
-                iYMin := i ;
-                YMin := y ;
-                end;
-             if y > Ymax then begin
-                iYmax := i ;
-                YMax := y ;
-                end;
-             XPix := XToCanvasCoord( Channel[ch], i ) ;
-             if i = iPlot then begin
+            if FNumBytesPerSample > 2 then y := PIntArray(FBuf)^[j]
+                                      else y := PSmallIntArray(FBuf)^[j] ;
+            if y <= Ymin then begin
+               iYMin := i ;
+               YMin := y ;
+               end;
+            if y >= Ymax then begin
+               iYmax := i ;
+               YMax := y ;
+               end;
+            XPix := XToCanvasCoord( Channel[ch], i ) ;
+            if i = iPlot then begin
                  if (XPix >= XPixLeft) and (XPix <= XPixRight) then begin
                     if iYMin < iYMax then begin
                        Canvas.LineTo( XPix, YToCanvasCoord( Channel[ch], yMin) ) ;
                        Canvas.LineTo( XPix, YToCanvasCoord( Channel[ch], yMax) ) ;
+                       Channel[ch].xLast := i ;
+                       Channel[ch].yLast := yMax ;
                        end
                     else begin
                        Canvas.LineTo( XPix, YToCanvasCoord( Channel[ch], yMax) ) ;
                        Canvas.LineTo( XPix, YToCanvasCoord( Channel[ch], yMin) ) ;
+                       Channel[ch].xLast := i ;
+                       Channel[ch].yLast := yMin ;
                        end ;
                     end ;
                  YMin := High(YMin) ;
@@ -1818,6 +1835,8 @@ begin
          s := AnsiReplaceText(s,'?i','') ;
          s := AnsiReplaceText(s,'?y0','') ;
          s := AnsiReplaceText(s,'?y','') ;
+         if ANSIEndsText(', ',s) then s := LeftStr(s,Length(s)-2);
+
 
          if s <> '' then Canv.TextOut( xPix - Canv.TextWidth(s) div 2,Channel[ch].Bottom + 1,s) ;
 
@@ -1837,7 +1856,7 @@ procedure TScopeDisplay.DrawVerticalCursorLink(
   Draw horizontal link between vertical cursors
  ----------------------------------------------}
 var
-   i,ch : Integer ;
+   i,ch,iChan : Integer ;
    iCurs0,iCurs1 : Integer ;
    xPix0,xPix1,yPix : Integer ;
    SavedPen : TPenRecall ;
@@ -1859,15 +1878,18 @@ begin
          iCurs0 := FLinkVerticalCursors[2*i] ;
          iCurs1 := FLinkVerticalCursors[(2*i)+1] ;
 
-         if VertCursors[iCurs0].InUse and
-            VertCursors[iCurs1].InUse and
-            Channel[VertCursors[iCurs0].ChanNum].InUse then begin ;
+         if VertCursors[iCurs0].ChanNum < 0 then begin
+            for ch := 0 to FNumChannels-1 do if Channel[ch].InUse then iChan := ch ;
+            end
+         else iChan := VertCursors[iCurs0].ChanNum ;
+
+         if VertCursors[iCurs0].InUse and VertCursors[iCurs1].InUse and Channel[iChan].InUse then begin ;
 
             // Set pen to cursor colour (saving old)
             Canv.Pen.Color := VertCursors[iCurs0].Color ;
 
             // Y location of line
-            yPix := VertCursors[iCurs0].Bottom + (Canv.TextHeight('X') div 2) ;
+            yPix := Channel[iChan].Bottom + (Canv.TextHeight('X') div 2) ;
 
             // Plot left cursor end
             xPix0 := XToCanvasCoord( VertCursors[iCurs0], VertCursors[iCurs0].Position ) ;

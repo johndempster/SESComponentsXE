@@ -3,6 +3,8 @@ unit ThorLabsUnit;
 // Thorlabs DCx Cameras
 // ====================
 // 5.09.14 Tested with DCC1240M (drops frames when operating above 17 MHz pixel clock)
+// 8.10.14 is_DeviceFeature() now only called to set shutter mode for CMOS cameras
+//         to avoid call unsupported error with DCU223 and similar cameras.
 
 interface
 
@@ -1831,6 +1833,7 @@ type
      LibraryHnd : THandle ;
      CameraOpen : Boolean ;
      CapturingImages : Boolean ;
+     CMOSSensor : Boolean ;          // TRUE if CMOS camera
      NumCameras : Integer ;
      BinFactors: Array[0..15] of Integer ;
      BinFactorBits: Array[0..15] of Integer ;
@@ -2925,11 +2928,10 @@ function ThorLabs_OpenCamera(
 // Open Andor camera
 // ---------------------
 var
-    i,iFormat :Integer ;
+    i :Integer ;
     s : string ;
     Ver,MinVer,MajVer,Build : DWORD ;
     CameraList : TUC480_CAMERA_LIST ;
-    ImageFormats : TIS_Image_Format_List ;
     SensorInfo : TIS_SENSOR_INFO ;
     BinningModes,Bits : Integer ;
     DeviceFeatures :DWORD ;
@@ -3084,26 +3086,36 @@ begin
 
      CameraInfo.Add( format('Pixel Clock: %dMHz',[Session.DefaultPixelClock]));
 
-     // Get shutter modes
+     // Get shutter modes (for CMOS cameras only)
 
-     is_DeviceFeature( Session.CamHandle,
-                       IS_DEVICE_FEATURE_CMD_GET_SUPPORTED_FEATURES,
-                       @DeviceFeatures,SizeOf(DeviceFeatures));
+     if ANSIContainsText( ANSIString(CameraList.CameraInfo[0].Model), 'DCC' ) then Session.CMOSSensor := True
+                                                                              else Session.CMOSSensor := False ;
+     if Session.CMOSSensor then begin
 
-     if (DeviceFeatures and IS_DEVICE_FEATURE_CAP_SHUTTER_MODE_ROLLING) <> 0 then begin
-        Session.ShutterModes[Session.NumShutterModes] := 'Rolling Shutter' ;
-        Session.ShutterModeBit[Session.NumShutterModes] := IS_DEVICE_FEATURE_CAP_SHUTTER_MODE_ROLLING ;
-        Inc(Session.NumShutterModes) ;
-        end;
-     if (DeviceFeatures and IS_DEVICE_FEATURE_CAP_SHUTTER_MODE_GLOBAL) <> 0 then begin
-        Session.ShutterModes[Session.NumShutterModes] := 'Global Shutter' ;
-        Session.ShutterModeBit[Session.NumShutterModes] := IS_DEVICE_FEATURE_CAP_SHUTTER_MODE_GLOBAL ;
-        Inc(Session.NumShutterModes) ;
+        is_DeviceFeature( Session.CamHandle,
+                          IS_DEVICE_FEATURE_CMD_GET_SUPPORTED_FEATURES,
+                          @DeviceFeatures,SizeOf(DeviceFeatures));
+
+        if (DeviceFeatures and IS_DEVICE_FEATURE_CAP_SHUTTER_MODE_ROLLING) <> 0 then begin
+           Session.ShutterModes[Session.NumShutterModes] := 'Rolling Shutter' ;
+           Session.ShutterModeBit[Session.NumShutterModes] := IS_DEVICE_FEATURE_CAP_SHUTTER_MODE_ROLLING ;
+           Inc(Session.NumShutterModes) ;
+           end;
+        if (DeviceFeatures and IS_DEVICE_FEATURE_CAP_SHUTTER_MODE_GLOBAL) <> 0 then begin
+           Session.ShutterModes[Session.NumShutterModes] := 'Global Shutter' ;
+           Session.ShutterModeBit[Session.NumShutterModes] := IS_DEVICE_FEATURE_CAP_SHUTTER_MODE_GLOBAL ;
+           Inc(Session.NumShutterModes) ;
+           end;
+        end
+     else begin
+        Session.ShutterModes[0] := 'Global Shutter' ;
+        Session.ShutterModeBit[0] := IS_DEVICE_FEATURE_CAP_SHUTTER_MODE_GLOBAL ;
+        Session.NumShutterModes := 1 ;
         end;
 
      s := 'Shutter modes: ' ;
      for i  := 0 to Session.NumShutterModes-1 do begin
-       s := s + Session.ShutterModes[i] ;
+            s := s + Session.ShutterModes[i] ;
        if i < (Session.NumShutterModes-1) then s := s + ', ';
        end;
       CameraInfo.Add( s ) ;
@@ -3126,9 +3138,6 @@ function ThorLabs_PixelDepth( ADConverterList : TStringList ;
 // ------------------------------------------------
 // Determine integer pixel from ADConverter setting
 // ------------------------------------------------
-var
-    BadCode : Integer ;
-    s : string ;
 begin
     end ;
 
@@ -3140,11 +3149,6 @@ procedure ThorLabs_SetTemperature(
 // -------------------------------
 // Set camera temperature set point
 // --------------------------------
-var
-    TSet,TDiff,MinTDiff : Double ;
-    i : Integer ;
-    s,TNearest : Widestring ;
-    BadCode : Integer ;
 begin
 
      if not Session.CameraOpen then Exit ;
@@ -3160,8 +3164,6 @@ procedure ThorLabs_SetCooling(
 // -------------------
 // Turn cooling on/off
 // -------------------
-var
-    wsValue : WideString ;
 begin
      if not Session.CameraOpen then Exit ;
 
@@ -3222,7 +3224,6 @@ procedure ThorLabs_SetCameraADC(
 // ------------------------
 var
     i : Integer ;
-    Pixelformat : WideString ;
 begin
 
    if not Session.CameraOpen then Exit ;
@@ -3431,11 +3432,13 @@ begin
      Result := False ;
      if not Session.CameraOpen then Exit ;
 
-     // Set shutter mode
-     is_DeviceFeature( Session.CamHandle,
-                       IS_DEVICE_FEATURE_CMD_SET_SHUTTER_MODE,
-                       @Session.ShutterModeBit[Session.ShutterMode],
-                       SizeOf(Session.ShutterModeBit[Session.ShutterMode])) ;
+     // Set shutter mode (CMOS cameras only)
+     if Session.CMOSSensor then begin
+        is_DeviceFeature( Session.CamHandle,
+                          IS_DEVICE_FEATURE_CMD_SET_SHUTTER_MODE,
+                          @Session.ShutterModeBit[Session.ShutterMode],
+                          SizeOf(Session.ShutterModeBit[Session.ShutterMode])) ;
+        end;
 
     // Set binning
     Thorlabs_SetBinning( Session, BinFactor ) ;
@@ -3604,10 +3607,7 @@ var
     i,j,jStep,y,imageID,Err : Integer ;
     pImageBuf,pFrom,pTo,pBuf : Pointer ;
     nBytes : NativeInt ;
-    t,status : DWORD ;
     Done : Boolean ;
-    ActualFPS : double ;
-    CapStatus : TIS_CAPTURE_STATUS_INFO ;
 begin
 
     if not Session.CameraOpen then Exit ;
