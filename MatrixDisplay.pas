@@ -878,14 +878,11 @@ const
     ButtonSize  = 12 ;
     TickMultipliers : array[0..6] of Integer = (1,2,5,10,20,50,100) ;
 var
-   CTop,ch,i,NumInUse,AvailableHeight,ChannelHeight,ChannelSpacing,LastActiveChannel : Integer ;
-//   Lab : string ;
-   x,xPix,y,yPix : Integer ;
+   CTop,ch,i,LastActiveChannel : Integer ;
+   x,xPix,yPix : Integer ;
    dy,dx : Single ;
    KeepColor : TColor ;
-   XGrid : Single ;                // Vertical grid X coord
    s : String ;
-   yVal : Single ;
    yRange,TickBase,YTick,YTickMin,YTickMax,YScaledMax,YScaledMin : Single ;
    r,XRange,XTick,XTickSize,XTickMin,XTickMax,XScaledMax,XScaledMin : Single ;
    XAxisAt : Integer ;
@@ -3142,8 +3139,7 @@ procedure TMatrixDisplay.CopyImageToClipboard ;
   Copy signal image on display to clipboard
   -----------------------------------------}
 var
-   i,j,n,ch,yPix,xPix,Rec,NumBytesPerRecord : Integer ;
-   x : single ;
+   i,ch,yPix,xPix,Rec,NumBytesPerRecord : Integer ;
    MFChan : Array[0..ScopeChannelLimit] of TScopeChannel ;
    xy : ^TPointArray ;
    s,YCalBarText,TCalBarText : string ;

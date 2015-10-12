@@ -463,13 +463,12 @@ var
     Err : Integer ;
     cBuf : Array[0..79] of Char ;
     s : String ;
-    i,j :Integer ;
+    i :Integer ;
     CCDTemperature : Integer ;
     CCDXSize : Integer ;
     CCDYSize : Integer ;
     ActualXSize : Integer ;
     ActualYSize : Integer ;
-    c : Char ;
 begin
 
      Result := False ;
@@ -549,8 +548,6 @@ procedure PixelFly_CloseCamera(
 // ----------------
 // Shut down camera
 // ----------------
-var
-    Err : Integer ;
 begin
 
     if Session.CameraOpen then begin
@@ -775,10 +772,6 @@ procedure PixelFly_TimerProc(
 { ----------------------------------------------
   Timer scheduled events, called a 10ms intervals
   ---------------------------------------------- }
-var
-    Err : Integer ;
-    BufPointer : Pointer ;
-    t0 : Integer ;
 begin
 
     if Session^.TimerProcInUse then Exit ;
@@ -818,8 +811,6 @@ procedure PixelFly_GetImageFast(
 // -------------------------------------------------------------------------
 var
     Err : Integer ;
-    t0 :Integer ;
-    iBuf : Integer ;
     i : Integer ;
     BufStatus : Integer ;
     PFromBuf : Pointer ;
@@ -887,7 +878,6 @@ procedure PixelFly_GetImageSlow(
 // -------------------------------------------------------------------------
 var
     Err : Integer ;
-    t0 :Integer ;
     iBuf : Integer ;
     i : Integer ;
     BufStatus : Integer ;
@@ -974,7 +964,6 @@ procedure PixelFly_StopCapture(
 // Stop frame capture
 // ------------------
 var
-    Err : Integer ;
     iBuf : Integer ;
     BufStatus : Integer ;
 begin

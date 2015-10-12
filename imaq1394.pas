@@ -930,7 +930,6 @@ function IMAQ1394_GetIntAttribute(
 // -----------------------------------
 var
      Value : Cardinal ;
-     i : Integer ;
 begin
     iMaq1394GetAttribute( Session.ID, AttributeID , @Value ) ;
     Result := Value ;
@@ -988,7 +987,6 @@ function IMAQ1394_StartCapture(
 const
      cNumIMAQbuffers = 16 ;
 var
-    Err : Integer ;
     ImageArea : TImageRect ;
     FrameRateNum : Cardinal ;
 begin

@@ -13,7 +13,6 @@ package SESComponents;
 {$R 'HTMLLabel.dcr'}
 {$R 'IDRFile.dcr'}
 {$R 'ImageFile.dcr'}
-{$R 'I:\Science\SIPBS\Dempster\My Documents\RAD Studio\10.0\Imports\MG17MotorLib_TLB.dcr'}
 {$IFDEF IMPLICITBUILDING This IFDEF should not be used by users}
 {$ALIGN 8}
 {$ASSERTIONS ON}

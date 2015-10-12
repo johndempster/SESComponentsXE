@@ -2898,7 +2898,7 @@ procedure NIMX_GetChannelOffsets(
 // Get channel interleave sequence
 // -------------------------------
 var
-    i,ADCModeCode : Integer ;
+    i : Integer ;
 begin
 
 //    ADCModeCode := NIMX_GetADCInputModeCode( ADCInputMode ) ;

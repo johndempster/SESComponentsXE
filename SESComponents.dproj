@@ -93,7 +93,6 @@
         <DCCReference Include="HTMLLabel.dcr"/>
         <DCCReference Include="IDRFile.dcr"/>
         <DCCReference Include="ImageFile.dcr"/>
-        <DCCReference Include="I:\Science\SIPBS\Dempster\My Documents\RAD Studio\10.0\Imports\MG17MotorLib_TLB.dcr"/>
         <DCCReference Include="vcl.dcp"/>
         <DCCReference Include="rtl.dcp"/>
         <DCCReference Include="vclie.dcp"/>
