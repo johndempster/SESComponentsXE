@@ -176,6 +176,9 @@ type
     FGreyLevelMin : Integer ;   // Minimum pixel grey level value
     FGreyLevelMax : Integer ;   // Maximum pixel grey level value
     FNumBytesPerPixel : Integer ;  // No. of storage bytes per pixel
+    FNumComponentsPerPixel : Integer ; // No. of colour components per pixel
+    FMaxComponentsPerPixel : Integer ; // Max. no. of colour components per pixel
+    FMonochromeImage : Boolean ;   // TRUE = Extract monochrome image from colour sources
 
     FLensMagnification : Single ;   // Camera lens magification factor
     FPixelWidth : Single ;          // Pixel width
@@ -186,6 +189,7 @@ type
     FNumBytesPerFrame : Integer ;       // No. of bytes per frame
     PFrameBuffer : Pointer ;//PByteArray ;         // Pointer to ring buffer to store acquired frames
     PAllocatedFrameBuffer  : Pointer ;//: PByteArray ;
+    FFrameCount : Cardinal ;
 
     CameraInfo : TStringList ;
     CameraGainList : TStringList ;
@@ -256,6 +260,7 @@ type
     function GetFrameWidth : Integer ;
     function GetFrameHeight : Integer ;
     function GetNumPixelsPerFrame : Integer ;
+    function GetNumComponentsPerFrame : Integer ;
     function GetNumBytesPerFrame : Integer ;
     procedure SetReadOutSpeed( Value : Integer ) ;
     function GetDefaultReadoutSpeed : Integer ;
@@ -280,7 +285,7 @@ type
     procedure SetADCGain( Value : Integer ) ;
     procedure SetCCDVerticalShiftSpeed( Value : Integer ) ;
     procedure SetCCDPostExposureReadout( Value : Boolean ) ;
-
+    procedure SetMonochromeImage( Value : Boolean ) ;
 
   protected
     { Protected declarations }
@@ -355,7 +360,9 @@ type
     Property TriggerType : Integer Read FTriggerType ;
     Property AmpGain : Integer Read FAmpGain Write FAmpGain ;
     Property NumBytesPerPixel : Integer Read FNumBytesPerPixel ;
+    Property NumComponentsPerPixel : Integer Read FNumComponentsPerPixel ;
     Property NumPixelsPerFrame : Integer Read GetNumPixelsPerFrame ;
+    Property NumComponentsPerFrame : Integer Read GetNumComponentsPerFrame ;
     Property NumBytesPerFrame : Integer Read GetNumBytesPerFrame ;
 
     Property NumFramesInBuffer : Integer Read FNumFramesInBuffer Write SetNumFramesInBuffer ;
@@ -363,6 +370,7 @@ type
 
     Property FrameWidthMax : Integer Read FFrameWidthMax  ;
     Property FrameHeightMax : Integer Read FFrameHeightMax ;
+    Property FrameCount : Cardinal read FFrameCount ;
 
     Property LensMagnification : Single Read FLensMagnification Write FLensMagnification ;
     Property PixelWidth : Single Read GetPixelWidth ;
@@ -384,6 +392,7 @@ type
     Property CCDVerticalShiftSpeed : Integer read FCCDVerticalShiftSpeed write SetCCDVerticalShiftSpeed ;
     Property NumPixelShiftFrames : Integer read FNumPixelShiftFrames write FNumPixelShiftFrames ;
     Property DisableExposureIntervalLimit : Boolean read FDisableExposureIntervalLimit write FDisableExposureIntervalLimit ;
+    Property MonochromeImage : Boolean read FMonochromeImage write SetMonochromeImage ;
   end;
 
 procedure Register;
@@ -429,6 +438,7 @@ begin
      FFrameWidth := FFrameWidthMax ;
      FFrameHeightMax := 512 ;
      FFrameHeight := FFrameHeightMax ;
+     FFrameCount := 0 ;
 
      FCCDRegionReadoutAvailable := True ;
      FBinFactor := 1 ;
@@ -612,6 +622,9 @@ begin
 
      // default settings
      FNumBytesPerPixel := 1 ;
+     FNumComponentsPerPixel := 1 ;
+     FMaxComponentsPerPixel := 1 ;
+     FMonochromeImage := false ;
      FPixelDepth :=  8 ;
      FGreyLevelMin := 0 ;
      FGreyLevelMax := $FF ;
@@ -638,6 +651,8 @@ begin
        NoCamera8 : begin
           FCameraName := 'No Camera' ;
           FNumBytesPerPixel := 1 ;
+          FNumComponentsPerPixel := 1 ;
+          FMaxComponentsPerPixel := 1 ;
           FPixelDepth :=  8 ;
           FGreyLevelMin := 0 ;
           FGreyLevelMax := $FF ;
@@ -650,6 +665,8 @@ begin
        NoCamera16 : begin
           FCameraName := 'No Camera' ;
           FNumBytesPerPixel := 2 ;
+          FNumComponentsPerPixel := 1 ;
+          FMaxComponentsPerPixel := 1 ;
           FPixelDepth :=  16 ;
           FGreyLevelMin := 0 ;
           FGreyLevelMax := $FFFF ;
@@ -1232,6 +1249,9 @@ begin
 //             FBinFactorMax := 8 ;
              FFrameWidth := FFrameWidthMax ;
              FFrameHeight := FFrameHeightMax ;
+             FMaxComponentsPerPixel := Min(IMAQDXSession.NumPixelComponents,3) ;
+             if FMonochromeImage then FNumComponentsPerPixel := 1
+                                 else FNumComponentsPerPixel := FMaxComponentsPerPixel ;
              end ;
 
           FFrameIntervalMin := 1E-3 ;
@@ -1427,10 +1447,13 @@ begin
 
             IMAQ : begin
               IMAQ_GetImage( IMAQSession ) ;
+              FFrameCount := IMAQSession.FrameCounter ;
               end ;
 
             IMAQDX : begin
               IMAQDX_GetImage( IMAQDXSession ) ;
+              FFrameCount := IMAQDXSession.FrameCounter ;
+              outputdebugstring(pchar(format('%d',[FFrameCount])));
               end ;
 
             DTOL : begin
@@ -1696,7 +1719,10 @@ begin
               end ;
           end ;
 
-     FNumBytesPerFrame := FFrameWidth*FFrameHeight*FNumBytesPerPixel ;
+     if FMonochromeImage then FNumComponentsPerPixel := 1
+                         else FNumComponentsPerPixel := FMaxComponentsPerPixel ;
+
+     FNumBytesPerFrame := FFrameWidth*FFrameHeight*FNumBytesPerPixel*FNumComponentsPerPixel ;
      FNumBytesInFrameBuffer := FNumBytesPerFrame*FNumFramesInBuffer ;
 
      DeallocateFrameBuffer ;
@@ -1992,9 +2018,11 @@ begin
                            FBinFactor,
                            PFrameBuffer,
                            FNumFramesInBuffer,
-                           FNumBytesPerFrame
+                           FNumBytesPerFrame,
+                           FMonochromeImage
                            ) ;
           FrameCounter := 0 ;
+          FFrameCount := IMAQDXSession.FrameCounter ;
           end ;
 
        DTOL : begin
@@ -2248,12 +2276,23 @@ begin
 
 function TSESCam.GetNumPixelsPerFrame : Integer ;
 // --------------------------
-// Get pixel height of camera image
+// Get no. of pixels in frame
 // ---------------------------
 begin
      if (not FCameraActive) and ImageAreaChanged then AllocateFrameBuffer ;
      Result := FFrameHeight*FFrameWidth ;
      end ;
+
+
+function TSESCam.GetNumComponentsPerFrame : Integer ;
+// --------------------------
+// Get no. of components in frame
+// ---------------------------
+begin
+     if (not FCameraActive) and ImageAreaChanged then AllocateFrameBuffer ;
+     Result := FFrameHeight*FFrameWidth*FNumComponentsPerPixel ;
+     end ;
+
 
 function TSESCam.GetNumBytesPerFrame : Integer ;
 // --------------------------
@@ -2261,7 +2300,7 @@ function TSESCam.GetNumBytesPerFrame : Integer ;
 // ---------------------------
 begin
      if (not FCameraActive) and ImageAreaChanged then AllocateFrameBuffer ;
-     Result := FFrameHeight*FFrameWidth*FNumBytesPerPixel ;
+     Result := FFrameHeight*FFrameWidth*FNumBytesPerPixel*FNumComponentsPerPixel ;
      end ;
 
 procedure TSESCam.SetReadOutSpeed( Value : Integer ) ;
@@ -2517,16 +2556,18 @@ function TSESCam.GetMaxFramesInBuffer : Integer ;
 // Return max. nunber of frames allowed in camera frame buffer
 // -----------------------------------------------------------
 var
-     NumPixelsPerFrame : Integer ;
+     NumbytesPerFrame : Cardinal ;
 begin
 
-     NumPixelsPerFrame := FFrameWidth*FFrameHeight ;
+     if FMonochromeImage then FNumComponentsPerPixel := 1
+                         else FNumComponentsPerPixel := FMaxComponentsPerPixel ;
+     NumbytesPerFrame := FFrameWidth*FFrameHeight*FNumComponentsPerPixel*FNumBytesPerPixel ;
 
      case FCameraType of
 
         RS_PVCAM_PENTAMAX : Begin
           // Pentamax has limited buffer size
-          Result :=  (4194304 div (NumPixelsPerFrame*FNumBytesPerPixel))-1 ;
+          Result :=  (4194304 div NumbytesPerFrame)-1 ;
           Result := Min( Result, 36) ;
           end ;
 
@@ -2535,25 +2576,25 @@ begin
           end ;
 
         Andor : begin
-           Result :=  (20000000 div (NumPixelsPerFrame*FNumBytesPerPixel))-1 ;
+           Result :=  (20000000 div NumbytesPerFrame)-1 ;
            if Result > 36 then Result := 36 ;
            end ;
 
         AndorSDK3 : begin
-           Result :=  (20000000 div (NumPixelsPerFrame*FNumBytesPerPixel))-1 ;
+           Result :=  (20000000 div NumbytesPerFrame)-1 ;
            if Result > 36 then Result := 36 ;
            end ;
 
         RS_PVCAM : begin
-           Result :=  (20000000 div (NumPixelsPerFrame*FNumBytesPerPixel))-1 ;
+           Result :=  (20000000 div NumbytesPerFrame)-1 ;
            end ;
 
         DCAM : begin
-           Result :=  (40000000 div (NumPixelsPerFrame*FNumBytesPerPixel))-1 ;
+           Result :=  (40000000 div NumbytesPerFrame)-1 ;
            end ;
 
         IMAQ : begin
-           Result :=  (20000000 div (NumPixelsPerFrame*FNumBytesPerPixel))-1 ;
+           Result :=  (20000000 div NumbytesPerFrame)-1 ;
            end ;
 
         IMAQDX : begin
@@ -2569,7 +2610,7 @@ begin
            end ;
 
         Thorlabs : begin
-           Result :=  (20000000 div (NumPixelsPerFrame*FNumBytesPerPixel))-1 ;
+           Result :=  (20000000 div NumbytesPerFrame)-1 ;
            end ;
 
         else begin
@@ -3081,7 +3122,7 @@ begin
                                  FPixelDepth,
                                  FGreyLevelMin,
                                  FGreyLevelMax ) ;
-
+          FMaxComponentsPerPixel := Min(IMAQDXSession.NumPixelComponents,3) ;
           end ;
 
        end ;
@@ -3137,6 +3178,16 @@ begin
            FCCDPostExposureReadout := FCCDPostExposureReadout or PVCAMSession.PostExposureReadout ;
            end;
        end;
+    end;
+
+procedure TSESCam.SetMonochromeImage( Value : Boolean ) ;
+// -------------------------------------------------------
+// Set flag to extract monochrome image from colour source
+// -------------------------------------------------------
+begin
+    FMonochromeImage := Value ;
+    if FMonochromeImage then FNumComponentsPerPixel := 1
+                        else FNumComponentsPerPixel := FMaxComponentsPerPixel ;
     end;
 
 end.

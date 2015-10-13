@@ -18,6 +18,7 @@ unit ImageFile;
 // 08.04.13 Updated to compile correctly under Delphi XE (Chars to ANSIChar)
 // 17.07.14 Maximum TIF file strip size now forced to be multiple of no. of bytes per line
 //          to avoid scrambling of large TIF file images
+// 18.08.15 PixelDepth coerced to multiple of 8 bits (for compatibility with TIF format
 
 interface
 
@@ -659,6 +660,9 @@ begin
 
      FFileName := FileName ;
 
+     // Set pixel depth to byte
+     PixelDepth := (((PixelDepth-1) div 8)+1)*8 ;
+
      case FFileType of
         PICFile : Result := PICCreateFile( FileName,
                                            FrameWidth,
@@ -1005,8 +1009,7 @@ begin
     FFrameWidth := FrameWidth ;
     FFrameHeight := FrameHeight ;
     FPixelDepth := PixelDepth ;
-    if FPixelDepth <= 8 then FNumBytesPerPixel := 1
-                        else FNumBytesPerPixel := 2 ;
+    FNumBytesPerPixel := (((FPixelDepth-1) div 8) + 1)*FComponentsPerPixel ;
 
     FComponentsPerPixel := 1 ;
     FNumPixelsPerFrame := FFrameWidth*FFrameHeight ;
@@ -1615,7 +1618,6 @@ begin
 
     // Calculate number of bytes per pixel
     FNumBytesPerPixel := (((FPixelDepth-1) div 8) + 1)*FComponentsPerPixel ;
-
     FNumPixelsPerFrame := FFrameWidth*FFrameHeight ;
     FNumBytesPerFrame := FNumPixelsPerFrame*FNumBytesPerPixel ;
 
@@ -2064,7 +2066,7 @@ begin
     FFrameHeight := FrameHeight ;
     FPixelDepth := PixelDepth ;
     FComponentsPerPixel := ComponentsPerPixel ;
-    FNumBytesPerPixel := (((PixelDepth-1) div 8) + 1)*FComponentsPerPixel ;
+    FNumBytesPerPixel := (((FPixelDepth-1) div 8) + 1)*FComponentsPerPixel ;
 
     FNumPixelsPerFrame := FFrameWidth*FFrameHeight ;
     FNumBytesPerFrame := FNumPixelsPerFrame*FNumBytesPerPixel ;
@@ -2244,7 +2246,8 @@ begin
        else if Pars[i] = 't' then FNumFrames := Values[i] ;
        end ;
 
-    FNumBytesPerPixel := (((FPixelDepth-1) div 8) + 1) ;
+    if FPixelDepth <= 8 then FNumBytesPerPixel := FComponentsPerPixel
+                        else FNumBytesPerPixel := FComponentsPerPixel*2 ;
 
     FNumFrames := FNumFrames*FComponentsPerPixel ;
 

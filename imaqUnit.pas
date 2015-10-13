@@ -2301,9 +2301,7 @@ begin
     if not Session.AcquisitionInProgress then Exit ;
 
     // Get status
-    //imgSessionStatus(Session.SessionID,status,LatestIndex);
     imgGetAttribute( Session.SessionID, IMG_ATTR_FRAME_COUNT, NewFrameCounter ) ;
-    //imgGetAttribute( Session.SessionID, IMG_ATTR_LAST_VALID_BUFFER, Session.NumFramesAcquired ) ;
     NewFrames := NewFrameCounter - Session.FrameCounter ;
     Session.FrameCounter := NewFrameCounter ;
     if NewFrames <= 0 then Exit ;
@@ -2315,12 +2313,11 @@ begin
         PToBuf := Pointer( (Session.BufferIndex*Session.NumBytesPerFrame)
                          + NativeUInt(PByte(Session.FrameBufPointer))) ;
         MoveMemory( PToBuf, PFromBuf, Session.NumBytesPerFrame ) ;
-        //Session.BufferFilled[Session.BufferIndex] := False ;
         Inc(Session.BufferIndex) ;
         if Session.BufferIndex >= Session.NumFrameBuffers then Session.BufferIndex := 0 ;
         end ;
 
-     //outputdebugString(PChar(format('%d %d ',[Session.FrameCounter, NewFrames]))) ;
+     outputdebugString(PChar(format('%d %d ',[Session.FrameCounter, NewFrames]))) ;
 
     end ;
 
