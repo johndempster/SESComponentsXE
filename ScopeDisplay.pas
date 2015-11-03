@@ -118,6 +118,7 @@ unit ScopeDisplay;
   14.09.15 ... JD Gaps in display traces when updating fixed.
   29.09.15 ... JD Cursor link line now displays correctly when all-channel spanning cursors mode in use
                   trailing ', ' now removed from cursor text.
+  16.10.15 ... JD Data exported to clipboard now min/max compressed to less than 20000 points.
   }
 
 interface
@@ -605,7 +606,8 @@ type
     PSmallIntArray = ^TSmallIntArray ;
     TIntArray = Array[0..$FFFFFF] of Integer ;
     PIntArray = ^TIntArray ;
-
+    TSingleArray = Array[0..$FFFFFF] of Single ;
+    PSingleArray = ^TSingleArray ;
 
 procedure Register;
 begin
@@ -1492,6 +1494,8 @@ begin
          iPlot := StartAt ;
          YMin := High(YMin) ;
          YMax := Low(YMax) ;
+         iYMin := 0 ;
+         iYMax := 0 ;
          XPixLeft := Channel[ch].Left ;
          XPixRight := Channel[ch].Right ;
          repeat
@@ -1879,6 +1883,7 @@ begin
          iCurs1 := FLinkVerticalCursors[(2*i)+1] ;
 
          if VertCursors[iCurs0].ChanNum < 0 then begin
+            iChan := 0 ;
             for ch := 0 to FNumChannels-1 do if Channel[ch].InUse then iChan := ch ;
             end
          else iChan := VertCursors[iCurs0].ChanNum ;
@@ -3168,10 +3173,9 @@ begin
 
 procedure TScopeDisplay.SetDataBuf(
           Buf : Pointer ) ;
-// ----------------------------------------------------
-// Supply address of data buffer containing digitised signals
-// to be displayed
-// ----------------------------------------------------
+// --------------------------------------------------------------------------
+// Supply address of data buffer containing digitised signals to be displayed
+// --------------------------------------------------------------------------
 begin
      FBuf := Buf ;
      //Invalidate ; Removed 5/12/01
@@ -3183,12 +3187,15 @@ procedure TScopeDisplay.CopyDataToClipBoard ;
   Copy the data points on display to the clipboard
   ------------------------------------------------}
 const
-      NumBytesPerNumber = 20 ;
+      MaxPoints = 10000 ;
 var
-   i,j,ch,BufSize,Line,NumLines : Integer ;
+   L,i,j,ch,Line,NumLines,jPoint : Integer ;
+   y,yMin,YMax,iYMin,iYMax,NumCompressed,NumPointsPerBlock,iBlock,iPoint,NumChannelsInUse,LineCount : Integer ;
    t : single ;
-   CopyBuf : PChar ;
-   y : single ;
+   iCell,Col,Row,RowStart,ColOffset,NumColumns : Integer ;
+   CompBuf : PSingleArray ;
+   InUse : PSMallIntArray ;
+   s : string ;
 begin
 
      Screen.Cursor := crHourGlass ;
@@ -3196,70 +3203,151 @@ begin
      // Open clipboard preventing others acceessing it
      Clipboard.Open ;
 
-     // Determine size of and allocate string buffer
-     // No. of lines in table
-     BufSize := 1 ;
-     for i := 0 to High(FLines) do begin
-         NumLines := Max( Min(FXMax,NumPoints) - FXMin + 1, FLines[i].Count ) ;
-         if FLines[i].Count > 0 then BufSize := BufSize + 2 ;
+     // No. channels in use
+     NumChannelsInUse := 0 ;
+     for ch := 0 to FNumChannels-1 do if Channel[ch].InUse then Inc(NumChannelsInUse) ;
+
+     // No. lines on display
+     NumLines := 0 ;
+     for L := 0 to High(FLines) do if (FLines[L].Count > 0) and Channel[FLines[L].Channel].InUse then Inc(NumLines) ;
+
+     // Total no. of columns in data table (Time + Channels + Lines)
+     NumColumns := NumLines + NumChannelsInUse + 1 ;
+
+     // Allocated compressed data buffer and InUse flags
+     GetMem( CompBuf, MaxPoints*NumColumns*SizeOf(Single)*3 ) ;
+     GetMem( InUse, MaxPoints*NumColumns*SizeOf(SmallInt)*3 ) ;
+
+     // Clear in use flags
+     for i := 0 to MaxPoints*NumColumns-1 do InUse[i] := 0 ;
+
+     // Build compressed data table
+
+     // No. of data points per compression block
+     NumPointsPerBlock := Max((FXMax - FXMin) div MaxPoints,1) ;
+     // Starting column for channels
+     ColOffset := 1 ;
+     RowStart := 0 ;
+     for ch := 0 to FNumChannels-1 do if Channel[ch].InUse then begin
+
+         // Point to starting index in source data buffer
+         jPoint := Max(FXMin,0)*FNumChannels + Channel[ch].ADCOffset ;
+         // pointer to first element of row in table
+         RowStart := 0 ;
+         // Compression block point counter
+         iBlock := 0 ;
+         // Initiialise compression block min/max
+         iYMin := 0 ;
+         iYMax := 0 ;
+         YMin := High(YMin) ;
+         YMax := Low(YMax) ;
+
+         for iPoint := Max(FXMin,0) to Min(FXMax,FNumPoints-1) do begin
+
+             // Get data point
+             if FNumBytesPerSample > 2 then y := PIntArray(FBuf)^[jPoint]
+                                       else y := PSmallIntArray(FBuf)^[jPoint] ;
+
+             // Update min/max limits
+             if y < Ymin then begin
+                iYMin := iPoint ;
+                YMin := y ;
+                end;
+             if y > Ymax then begin
+                iYMax := iPoint ;
+                YMax := y ;
+                end;
+
+             // Add to compressed data table
+             Inc(iBlock) ;
+             if iBlock >= NumPointsPerBlock then begin
+                if iYMin = iYMax then begin
+                   CompBuf^[RowStart] := (iYMin-FXMin) ;
+                   InUse[RowStart] := 1 ;
+                   CompBuf^[RowStart + ColOffset] := (YMin - Channel[ch].ADCZero)*Channel[ch].ADCScale ;
+                   InUse[RowStart + ColOffset] := 1 ;
+                   RowStart := RowStart + NumColumns ;
+                   end
+                else if iYMin < iYMax then begin
+                   CompBuf^[RowStart] := (iYMin-FXMin) ;
+                   InUse[RowStart] := 1 ;
+                   CompBuf^[RowStart + ColOffset] := (YMin - Channel[ch].ADCZero)*Channel[ch].ADCScale ;
+                   InUse[RowStart + ColOffset] := 1 ;
+                   RowStart := RowStart + NumColumns ;
+                   CompBuf^[RowStart] := (iYMax-FXMin) ;
+                   InUse[RowStart] := 1 ;
+                   CompBuf^[RowStart + ColOffset] := (YMax - Channel[ch].ADCZero)*Channel[ch].ADCScale ;
+                   InUse[RowStart + ColOffset] := 1 ;
+                   RowStart := RowStart + NumColumns ;
+                   end
+                else begin
+                   CompBuf^[RowStart] := (iYMax-FXMin) ;
+                   InUse[RowStart] := 1 ;
+                   CompBuf^[RowStart + ColOffset] := (YMax - Channel[ch].ADCZero)*Channel[ch].ADCScale ;
+                   InUse[RowStart + ColOffset] := 1 ;
+                   RowStart := RowStart + NumColumns ;
+                   CompBuf^[RowStart] := (iYMin-FXMin) ;
+                   InUse[RowStart] := 1 ;
+                   CompBuf^[RowStart + ColOffset] := (YMin - Channel[ch].ADCZero)*Channel[ch].ADCScale ;
+                   InUse[RowStart + ColOffset] := 1 ;
+                   RowStart := RowStart + NumColumns ;
+                   end;
+
+                iBlock := 0 ;
+                YMin := High(YMin) ;
+                YMax := Low(YMax) ;
+
+                end;
+
+             jPoint := jPoint + FNumChannels ; // Increment data pointer
+
+             end;
+
+         Inc(ColOffset) ;
+         end ;
+     NumCompressed := RowStart div NumColumns ;
+
+     // Add data points of superimposed lines to table row
+
+     RowStart := 0 ;
+     for Row := 0 to NumCompressed-1 do begin
+         LineCount := 0 ;
+         for L := 0 to High(FLines) do if (FLines[L].Count > 0) and Channel[FLines[L].Channel].InUse then begin
+             ch := FLines[L].Channel ;
+             for i := 0 to FLines[L].Count-1 do
+                 if Round(CompBuf^[RowStart]) = (FLines[L].x^[i]-FXMin) then begin
+                 Col := RowStart+LineCount+NumChannelsInUse+1 ;
+                 CompBuf^[Col] := (FLines[L].y^[i]- Channel[ch].ADCZero)*Channel[ch].ADCScale ;
+                 InUse^[Col] := 1 ;
+                 end;
+             Inc(LineCount) ;
+             end ;
+         RowStart := RowStart + NumColumns ;
          end;
-     for ch := 0 to FNumChannels-1 do if Channel[ch].InUse then BufSize := BufSize + 1 ;
-     BufSize := BufSize*NumBytesPerNumber*NumLines ;
-     CopyBuf := StrAlloc( BufSize ) ;
+
+       // Write table of data to copy buffer
+
+       iCell := 0 ;
+       s := '' ;
+       for i := 0 to NumCompressed-1 do begin
+           s := s + format( '%.5g', [CompBuf^[iCell]*FTScale] ) ;
+           Inc(iCell) ;
+           for Col := 1 to NumColumns-1 do  begin
+               if InUse[iCell]=1 then s := s + Format(#9+'%.5g',[CompBuf^[iCell]])
+                               else s := s + #9 ;
+               Inc(iCell) ;
+               end ;
+            s := s + #13#10 ;
+           end;
 
      try
-
-       // Write table of data to buffer
-
-       StrCopy(CopyBuf,PChar('')) ;
-       t := 0.0 ;
-       for Line := 0 to NumLines-1 do begin
-           i := Line + FXMin ;
-           if ( FXMin <= i) and (i <= FXMax) then begin
-              // Add data columns
-              // Time
-              StrCat(CopyBuf,PChar(format( '%.4g', [t] ))) ;
-              // Channel sample values
-              for ch := 0 to FNumChannels-1 do if Channel[ch].InUse then begin
-                  j := i*FNumChannels + Channel[ch].ADCOffset ;
-                  if FNumBytesPerSample > 2 then y := PIntArray(FBuf)^[j]
-                                            else y := PSmallIntArray(FBuf)^[j] ;
-                  StrCat(CopyBuf,
-                         PChar(Format(#9'%.4g',
-                         [(y - Channel[ch].ADCZero)*Channel[ch].ADCScale] ))) ;
-                  end ;
-              end
-           else begin
-              // Add empty columns
-              StrCat(CopyBuf,PChar(#9)) ;
-              for ch := 0 to FNumChannels-1 do if Channel[ch].InUse then StrCat(CopyBuf,PChar(#9)) ;
-              end ;
-
-           for i := 0 to High(FLines) do if FLines[i].Count > 0 then begin
-              if Line < FLines[i].Count then begin
-                 StrCat(CopyBuf,PChar(format( #9'%.4g'#9'%.4g',
-                 [ FLines[i].x^[Line]*FTScale,
-                  (FLines[i].y^[Line] - Channel[FLines[i].Channel].ADCZero)*Channel[FLines[i].Channel].ADCScale
-                 ] ))) ;
-                 end
-              else begin
-                 StrCat(CopyBuf,PChar(#9#9)) ;
-                 end ;
-              end ;
-
-           // CR+LF at end of line
-           StrCat(CopyBuf, PChar(#13#10)) ;
-
-           t := t + FTScale ;
-
-           end ;
-
        // Copy text accumulated in copy buffer to clipboard
-       ClipBoard.SetTextBuf( CopyBuf ) ;
+      ClipBoard.SetTextBuf( PChar(s) ) ;
 
      finally
        // Free buffer
-       StrDispose(CopyBuf) ;
+       FreeMem(CompBuf) ;
+       FreeMem(InUse) ;
        // Release clipboard
        Clipboard.Close ;
        Screen.Cursor := crDefault ;
