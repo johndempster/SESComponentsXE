@@ -1453,7 +1453,7 @@ begin
             IMAQDX : begin
               IMAQDX_GetImage( IMAQDXSession ) ;
               FFrameCount := IMAQDXSession.FrameCounter ;
-              outputdebugstring(pchar(format('%d',[FFrameCount])));
+              //outputdebugstring(pchar(format('%d',[FFrameCount])));
               end ;
 
             DTOL : begin
@@ -1690,7 +1690,10 @@ begin
                                           FFrameBottom,
                                           FBinFactor,
                                           FFrameWidth,
-                                          FFrameHeight ) ;
+                                          FFrameHeight,
+                                          FFrameInterval,
+                                          FReadoutTime
+                                           ) ;
               end ;
 
           DTOL : begin

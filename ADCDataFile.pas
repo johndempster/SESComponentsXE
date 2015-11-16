@@ -3746,7 +3746,6 @@ function TADCDataFile.ABF2LoadFileHeader : Boolean ;
 // Read file header block from Axon ABF V2.X file
 // ----------------------------------------------
 var
-     FileType : String ;
      i,iEpisode,Err : Integer ;
      ch,pChan : Integer ;
      s : ANSIString ;
@@ -4446,9 +4445,7 @@ function TADCDataFile.CFSSaveFileHeader : Boolean ;
 var
      i : Integer ;
      ch : Integer ;
-     CFSDataHeader : TCFSDataHeader ;
      CFSChannelDef : TCFSChannelDef ;
-     CFSChannelInfo : TCFSChannelInfo ;
      DataSectionPointer,TablePointer : Integer ;
 
 begin
@@ -4497,8 +4494,8 @@ begin
 	  CFSFileHeader.DatVars := 0 ;
 	  CFSFileHeader.fileHeadSz := SizeOf(CFSFileHeader) +
                                 FNumChannelsPerScan*Sizeof(CFSChannelDef)  ;
-	  CFSFileHeader.DataHeadSz := SizeOf(CFSDataHeader) +
-                                FNumChannelsPerScan*Sizeof(CFSChannelInfo)  ;
+	  CFSFileHeader.DataHeadSz := SizeOf(TCFSDataHeader) +
+                                FNumChannelsPerScan*Sizeof(TCFSChannelInfo)  ;
 	  CFSFileHeader.EndPnt := FNumHeaderBytes + (FNumRecords-1)*FNumRecordBytes ;
 	  CFSFileHeader.DataSecs := FNumRecords ;
 	  CFSFileHeader.DiskBlkSize := 1 ;
@@ -4730,7 +4727,6 @@ procedure TADCDataFile.ASCReadLine(
 var
     Done : Boolean ;
     InChar,cSep : ANSIChar ;
-    s : string ;
     i : Integer ;
 begin
 
@@ -4846,7 +4842,6 @@ var
    iLine : Integer ;
    NumLines : Integer ;
 
-   NumSamplesInFile : Integer ;
    PackingFormat : Integer ;
 
    SamplingFrequency : Single ;
