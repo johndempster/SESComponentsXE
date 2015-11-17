@@ -57,6 +57,8 @@ unit NidaqMXUnit;
 //          simulated PCI-6281
 // 29.07.15 NIMX_GetChannelOffsets() no longer calls NIMX_CheckMaxADCChannels() to avoid it messing up
 //          existing ADC task setups
+// 05.11.15 USB-6002/3 P1.0->PFI0+PFI1 now used as trigger line for A/D and D/A start synchronisation
+//          instead of P0.0->PFI0+PFI1
 
 
 interface
@@ -3463,10 +3465,27 @@ begin
      NIMX_CheckError( DAQmxStartTask(DACTaskHandle)) ;
 
      // If not in external trigger mode and AO/sampleclock not available for trigger
-     // use 5V pulse on P1.
+     // use 5V pulse on P1.0 connected to PFI0 and PFI1 to trigger both A/D and D/A sampling
      if (not ExternalTrigger) and FNoTriggerOnSampleClock then begin
         NIMX_CheckError( DAQmxCreateTask( '', TaskHandle ) ) ;
-        PortList := DeviceName + '/port0' ;
+        Err := DAQmxCreateDOChan( TaskHandle,
+                                  PANSIChar(DeviceName + '/port1/Line0'),
+                                  nil,
+                                  DAQmx_Val_ChanPerLine );
+        if Err = 0 then DAQmxWriteDigitalScalarU32( TaskHandle,     // Set = 0
+                                                    True,
+                                                    DefaultTimeOut,
+                                                    0,
+                                                    Nil ) ;
+        if Err = 0 then DAQmxWriteDigitalScalarU32( TaskHandle,    // Set = 1
+                                                    True,
+                                                    DefaultTimeOut,
+                                                    1,
+                                                    Nil ) ;
+
+
+{        NIMX_CheckError( DAQmxCreateTask( '', TaskHandle ) ) ;
+        PortList := DeviceName + '/port1' ;
         Err := DAQmxCreateDOChan( TaskHandle,
                                   PANSIChar(PortList),
                                   nil,
@@ -3475,7 +3494,7 @@ begin
                                                     True,
                                                     DefaultTimeOut,
                                                     1,
-                                                    Nil ) ;
+                                                    Nil ) ;}
         NIMX_CheckError( DAQmxClearTask ( TaskHandle ) ) ;
 
         end ;

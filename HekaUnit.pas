@@ -25,6 +25,9 @@ unit HekaUnit;
 // 17.06.15 User-defined ADC input channel mapping now possible. Mapping of
 //          of logical channels 0 (current) and 1 (voltage) to physical ADC channels used in EPC9/10
 //          can now be modified by user
+// 05.11.15 HekaEPC9USB interface type added
+//          Current gain scale factor can be corrected using 'HekaGCF.txt' correction factor file.
+//          Heka_SetCurrentGain() Now correctly maps gain list to gain excluding skipped index numbers.
 
 interface
 
@@ -33,6 +36,7 @@ interface
 const
 
 MaxEPC9Amplifiers = 4 ;
+Heka_GCFFileName = 'HekaGCF.txt' ; // Gain correct factor file name
 
 // defines for DA and AD channel numbering:
 LIH_MaxAdcChannels =       16 ;
@@ -156,9 +160,8 @@ LIH_StatusAdcOverflow = 4 ;
    EPC9_HasScaleEEPROM        = 11;
    EPC9_HasVrefX2AndF2Vmon    = 12;
 
-
-EPC8_StrobeBit = 14 ;
-EPC8_DisableBit = 15 ;
+   EPC8_StrobeBit = 14 ;
+   EPC8_DisableBit = 15 ;
 
 type
 
@@ -737,9 +740,6 @@ function EPC9_LoadFileProcType(
     procedure Heka_EPC9SetVoltageADCInput( var Value : Integer ) ;
     procedure HEKA_SetChannelMappings( var ADCChannelInputNumber : Array of Integer ) ;
 
-
-
-
 implementation
 
 uses seslabio ;
@@ -808,6 +808,8 @@ var
    GentleModeChange : Byte ;  // 1=0 gentle mode change
 
    DIGDefaultValue : Integer ;
+
+   GCF : double ; // Gain correction factor (loaded from HekaGCF.txt)
 
     EPC9_GetMuxAdcOffset : TEPC9_GetMuxAdcOffset;
     EPC9_GetStimDacOffset : TEPC9_GetStimDacOffset;
@@ -1213,14 +1215,16 @@ begin
 
 
 procedure HEKA_InitialiseBoard ;
-{ -------------------------------------------
-  Initialise Digidata 1200 interface hardware
-  -------------------------------------------}
+{ -------------------------------
+  Initialise  interface hardware
+  -------------------------------}
 var
-   ch,IAmplifier, Err, iBoard,i : Integer ;
+   ch,IAmplifier, Err, iBoard : Integer ;
    Path : ANSIString ;
    ErrorMsg : Array[0..511] of ANSIChar ;
    pLIH_Options : PLIH_OptionsType ;
+   GCFFileName : String ;
+    F : TextFile ;
 begin
 
      DeviceInitialised := False ;
@@ -1237,7 +1241,7 @@ begin
        HekaEPC9 : IAmplifier := EPC9_Epc9Ampl ;
        HekaEPC10 : IAmplifier := EPC9_Epc10Ampl ;
        HekaEPC10plus : IAmplifier := EPC9_Epc10PlusAmpl ;
-       HekaEPC10USB : IAmplifier := EPC9_Epc10USB ;
+       HekaEPC10USB,HekaEPC9USB : IAmplifier := EPC9_Epc10USB ;
        else IAmplifier := EPC9_Epc7Ampl ;
        end ;
 
@@ -1259,10 +1263,10 @@ begin
            else iBoard :=  LIH_ITC16Board ;
            end ;
         Err := LIH_InitializeInterface( ErrorMsg,
-                                 IAmplifier,
-                                 iBoard,
-                                 pLIH_Options,
-                                 SizeOf(TLIH_OptionsType) ) ;
+                                        IAmplifier,
+                                        iBoard,
+                                        pLIH_Options,
+                                        SizeOf(TLIH_OptionsType) ) ;
         EPC9Available := False ;
         EPC9MinCurrentGain := 1.0 ;
         end
@@ -1284,6 +1288,18 @@ begin
         EPC9_SetActiveBoard(0) ;
         EPC9_SetCurrentGainIndex(0) ;
         EPC9MinCurrentGain := EPC9_GetCurrentGain ;
+
+        // Load gain correction factor (if file exists in program directory)
+        GCFFileName :=  ExtractFilePath(ParamStr(0)) + Heka_GCFFileName ;
+        if FileExists( GCFFileName ) then begin
+           AssignFile( F, GCFFileName ) ;
+           Reset( F ) ;
+           Read(F, GCF ) ;
+           CloseFile(F) ;
+           if GCF = 0.0 then GCF := 1.0 ;
+           end
+        else GCF := 1.0 ;
+
         EPC9_SetMode(0,0) ;
         EPC9_SetCFastTot( 0.0 ) ;
         EPC9_SetCFastTau( 1E-6 ) ;
@@ -1924,7 +1940,7 @@ procedure Heka_GetCurrentGain(
 // Get current gain
 // -----------------
 begin
-     ScaleFactor := EPC9MinCurrentGain*1E-12 ;  // Convert to mV/pA
+     ScaleFactor := EPC9MinCurrentGain*GCF*1E-12 ;  // Convert to mV/pA
      Gain :=  EPC9_GetCurrentGain / EPC9MinCurrentGain ;
 
      end;
@@ -1968,7 +1984,8 @@ begin
 
    if not DeviceInitialised then Exit ;
 
-   EPC9_SetCurrentGainIndex( iGain ) ;
+   //EPC9_SetCurrentGainIndex( iGain ) ;
+
    case iGain of
        0 : EPC9Gain := EPC9_Gain_0005 ;
        1 : EPC9Gain := EPC9_Gain_0010 ;
@@ -1989,8 +2006,9 @@ begin
        16 : EPC9Gain := EPC9_Gain_1000 ;
        17 : EPC9Gain := EPC9_Gain_2000 ;
        else EPC9Gain := EPC9_Gain_0005 ;
-       EPC9_SetCurrentGainIndex( EPC9Gain ) ;
        end;
+
+     EPC9_SetCurrentGainIndex( EPC9Gain ) ;
 
      end;
 
