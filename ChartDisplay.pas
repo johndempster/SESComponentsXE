@@ -467,7 +467,7 @@ procedure TChartDisplay.Paint ;
   Update chart on display
   -----------------------}
 var
-   i,j,n,ch : Integer ;
+   i,j,ch : Integer ;
    OK : Boolean ;
    ChannelHeight,cTop,NumInUse,AvailableHeight,ChannelSpacing,LastActiveChannel : Integer ;
    TopOfChannels, BottomOfChannels : Integer ;
@@ -2029,10 +2029,9 @@ procedure TChartDisplay.Print ;
   3/4/99 Polyline function replaced by .LineTo() because it was
          causing a printing to hang up for unknown reason }
 var
-   i,j,n,ch,LastCh,xPix, yPix : Integer ;
+   i,j,ch,LastCh,xPix, yPix : Integer ;
    x : single ;
-   LeftMarginShift, TopMarginShift : Integer ;
-   OK : Boolean ;
+   LeftMarginShift : Integer ;
    ChannelHeight,cTop,NumInUse,AvailableHeight : Integer ;
    PrChan : Array[0..ChannelLimit] of TScopeChannel ;
    Bar : TRect ;
@@ -2198,10 +2197,9 @@ procedure TChartDisplay.CopyImageToClipboard ;
   21/2/00
   -----------------------------------------}
 var
-   i,j,n,ch,LastCh,XPix,YPix : Integer ;
+   i,j,ch,LastCh,XPix,YPix : Integer ;
    x : single ;
-   LeftMarginShift, TopMarginShift : Integer ;
-   OK : Boolean ;
+   LeftMarginShift : Integer ;
    ChannelHeight,cTop,NumInUse,AvailableHeight : Integer ;
    MFChan : Array[0..ChannelLimit] of TScopeChannel ;
    xy : ^TPointArray ;

@@ -1386,7 +1386,6 @@ function PVCAM_CheckFrameInterval(
 var
      Available : Word ;
      PixelReadoutTime : Word ;
-     NumPixels : Integer ;
      NumBytesPerFrame1 : Cardinal ;
 begin
      Result := False ;
@@ -1494,7 +1493,6 @@ function PVCAM_StartCapture(
 // --------------------------------
 
 var
-    ii : Integer ;
     NumFrames,NumBytesPerFrame1 : Cardinal ;
     Available : Word ;
     LongValue : DWord ;

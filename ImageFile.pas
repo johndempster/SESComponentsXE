@@ -631,6 +631,7 @@ begin
         PICFile : Result := PICOpenFile( FileName ) ;
         TIFFile,STKFile : Result := TIFOpenFile( FileName ) ;
         ICSFile : Result := ICSOpenFile( FileName ) ;
+        else Result := False ;
         end ;
      end ;
 
@@ -683,6 +684,7 @@ begin
                                            FrameWidth,
                                            FrameHeight,
                                            PixelDepth ) ;
+        Else Result := False ;
         end ;
      end ;
 
@@ -697,6 +699,7 @@ begin
           TIFFile : Result := TIFCloseFile ;
           STKFile : Result := STKCloseFile ;
           ICSFile : Result := ICSCloseFile ;
+          Else Result := False ;
           end ;
      end ;
 
@@ -720,6 +723,7 @@ begin
           TIFFile : Result := TIFLoadFrame( FrameNum, PFrameBuf ) ;
           STKFile : Result := STKLoadFrame( FrameNum, PFrameBuf ) ;
           ICSFile : Result := ICSLoadFrame( FrameNum, PFrameBuf ) ;
+          Else Result := False ;
           end ;
      end ;
 
@@ -753,6 +757,8 @@ begin
           PIntArray(PFrameBuf)^[i] := PByteArray(PFrameBuf)^[i] ;
           end ;
        end ;
+
+    Result := True ;
     end ;
 
 
@@ -775,6 +781,7 @@ begin
           TIFFile : Result := TIFSaveFrame( FrameNum, PFrameBuf ) ;
           STKFile : Result := STKSaveFrame( FrameNum, PFrameBuf ) ;
           ICSFile : Result := ICSSaveFrame( FrameNum, PFrameBuf ) ;
+          else Result := False ;
           end ;
      end ;
 
@@ -815,6 +822,8 @@ begin
 
     FreeMem( pBuf) ; // Dispose of buffer
 
+    Result := True ;
+
     end ;
 
 // BIORAD PIC file methods
@@ -829,12 +838,7 @@ function TImageFile.PICOpenFile(
 // ---------------------------
 var
     Done : Boolean ;        // Loop done flag
-    Magnification : Double ;
     PICNote : TPICNote ;    // PIC file note record
-    NoteText : ANSIString ;
-    NumSpaces : Integer ;
-    i  : Integer ;
-    LensMagnification : Single ;
     FrameRate : Single ;
 begin
 
@@ -985,9 +989,6 @@ function TImageFile.PICCreateFile(
 // ---------------------------------
 // Create empty BioRad PIC data file
 // ---------------------------------
-var
-    Done : Boolean ;        // Loop done flag
-
 begin
 
     Result := False ;
@@ -1033,11 +1034,6 @@ function TImageFile.PICCloseFile : Boolean ;
 // ---------------
 // Close PIC file
 // ---------------
-var
-     PICNote : TPICNote ;    // PIC file note record
-     FilePointer : Int64 ;
-     i : Integer ;
-     NoteText : ANSIString ;
 begin
      Result := False ;
 
@@ -1805,7 +1801,6 @@ var
     NumBytesPerImage : Cardinal ;
     NumBytes,nBytesPerLine : Cardinal ;
     IFDPointer : Int64 ;
-    OK : Boolean ;
 begin
 
     NumBytesPerImage := FFrameWidth*FFrameHeight*FNumBytesPerPixel ;
@@ -2042,8 +2037,6 @@ function TImageFile.STKCreateFile(
 // --------------------------
 var
     i : Integer ;
-    FilePointer : Int64 ;
-    NumBytesPerStrip,NumBytesToWrite,NumBytes : Cardinal ;
 begin
 
     Result := False ;
@@ -2162,11 +2155,10 @@ var
     Pars : Array[0..10] of String ;
     Values : Array[0..10] of Integer ;
     Done : Boolean ;        // Loop done flag
-    NumSpaces,NumBytes,NumValues : Integer ;
+    NumBytes,NumValues : Integer ;
     i,ix  : Integer ;
     iByte : Byte ;
     NumParameters,Code  : Integer ;
-    FrameRate : Single ;
     Key : String ;
 
     iValues : Array[0..MaxParameters-1] of Integer ;

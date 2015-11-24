@@ -109,7 +109,6 @@ type
     FLinesAvailable : Boolean ;
     FMaxPointsPerLine : Integer ;
     FLines : Array[0..MaxLines] of TLine ;
-    FNumLinesInPlot : Array[0..MaxPlots] of Integer ;
     FXAxis : TAxis ;
     FYAxis : Array[0..MaxPlots-1] of TAxis ;
     FYAxisLabelAtTop : Boolean ;
@@ -3394,7 +3393,6 @@ procedure TXMultiYPlot.DrawAnnotations(
 // ------------------------
 var
     i : Integer ;
-    iAsPointer : Pointer ;
     xPix,xEndPix,yPix : Integer ;
     x : Single ;
     pXAsSingle : ^Single ;

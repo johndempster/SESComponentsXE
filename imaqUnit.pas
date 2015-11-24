@@ -2317,7 +2317,7 @@ begin
         if Session.BufferIndex >= Session.NumFrameBuffers then Session.BufferIndex := 0 ;
         end ;
 
-     outputdebugString(PChar(format('%d %d ',[Session.FrameCounter, NewFrames]))) ;
+//     outputdebugString(PChar(format('%d %d ',[Session.FrameCounter, NewFrames]))) ;
 
     end ;
 

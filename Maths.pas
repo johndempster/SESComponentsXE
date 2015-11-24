@@ -2390,6 +2390,9 @@ begin
          end ;
 
       { Find points which are 75%, 50% and 25% of yMax }
+      iY25 := 0 ;
+      iY50 := 0 ;
+      iY75 := 0 ;
       for i := 0 to iEnd do begin
           y := Data.y[i] - yMin ;
           yRange := yMax - yMin ;
@@ -2407,7 +2410,8 @@ begin
           YSum := YSum + Data.y[i] ;
           XSum := XSum + Data.x[i] ;
           end ;
-      if YSum <> 0.0 then XYMean := XYSum / YSum ;
+      if YSum <> 0.0 then XYMean := XYSum / YSum
+                     else XYMean := 0.0 ;
       YMean := YSum / (iEnd+1) ;
       XMean :=  XSum / (iEnd+1) ;
 

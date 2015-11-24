@@ -2669,7 +2669,7 @@ procedure IMAQDX_CopyImageMono12Packed(
 // ---------------------------------------------------------------
 var
     x,y,ifrom,ito,FromByte,FromNibble : Integer ;
-    LoNibble,HiNibble,LoByte,HiByte : Word ;
+    LoNibble,HiByte : Word ;
 begin
 
     ito := 0 ;
@@ -2709,7 +2709,7 @@ procedure IMAQDX_CopyImageMono12PackedIIDC(
 // ----------------------------------------------------------------
 var
     x,y,ifrom,ito,FromByte,FromNibble : Integer ;
-    LoNibble,HiNibble,LoByte,HiByte : Word ;
+    LoNibble,HiByte : Word ;
 begin
 
     ito := 0 ;

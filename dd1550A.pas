@@ -616,7 +616,7 @@ procedure DIGD1550A_LoadLibrary  ;
   Load AXDIGD1550A.DLL library into memory
   -------------------------------------}
 var
-     DD1550APath,AxonDLL,FPGACodeFile,ProgramDir,FileName,SYSDrive : String ; // DLL file paths
+     DD1550APath,AxonDLL,ProgramDir,SYSDrive : String ; // DLL file paths
      SourcePath,TrialPath : string ;
      Path : Array[0..255] of Char ;
      VMaj,VMin : Integer ;

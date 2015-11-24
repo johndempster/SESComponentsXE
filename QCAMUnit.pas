@@ -1523,7 +1523,7 @@ procedure QCAMAPI_GetCameraReadoutSpeedList(
 // Return list of camera readout speeds
 // -------------------------------------
 var
-    IsSupported,IsSparse,isRange,i : Integer ;
+    i : Integer ;
     NumItems : Integer ;
     iTable : Array[0..99] of Integer ;
 begin
