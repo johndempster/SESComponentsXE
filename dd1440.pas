@@ -23,6 +23,9 @@ unit dd1440;
 // 12.08.15 64/32 bit version of wdapi1140.dll created when O/S detected
 // 21.08.15 AXdd1400.dll and wdapi1140.dll now acquired from PCLAMP or AXOCLAMP folder and copied
 //          to settings folder C:\Users\Public\Documents\SESLABIO
+// 06.01.15 AXdd1400.dll and wdapi1140.dll now explicitly loaded from C:\Users\Public\Documents\SESLABIO
+//          to ensure that DLLs in program folder are not loaded by default. Copying and
+//          loading now handled by DD1440_CopyAndLoadLibrary()
 
 interface
 
@@ -433,12 +436,15 @@ TDD1440_ADCtoVolts = Function(
 
   procedure DD1440_CloseLaboratoryInterface ;
 
+  function  DD1440_CopyAndLoadLibrary(
+          DLLName : string ;
+          SourcePath : string ;
+          DestPath : string ) : Thandle ;
+
   function  DD1440_LoadProcedure(
          Hnd : THandle ;       { Library DLL handle }
          Name : string         { Procedure name within DLL }
          ) : Pointer ;         { Return pointer to procedure }
-
-
 
    function TrimChar( Input : Array of ANSIChar ) : string ;
    procedure DD1440_CheckError( OK : ByteBool ) ;
@@ -484,8 +490,11 @@ var
    Err : Integer ;                           // Error number returned by Digidata
    ErrorMsg : Array[0..80] of ANSIChar ;         // Error messages returned by Digidata
 
-   LibraryHnd : THandle ;         // axDD1440.dll library handle
+   DD1440Hnd : THandle ;         // D1440.dll library handle
+   AXDD1400Hnd : THandle ;        // axDD1440.dll library handle
+   WDAPI1140Hnd : THandle ;       // WDAPI1140.dll library handle
    LibraryLoaded : boolean ;      // Libraries loaded flag
+
    Protocol : TDD1440_Protocol ;  // Digidata command protocol
    NumDevices : Integer ;
    DeviceInfo : Array[0..7] of TDD1440_Info ;
@@ -640,7 +649,7 @@ procedure DD1440_LoadLibrary  ;
   Load AXDD1440.DLL library into memory
   -------------------------------------}
 var
-     DD1440Path,AxonDLL,ProgramDir,FileName,SYSDrive : String ; // DLL file paths
+     DD1440Path,AxonDLL,DLLName,ProgramDir,FileName,SYSDrive : String ; // DLL file paths
      SourcePath,TrialPath : string ;
      Path : Array[0..255] of Char ;
      VMaj,VMin : Integer ;
@@ -673,7 +682,7 @@ begin
          if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
 
          if SourcePath <> '' then Break ;
-           end;
+         end;
 
      // If not available, use version from installation
      if SourcePath = '' then begin
@@ -681,76 +690,77 @@ begin
         if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
         end;
 
-     // Copy to settings folder
+     // Copy DLLs to settings folder
+
      if SourcePath <> '' then begin
-        CopyFile( PChar(SourcePath+AXonDLL), PChar(SettingsDirectory+AXonDLL), false ) ;
-        CopyFile( PChar(SourcePath+'wdapi1140.dll'), PChar(SettingsDirectory+'wdapi1140.dll'), false ) ;
+        // Copy and load Axon DLLs
+        AXDD1400Hnd := DD1440_CopyAndLoadLibrary( AxonDLL, SourcePath, SettingsDirectory ) ;
+        wdapi1140Hnd := DD1440_CopyAndLoadLibrary( 'wdapi1140.dll', SourcePath, SettingsDirectory ) ;
         end
      else ShowMessage( AxonDLL + ' missing from ' + SettingsDirectory ) ;
 
-     // Create 32/64 bit wdapi1140.dll depending on O/S
-  {   if SysUtils.TOSVersion.Architecture = arIntelX64 then begin
-        CopyFile( PChar(ProgramDir + 'wdapi1140.dll.64'),
-                  PChar(SettingsDirectory + 'wdapi1140.dll'), False ) ;
-        end
-     else begin
-        CopyFile( PChar(ProgramDir + 'wdapi1140.dll.32'),
-                  PChar(SettingsDirectory + 'wdapi1140.dll'), False ) ;
-        end;}
-
-     // Load main library
-     DD1440Path := SettingsDirectory + 'DD1440.DLL' ;
-     CopyFile( PChar(ProgramDir + 'dd1440.dll'),
-               PChar(DD1440Path), False ) ;
-     LibraryHnd := LoadLibrary(PChar(DD1440Path)) ;
+     // Load DLL which calls Axon DLLs
+     DD1440Hnd := DD1440_CopyAndLoadLibrary( 'DD1440.DLL', ProgramDir, SettingsDirectory ) ;
 
      { Get addresses of procedures in library }
-     if LibraryHnd > 0 then begin
+     if DD1440Hnd > 0 then begin
 
-        @DD1440_CountDevices := DD1440_LoadProcedure(LibraryHnd,'DD1440_CountDevices') ;
-        @DD1440_FindDevices := DD1440_LoadProcedure(LibraryHnd,'DD1440_FindDevices') ;
-        @DD1440_GetErrorText := DD1440_LoadProcedure(LibraryHnd,'DD1440_GetErrorText') ;
-        @DD1440_OpenDevice := DD1440_LoadProcedure(LibraryHnd,'DD1440_OpenDevice') ;
-        @DD1440_CloseDevice := DD1440_LoadProcedure(LibraryHnd,'DD1440_CloseDevice') ;
-        @DD1440_VoltsToDAC := DD1440_LoadProcedure(LibraryHnd,'DD1440_VoltsToDAC') ;
-        @DD1440_DACtoVolts := DD1440_LoadProcedure(LibraryHnd,'DD1440_DACtoVolts') ;
-        @DD1440_VoltsToADC := DD1440_LoadProcedure(LibraryHnd,'DD1440_VoltsToADC') ;
-        @DD1440_ADCtoVolts := DD1440_LoadProcedure(LibraryHnd,'DD1440_ADCtoVolts') ;
+        @DD1440_CountDevices := DD1440_LoadProcedure(DD1440Hnd,'DD1440_CountDevices') ;
+        @DD1440_FindDevices := DD1440_LoadProcedure(DD1440Hnd,'DD1440_FindDevices') ;
+        @DD1440_GetErrorText := DD1440_LoadProcedure(DD1440Hnd,'DD1440_GetErrorText') ;
+        @DD1440_OpenDevice := DD1440_LoadProcedure(DD1440Hnd,'DD1440_OpenDevice') ;
+        @DD1440_CloseDevice := DD1440_LoadProcedure(DD1440Hnd,'DD1440_CloseDevice') ;
+        @DD1440_VoltsToDAC := DD1440_LoadProcedure(DD1440Hnd,'DD1440_VoltsToDAC') ;
+        @DD1440_DACtoVolts := DD1440_LoadProcedure(DD1440Hnd,'DD1440_DACtoVolts') ;
+        @DD1440_VoltsToADC := DD1440_LoadProcedure(DD1440Hnd,'DD1440_VoltsToADC') ;
+        @DD1440_ADCtoVolts := DD1440_LoadProcedure(DD1440Hnd,'DD1440_ADCtoVolts') ;
 
-        @DD1440_GetTrigThreshold  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_GetTrigThreshold') ;
-        @DD1440_SetTrigThreshold  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_SetTrigThreshold') ;
-        @DD1440_SetDOValue  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_SetDOValue') ;
-        @DD1440_SetAOValue  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_SetAOValue') ;
-        @DD1440_GetDIValue  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_GetDIValue') ;
-        @DD1440_GetAIValue  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_GetAIValue') ;
-        @DD1440_GetAOPosition  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_GetAOPosition') ;
-        @DD1440_GetAIPosition  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_GetAIPosition') ;
-        @DD1440_IsAcquiring  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_IsAcquiring') ;
-        @DD1440_StopAcquisition  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_StopAcquisition') ;
-        @DD1440_StartAcquisition  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_StartAcquisition') ;
-        @DD1440_GetProtocol  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_GetProtocol') ;
-        @DD1440_SetProtocol  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_SetProtocol') ;
-//        @DD1440_GetBufferGranularity  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_GetBufferGranularity') ;
-        @DD1440_SetSerialNumber  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_SetSerialNumber') ;
-        @DD1440_GetDeviceInfo  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_GetDeviceInfo') ;
-//        @DD1440_Reset  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_Reset') ;
-        @DD1440_ReadTelegraphs  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_ReadTelegraphs') ;
-        @DD1440_GetTimeAtStartOfAcquisition  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_GetTimeAtStartOfAcquisition') ;
-        @DD1440_GetCalibrationParams  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_GetCalibrationParams') ;
-        @DD1440_SetCalibrationParams  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_SetCalibrationParams') ;
-        @DD1440_SetPowerOnData  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_SetPowerOnData') ;
-        @DD1440_GetPowerOnData  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_GetPowerOnData') ;
-        @DD1440_GetEepromParams  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_GetEepromParams') ;
-        @DD1440_SetEepromParams  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_SetEepromParams') ;
-        @DD1440_GetLastErrorText  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_GetLastErrorText') ;
-        @DD1440_GetLastError  := DD1440_LoadProcedure( LibraryHnd, 'DD1440_GetLastError') ;
+        @DD1440_GetTrigThreshold  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_GetTrigThreshold') ;
+        @DD1440_SetTrigThreshold  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_SetTrigThreshold') ;
+        @DD1440_SetDOValue  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_SetDOValue') ;
+        @DD1440_SetAOValue  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_SetAOValue') ;
+        @DD1440_GetDIValue  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_GetDIValue') ;
+        @DD1440_GetAIValue  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_GetAIValue') ;
+        @DD1440_GetAOPosition  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_GetAOPosition') ;
+        @DD1440_GetAIPosition  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_GetAIPosition') ;
+        @DD1440_IsAcquiring  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_IsAcquiring') ;
+        @DD1440_StopAcquisition  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_StopAcquisition') ;
+        @DD1440_StartAcquisition  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_StartAcquisition') ;
+        @DD1440_GetProtocol  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_GetProtocol') ;
+        @DD1440_SetProtocol  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_SetProtocol') ;
+//        @DD1440_GetBufferGranularity  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_GetBufferGranularity') ;
+        @DD1440_SetSerialNumber  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_SetSerialNumber') ;
+        @DD1440_GetDeviceInfo  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_GetDeviceInfo') ;
+//        @DD1440_Reset  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_Reset') ;
+        @DD1440_ReadTelegraphs  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_ReadTelegraphs') ;
+        @DD1440_GetTimeAtStartOfAcquisition  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_GetTimeAtStartOfAcquisition') ;
+        @DD1440_GetCalibrationParams  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_GetCalibrationParams') ;
+        @DD1440_SetCalibrationParams  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_SetCalibrationParams') ;
+        @DD1440_SetPowerOnData  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_SetPowerOnData') ;
+        @DD1440_GetPowerOnData  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_GetPowerOnData') ;
+        @DD1440_GetEepromParams  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_GetEepromParams') ;
+        @DD1440_SetEepromParams  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_SetEepromParams') ;
+        @DD1440_GetLastErrorText  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_GetLastErrorText') ;
+        @DD1440_GetLastError  := DD1440_LoadProcedure( DD1440Hnd, 'DD1440_GetLastError') ;
         LibraryLoaded := True ;
         end
-     else begin
-          ShowMessage( format('Unable to load %s library ',[DD1440Path])) ;
-          LibraryLoaded := False ;
-          end ;
+     else LibraryLoaded := False ;
+
      end ;
+
+
+function  DD1440_CopyAndLoadLibrary(
+          DLLName : string ;
+          SourcePath : string ;
+          DestPath : string ) : Thandle ;
+// ---------------------------------------------------------
+// Copy DLL library from source to destination path and load
+// ---------------------------------------------------------
+begin
+     CopyFile( PChar(SourcePath+DLLName), PChar(DestPath+DLLName), false ) ;
+     Result := LoadLibrary(PChar(DestPath+DLLName)) ;
+     if Result = 0 then ShowMessage('Unable to load ' + DestPath+DLLName );
+     end;
 
 
 function  DD1440_LoadProcedure(
@@ -936,7 +946,7 @@ begin
      Protocol.bDOEnable := false ;
      Protocol.uTerminalCount := 0;
      Protocol.bSaveAI:= false ;
-          Protocol.bSaveAO := false ;
+     Protocol.bSaveAO := false ;
 
      // Sampling interval
      Protocol.dSequencePeriodUS := dt*1E6 ;
@@ -1408,7 +1418,12 @@ begin
      DD1440_CloseDevice ;
 
      // Free DLL libraries
-     if LibraryHnd > 0 then FreeLibrary( LibraryHnd ) ;
+     if DD1440Hnd > 0 then FreeLibrary( DD1440Hnd ) ;
+     DD1440Hnd := 0 ;
+     if AxDD1400Hnd > 0 then FreeLibrary( AxDD1400Hnd ) ;
+     AxDD1400Hnd := 0 ;
+     if WDAPI1140Hnd > 0 then FreeLibrary( WDAPI1140Hnd ) ;
+     WDAPI1140Hnd := 0 ;
 
      if OutValues <> Nil then FreeMem( OutValues ) ;
      OutValues := Nil ;

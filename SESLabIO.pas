@@ -136,6 +136,9 @@ unit SESLabIO;
   03.07.15 DD1550A.pas Support for Digidata 1550A added (tested with 1550A) DD1550 support updated (not tested)
   21.08.15 SettingsDirectory now passed to DD1550 and DD1550A
   05.11.15 HekaEPC9USB interface added
+  08.01.16 Ensure FADCNumChannels > 1 when loaded by LoadFromXMLFile()
+           Interface now initialised by LoadFromXMLFile()
+           LoadFromXMLFile1() now checks if XML file contains settings and avoids access violation.
   ================================================================================ }
 
 interface
@@ -1049,13 +1052,12 @@ begin
      SettingsDirectory := GetSpecialFolder(CSIDL_COMMON_DOCUMENTS) + '\SESLABIO\';
      if not SysUtils.DirectoryExists(SettingsDirectory) then SysUtils.ForceDirectories(SettingsDirectory) ;
      SettingsFileName := SettingsDirectory + 'lab interface settings.xml' ;
-     if FileExists( SettingsFileName ) then LoadFromXMLFile( SettingsFileName ) ;
-     FDoNotSaveSettings := False ; // When TRUE do not save settings to SettingsFileName when component is destroyed
 
-     // Initialise laboratory interface hardware
-     OpenLabInterface( FLabInterfaceType,
-                       FDeviceNumber,
-                       FADCInputMode ) ;
+     // Load default settings and initialise laboratory interface hardware
+     if FileExists( SettingsFileName ) then LoadFromXMLFile( SettingsFileName )
+                                       else OpenLabInterface( FLabInterfaceType,FDeviceNumber,FADCInputMode ) ;
+
+     FDoNotSaveSettings := False ; // When TRUE do not save settings to SettingsFileName when component is destroyed
 
      end ;
 
@@ -5057,6 +5059,10 @@ begin
     CoInitialize(Nil) ;
     LoadFromXMLFile1( FileName ) ;
     CoUnInitialize ;
+
+    // Reset interface
+    OpenLabInterface( LabInterfaceType,FDeviceNumber,FADCInputMode ) ;
+
     end ;
 
 procedure TSESLabIO.LoadFromXMLFile1(
@@ -5093,10 +5099,21 @@ begin
        FindXMLNode(xmldoc.DocumentElement,'LABINTERFACESETTINGS',ProtNode,NodeIndex);
        end ;
 
+    // Exit if settings cannot be found
+    if ProtNode = Nil then begin
+       ShowMessage( 'Cannot find LABINTERFACESETTINGS in ' + FileName ) ;
+       XMLDoc.Active := False ;
+       XMLDoc := Nil ;
+       Exit ;
+       end;
+
     GetElementInt( ProtNode, 'INTERFACETYPE', FLabInterfaceType ) ;
     GetElementInt( ProtNode, 'DEVICENUMBER', FDeviceNumber ) ;
     GetElementInt( ProtNode, 'ADCINPUTMODE', FADCInputMode ) ;
+
     GetElementInt( ProtNode, 'ADCNUMCHANNELS', FADCNumChannels ) ;
+    FADCNumChannels := Max(FADCNumChannels,1) ; // Ensure > 1
+
     //GetElementInt( ProtNode, 'ADCMAXCHANNELS', FADCMaxChannels ) ;
     GetElementInt( ProtNode, 'ADCNUMSamples', FADCNumSamples ) ;
 

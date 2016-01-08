@@ -12,8 +12,11 @@ unit dd1550;
 //          Bug in AI channel mapping. If analog input number is not >= channel number
 //          channel mapping is mixed up. High channel numbers can NOT be mapped to low analog inputs
 // 13.07.15 64/32 bit version of wdapi1140.dll created when O/S detected
-// 21.08.15 AXdd1500.dll, wdapi1140.dll & DD1550fpga.bin now acquired from PCLAMP or AXOCLAMP folder and copied
+// 21.08.15 AXdd1550.dll, wdapi1140.dll & DD1550fpga.bin now acquired from PCLAMP or AXOCLAMP folder and copied
 //          to settings folder C:\Users\Public\Documents\SESLABIO
+// 06.01.15 AXdd1550.dll and wdapi1140.dll now explicitly loaded from C:\Users\Public\Documents\SESLABIO
+//          to ensure that DLLs in program folder are not loaded by default. Copying and
+//          loading now handled by Dig1550_CopyAndLoadLibrary()
 
 interface
 
@@ -424,6 +427,11 @@ TDIGD1550_ADCtoVolts = Function(
 
   procedure DIGD1550_CloseLaboratoryInterface ;
 
+  function  DIGD1550_CopyAndLoadLibrary(
+          DLLName : string ;
+          SourcePath : string ;
+          DestPath : string ) : Thandle ;
+
   function  DIGD1550_LoadProcedure(
          Hnd : THandle ;       { Library DLL handle }
          Name : string         { Procedure name within DLL }
@@ -471,7 +479,10 @@ var
    Err : Integer ;                           // Error number returned by Digidata
    ErrorMsg : Array[0..80] of ANSIChar ;         // Error messages returned by Digidata
 
-   LibraryHnd : THandle ;         // axDIGD1550.dll library handle
+   DD1550Hnd : THandle ;         // axDIGD1550.dll library handle
+   AxDD1550Hnd : THandle ;       // AxDD1550.dll library handle
+   wdapi1140Hnd : THandle ;      // wdapi1140.dll library handle
+
    LibraryLoaded : boolean ;      // Libraries loaded flag
    Protocol : TDIGD1550_Protocol ;  // Digidata command protocol
    NumDevices : Integer ;
@@ -615,7 +626,7 @@ procedure DIGD1550_LoadLibrary  ;
   Load AXDIGD1550.DLL library into memory
   -------------------------------------}
 var
-     DD1550Path,AxonDLL,ProgramDir,SYSDrive : String ; // DLL file paths
+     AxonDLL,ProgramDir,SYSDrive : String ; // DLL file paths
      SourcePath,TrialPath : string ;
      Path : Array[0..255] of Char ;
      VMaj,VMin : Integer ;
@@ -659,79 +670,73 @@ begin
 
      // Copy to settings folder
      if SourcePath <> '' then begin
-        CopyFile( PChar(SourcePath+AXonDLL), PChar(SettingsDirectory+AXonDLL), false ) ;
-        CopyFile( PChar(SourcePath+'wdapi1140.dll'), PChar(SettingsDirectory+'wdapi1140.dll'), false ) ;
+        AXDD1550Hnd := DIGD1550_CopyAndLoadLibrary( AxonDLL, SourcePath, SettingsDirectory ) ;
+        wdapi1140Hnd := DIGD1550_CopyAndLoadLibrary( 'wdapi1140.dll', SourcePath, SettingsDirectory ) ;
         CopyFile( PChar(SourcePath+'DD1550fpga.bin'), PChar(SettingsDirectory+'DD1550fpga.bin'), false ) ;
         end
      else ShowMessage( AxonDLL + ' missing from ' + SettingsDirectory ) ;
 
-     // Create 32/64 bit wdapi1140.dll depending on O/S
-{     if SysUtils.TOSVersion.Architecture = arIntelX64 then begin
-        CopyFile( PChar(ProgramDir + 'wdapi1140.dll.64'),
-                  PChar(ProgramDir + 'wdapi1140.dll'), False ) ;
-        end
-     else begin
-        CopyFile( PChar(ProgramDir + 'wdapi1140.dll.32'),
-                  PChar(ProgramDir + 'wdapi1140.dll'), False ) ;
-        end;}
+     // Load DLL which calls Axon DLLs
+     DD1550Hnd := DIGD1550_CopyAndLoadLibrary( 'DD1550.DLL', ProgramDir, SettingsDirectory ) ;
 
-     // Is Axon FPGA file present?
-{     FPGACodeFile :=  ProgramDir + 'DD1550fpga.bin' ;
-     if not FileExists(FPGACodeFile) then begin
-        ShowMessage( FPGACodeFile + ' missing from ' +ProgramDir );
-        end ;}
-
-     // Load main library
-     DD1550Path := SettingsDirectory + 'DD1550.DLL' ;
-     CopyFile( PChar(ProgramDir + 'dd1550.dll'), PChar(DD1550Path), False ) ;
-     LibraryHnd := LoadLibrary(PChar(DD1550Path)) ;
-
-     if LibraryHnd > 0 then begin
+     if DD1550Hnd > 0 then begin
         { Get addresses of procedures in library }
-        @DIGD1550_CountDevices := DIGD1550_LoadProcedure(LibraryHnd,'DIGD1550_CountDevices') ;
-        @DIGD1550_FindDevices := DIGD1550_LoadProcedure(LibraryHnd,'DIGD1550_FindDevices') ;
-        @DIGD1550_GetErrorText := DIGD1550_LoadProcedure(LibraryHnd,'DIGD1550_GetErrorText') ;
-        @DIGD1550_OpenDevice := DIGD1550_LoadProcedure(LibraryHnd,'DIGD1550_OpenDevice') ;
-        @DIGD1550_CloseDevice := DIGD1550_LoadProcedure(LibraryHnd,'DIGD1550_CloseDevice') ;
-        @DIGD1550_VoltsToDAC := DIGD1550_LoadProcedure(LibraryHnd,'DIGD1550_VoltsToDAC') ;
-        @DIGD1550_DACtoVolts := DIGD1550_LoadProcedure(LibraryHnd,'DIGD1550_DACtoVolts') ;
-        @DIGD1550_VoltsToADC := DIGD1550_LoadProcedure(LibraryHnd,'DIGD1550_VoltsToADC') ;
-        @DIGD1550_ADCtoVolts := DIGD1550_LoadProcedure(LibraryHnd,'DIGD1550_ADCtoVolts') ;
+        @DIGD1550_CountDevices := DIGD1550_LoadProcedure(dd1550Hnd,'DIGD1550_CountDevices') ;
+        @DIGD1550_FindDevices := DIGD1550_LoadProcedure(dd1550Hnd,'DIGD1550_FindDevices') ;
+        @DIGD1550_GetErrorText := DIGD1550_LoadProcedure(dd1550Hnd,'DIGD1550_GetErrorText') ;
+        @DIGD1550_OpenDevice := DIGD1550_LoadProcedure(dd1550Hnd,'DIGD1550_OpenDevice') ;
+        @DIGD1550_CloseDevice := DIGD1550_LoadProcedure(dd1550Hnd,'DIGD1550_CloseDevice') ;
+        @DIGD1550_VoltsToDAC := DIGD1550_LoadProcedure(dd1550Hnd,'DIGD1550_VoltsToDAC') ;
+        @DIGD1550_DACtoVolts := DIGD1550_LoadProcedure(dd1550Hnd,'DIGD1550_DACtoVolts') ;
+        @DIGD1550_VoltsToADC := DIGD1550_LoadProcedure(dd1550Hnd,'DIGD1550_VoltsToADC') ;
+        @DIGD1550_ADCtoVolts := DIGD1550_LoadProcedure(dd1550Hnd,'DIGD1550_ADCtoVolts') ;
 
-        @DIGD1550_GetTrigThreshold  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_GetTrigThreshold') ;
-        @DIGD1550_SetTrigThreshold  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_SetTrigThreshold') ;
-        @DIGD1550_SetDOValue  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_SetDOValue') ;
-        @DIGD1550_SetAOValue  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_SetAOValue') ;
-        @DIGD1550_GetDIValue  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_GetDIValue') ;
-        @DIGD1550_GetAIValue  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_GetAIValue') ;
-        @DIGD1550_GetAOPosition  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_GetAOPosition') ;
-        @DIGD1550_GetAIPosition  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_GetAIPosition') ;
-        @DIGD1550_IsAcquiring  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_IsAcquiring') ;
-        @DIGD1550_StopAcquisition  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_StopAcquisition') ;
-        @DIGD1550_StartAcquisition  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_StartAcquisition') ;
-        @DIGD1550_GetProtocol  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_GetProtocol') ;
-        @DIGD1550_SetProtocol  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_SetProtocol') ;
-//        @DIGD1550_GetBufferGranularity  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_GetBufferGranularity') ;
-        @DIGD1550_SetSerialNumber  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_SetSerialNumber') ;
-        @DIGD1550_GetDeviceInfo  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_GetDeviceInfo') ;
-        @DIGD1550_Reset  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_RESET') ;
-        @DIGD1550_ReadTelegraphs  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_ReadTelegraphs') ;
-        @DIGD1550_GetTimeAtStartOfAcquisition  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_GetTimeAtStartOfAcquisition') ;
-        @DIGD1550_GetCalibrationParams  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_GetCalibrationParams') ;
-        @DIGD1550_SetCalibrationParams  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_SetCalibrationParams') ;
-        @DIGD1550_SetPowerOnData  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_SetPowerOnData') ;
-        @DIGD1550_GetPowerOnData  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_GetPowerOnData') ;
-        @DIGD1550_GetEepromParams  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_GetEepromParams') ;
-        @DIGD1550_SetEepromParams  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_SetEepromParams') ;
-        @DIGD1550_GetLastErrorText  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_GetLastErrorText') ;
-        @DIGD1550_GetLastError  := DIGD1550_LoadProcedure( LibraryHnd, 'DIGD1550_GetLastError') ;
+        @DIGD1550_GetTrigThreshold  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_GetTrigThreshold') ;
+        @DIGD1550_SetTrigThreshold  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_SetTrigThreshold') ;
+        @DIGD1550_SetDOValue  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_SetDOValue') ;
+        @DIGD1550_SetAOValue  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_SetAOValue') ;
+        @DIGD1550_GetDIValue  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_GetDIValue') ;
+        @DIGD1550_GetAIValue  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_GetAIValue') ;
+        @DIGD1550_GetAOPosition  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_GetAOPosition') ;
+        @DIGD1550_GetAIPosition  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_GetAIPosition') ;
+        @DIGD1550_IsAcquiring  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_IsAcquiring') ;
+        @DIGD1550_StopAcquisition  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_StopAcquisition') ;
+        @DIGD1550_StartAcquisition  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_StartAcquisition') ;
+        @DIGD1550_GetProtocol  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_GetProtocol') ;
+        @DIGD1550_SetProtocol  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_SetProtocol') ;
+//        @DIGD1550_GetBufferGranularity  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_GetBufferGranularity') ;
+        @DIGD1550_SetSerialNumber  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_SetSerialNumber') ;
+        @DIGD1550_GetDeviceInfo  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_GetDeviceInfo') ;
+        @DIGD1550_Reset  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_RESET') ;
+        @DIGD1550_ReadTelegraphs  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_ReadTelegraphs') ;
+        @DIGD1550_GetTimeAtStartOfAcquisition  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_GetTimeAtStartOfAcquisition') ;
+        @DIGD1550_GetCalibrationParams  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_GetCalibrationParams') ;
+        @DIGD1550_SetCalibrationParams  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_SetCalibrationParams') ;
+        @DIGD1550_SetPowerOnData  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_SetPowerOnData') ;
+        @DIGD1550_GetPowerOnData  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_GetPowerOnData') ;
+        @DIGD1550_GetEepromParams  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_GetEepromParams') ;
+        @DIGD1550_SetEepromParams  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_SetEepromParams') ;
+        @DIGD1550_GetLastErrorText  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_GetLastErrorText') ;
+        @DIGD1550_GetLastError  := DIGD1550_LoadProcedure( dd1550Hnd, 'DIGD1550_GetLastError') ;
         LibraryLoaded := True ;
         end
-     else begin
-          ShowMessage( format('Unable to load %s library',[DD1550Path])) ;
-          LibraryLoaded := False ;
-          end ;
+     else LibraryLoaded := False ;
+
      end ;
+
+
+function  DIGD1550_CopyAndLoadLibrary(
+          DLLName : string ;
+          SourcePath : string ;
+          DestPath : string ) : Thandle ;
+// ---------------------------------------------------------
+// Copy DLL library from source to destination path and load
+// ---------------------------------------------------------
+begin
+     CopyFile( PChar(SourcePath+DLLName), PChar(DestPath+DLLName), false ) ;
+     Result := LoadLibrary(PChar(DestPath+DLLName)) ;
+     if Result = 0 then ShowMessage('Unable to load ' + DestPath+DLLName );
+     end;
 
 
 function  DIGD1550_LoadProcedure(
@@ -1369,8 +1374,12 @@ begin
      DIGD1550_CloseDevice ;
 
      // Free DLL libraries
-     if LibraryHnd > 0 then FreeLibrary( LibraryHnd ) ;
-     LibraryHnd := 0 ;
+     if DD1550Hnd > 0 then FreeLibrary(DD1550Hnd ) ;
+     DD1550Hnd := 0 ;
+     if AxDD1550Hnd > 0 then FreeLibrary(AxDD1550Hnd) ;
+     AxDD1550Hnd := 0 ;
+     if WDAPI1140Hnd > 0 then FreeLibrary(WDAPI1140Hnd) ;
+     WDAPI1140Hnd := 0 ;
 
      if OutValues <> Nil then FreeMem( OutValues ) ;
      OutValues := Nil ;
