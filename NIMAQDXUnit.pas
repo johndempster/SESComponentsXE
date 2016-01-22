@@ -25,6 +25,7 @@ unit NIMAQDXUnit;
 // 09-11-15 Support for Point Grey Grashopper 3 cameras added
 //          Min/Max/Incremental steps now checked by IMAQDX_SetAttribute() which is now a function returning value set
 // 16-11-15 Support for Mono12 packed formats added
+// 08-12-15 Min/max check in IMAQDX_SetAttribute() disabled because Basler camera reporting incorrect values
 
 interface
 
@@ -1161,7 +1162,7 @@ begin
         Exit ;
         end ;
      NumCameras := Session.NumCameras ;
-
+    // SelectedCamera := 1 ;
      SelectedCamera := Max(Min(SelectedCamera,Session.NumCameras-1),0) ;
      Session.SelectedCamera := SelectedCamera ;
      CameraInfo.Add( 'Interface Name: ' + IMAQDX_CharArrayToString(Session.CameraInfo[SelectedCamera].InterfaceName)) ;
@@ -2042,10 +2043,10 @@ begin
       BinFactor := IMAQdx_SetAttribute( Session,Session.AttrYBin, BinFactor ) ;
 
       // Left edge of CCD readout area
-      FrameLeft := IMAQdx_SetAttribute( Session,Session.AttrXOffset, FrameLeft ) ;
+      {FrameLeft :=} IMAQdx_SetAttribute( Session,Session.AttrXOffset, FrameLeft ) ;
 
       // Set top edge of CCD readout areas
-      FrameTop := IMAQdx_SetAttribute( Session,Session.AttrYOffset, FrameTop ) ;
+      {FrameTop :=} IMAQdx_SetAttribute( Session,Session.AttrYOffset, FrameTop ) ;
 
       // Set width of CCD readout areas
       FrameWidth := FrameRight - FrameLeft + 1 ;
@@ -2311,7 +2312,7 @@ begin
       // Keep within min-max limits and incremental steps
       IMAQDX_GetAttrRange( Session, Attribute, Min32,Max32,Inc32) ;
       If Inc32 > 0 then Value := (Value div Inc32)*Inc32 ;
-      Value := Min(Max(Value,Min32),Max32) ;
+     // Value := Min(Max(Value,Min32),Max32) ;
       Result := Value ;
 
       case Session.Attributes[Attribute].iType of

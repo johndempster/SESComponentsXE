@@ -1026,6 +1026,8 @@ type
     SessionOpen : Boolean ;
     BoardType : String ;
     AnalogVideoBoard : boolean ;
+    FrameWidthMax : Integer ;
+    FrameHeightMax : Integer ;
     BinFactorMax : Integer ;
     CameraName : string ;
     InterfaceID : Integer ;
@@ -1897,7 +1899,7 @@ begin
         Session.BinFactorMax := 4 ;
         BinFactorMax := Session.BinFactorMax ;
         Session.BinModeCom := 'Mode' ;
-        Session.BinModeVal[0] := 'Normal' ;
+        Session.BinModeVal[0] := 'AOI' ;
         for i := 1 to Session.BinFactorMax-1 do Session.BinModeVal[i] := 'Binning' ;
         Session.BinSizeCom := 'Bin Size' ;
         Session.BinSizeVal[0] := '' ;
@@ -1979,8 +1981,12 @@ begin
           CameraInfo.Add('Unable to determine horizontal pixel resolution') ;
           end ;
 
+     Session.FrameWidthMax := FrameWidthMax ;
+     Session.FrameHeightMax := FrameHeightMax ;
      CameraInfo.Add(format('Image size: %d x %d pixels (%d bits/pixel)',
                     [FrameWidthMax,FrameHeightMax,PixelDepth])) ;
+
+
 
      // Clear flags
      Session.AcquisitionInProgress := False ;
@@ -2006,13 +2012,14 @@ var
     FittedFrameTop : Integer ;
     FittedFrameWidth : Integer ;
     FittedFrameHeight : Integer ;
-
 begin
 
      FrameTop := FrameTop div BinFactor ;
      FrameLeft := FrameLeft div BinFactor ;
      FrameBottom := FrameBottom div BinFactor ;
      FrameRight := FrameRight div BinFactor ;
+
+     IMAQ_SetCameraAttributeString(Session.SessionID,Session.BinModeCom,'AOI') ;
 
      // Calculate valid set of ROI boundaries
      IMAQ_CheckError(imgSessionFitROI( Session.SessionID,
@@ -2028,7 +2035,7 @@ begin
 
      // Update region of interest
      FrameLeft := FittedFrameLeft*BinFactor ;
-     FrameTop := FittedFrameTop*BinFactor ;
+     FrameTop := (FittedFrameTop)*BinFactor ;
      FrameRight := FrameLeft + FittedFrameWidth*BinFactor -1 ;
      FrameBottom := FrameTop + FittedFrameHeight*BinFactor -1 ;
 
@@ -2089,6 +2096,8 @@ function IMAQ_StartCapture(
 var
     i,iGain : Integer ;
     s : ANSIString ;
+    BufSize,Err,AOIVStart,AOIVEnd : Integer ;
+    Buf : Array[0..255] of ANSIChar ;
 begin
 
     // Stop any acquisition which is in progress
@@ -2186,9 +2195,24 @@ begin
         end ;
      end ;
 
+     // Special processing to speed up VA-29MC-5M camera.
+     // Select camera AOI mode and only read selected lines.
+     if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then begin
+        AOIVStart := Min(FrameTop,Session.FrameHeightMax-501) ;
+        AOIVend := AOIVStart + Max(FrameHeight-1,500) ;
+        s := format('sva %d %d',[AOIVStart,AOIVend]) + #13 + #10;
+        BufSize := Length(s) ;
+        Err := imgSessionSerialFlush(Session.SessionID);
+        Err := imgSessionSerialWrite(Session.SessionID,PANSIChar(s),BufSize,1000);
+        Err := imgSessionSerialRead(Session.SessionID,@Buf,BufSize,1000);
+        Err := imgSessionSerialRead(Session.SessionID,@Buf,BufSize,1000);
+        outputdebugstring(pchar(format('%s %d %d %d',[s,length(s),BufSize,Err])));
+        end
+     else AOIVStart := 0 ;
+
     // Set CCD readout region
     IMAQ_CheckError( imgSessionConfigureROI( Session.SessionID,
-                                             FrameTop div BinFactor,
+                                            (FrameTop div BinFactor) - AOIVStart,
                                              FrameLeft div BinFactor,
                                              FrameHeight div BinFactor,
                                              FrameWidth div BinFactor )) ;
@@ -2228,6 +2252,9 @@ begin
     // Set binning/normal mode
     IMAQ_SetCameraAttributeString(Session.SessionID,Session.BinModeCom,Session.BinModeVal[BinFactor-1]) ;
     IMAQ_SetCameraAttributeString(Session.SessionID,Session.BinSizeCom,Session.BinSizeVal[BinFactor-1]) ;
+
+//  IMAQ_SetCameraAttributeString(Session.SessionID,Session.BinModeCom,'AOI') ;
+//    IMAQ_SetCameraAttributeString( Session.SessionID,'AOI','Top') ;
 
     end ;
 
