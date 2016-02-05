@@ -103,7 +103,7 @@ type
         PhotometricInterpretation : Cardinal ;
         Compression : Cardinal ;
         NumStrips : Cardinal ;
-        StripOffsetsPointer : Cardinal ;
+        StripOffsetsPointer : UInt64 ;
         StripOffsets : Array[0..cIFDMaxStrips-1] of UInt64 ;
         StripByteCountsPointer : UInt64 ;
         StripByteCounts : Array[0..cIFDMaxStrips-1] of UInt64 ;
@@ -1378,7 +1378,7 @@ begin
 
      // Open file
      FileHandle := FileOpen( FileName, fmOpenRead ) ;
-     if FileHandle >= 0 then FileIsOpen := True
+     if NativeInt(FileHandle) > 0 then FileIsOpen := True
      else begin
         FErrorMessage := 'TIFF: Unable to open ' + FileName ;
         Exit ;
@@ -1465,12 +1465,15 @@ function TImageFile.TIFLoadHeader(
 // ---------------------
 // Load TIFF file header
 // ---------------------
+var
+    nn : Integer ;
 begin
 
     Result := False ;
 
     FileSeek(FileHandle,0,0) ;
-    FileRead(FileHandle, TIFFHeader.ByteOrder,SizeOf(TIFFHeader.ByteOrder)) ;
+    nn := FileRead(FileHandle, TIFFHeader.ByteOrder,SizeOf(TIFFHeader.ByteOrder)) ;
+    outputdebugstring(pchar(format('nn=%d',[nn])));
     if FileRead(FileHandle, TIFFHeader.Signature,SizeOf(TIFFHeader.Signature))
        <> SizeOf(TIFFHeader.Signature) then begin
         FErrorMessage := 'TIFF: Unable to read file header of' + FileName ;
@@ -1497,6 +1500,7 @@ begin
        // Standard TIFF, 4 byte offsets
        TIFFHeader.OffsetByteSize := 4 ;
        TIFFHeader.Reserved := 0 ;
+       TIFFHeader.IFDOffset := 0 ;
        FileRead(FileHandle, TIFFHeader.IFDOffset,TIFFHeader.OffsetByteSize) ;
        end ;
 
@@ -1520,7 +1524,7 @@ begin
     TIFFHeader.ByteOrder := LittleEndian ;
     FileWrite(FileHandle, TIFFHeader.ByteOrder,SizeOf(TIFFHeader.ByteOrder)) ;
 
-    TIFFHeader.Signature := TIFSignature ;
+    if TIFFHeader.Signature <> TIFSignature then TIFFHeader.Signature := BigTIFSignature ;
     FileWrite(FileHandle, TIFFHeader.Signature,SizeOf(TIFFHeader.Signature)) ;
 
     if TIFFHeader.Signature = BigTIFSignature then begin
@@ -1683,7 +1687,7 @@ var
     Done : Boolean ;
     NumIFDEntries : Integer ;
     FieldType : Integer ;
-    NumValues : Cardinal ;
+    NumValues,nRead : Cardinal ;
     FileOffset : UInt64 ;
     Value : Single ;
     Values : Array[0..99] of Cardinal ;
@@ -1700,24 +1704,23 @@ begin
 
     Done := False ;
     NumIFDEntries := 0 ;
-    while not Done do begin
-
-        // Read IFD entry
-        if FileRead(FileHandle, IFDEntry, SizeOf(TTiffIFDEntry))
-           = SizeOf(TTiffIFDEntry) then begin
-           IFDList[NumIFDEntries] := IFDEntry ;
-           Inc(NumIFDEntries) ;
-           Dec(IFDCount) ;
-           if IFDCount = 0 then Done := True ;
-           end
-        else begin
+    while (not Done) and (IFDCount > 0) do begin
+        FileRead(FileHandle, IFDList[NumIFDEntries].Tag, SizeOf(IFDList[NumIFDEntries].Tag)) ;
+        FileRead(FileHandle, IFDList[NumIFDEntries].FieldType, SizeOf(IFDList[NumIFDEntries].FieldType)) ;
+        IFDList[NumIFDEntries].Count := 0 ;
+        FileRead(FileHandle, IFDList[NumIFDEntries].Count, TIFFHeader.OffsetByteSize) ;
+        IFDList[NumIFDEntries].Offset := 0 ;
+        nRead := FileRead(FileHandle, IFDList[NumIFDEntries].Offset, TIFFHeader.OffsetByteSize) ;
+        Inc(NumIFDEntries) ;
+        Dec(IFDCount) ;
+        if nRead <>  TIFFHeader.OffsetByteSize then begin
            FErrorMessage := 'TIFF: Error reading IFD' ;
            Done := True ;
            end ;
         end ;
 
     IFD.NextIFDOffset := 0 ;
-    FileRead(FileHandle, IFD.NextIFDOffset, SizeOf(IFD.NextIFDOffset) ) ;
+    FileRead(FileHandle, IFD.NextIFDOffset, TIFFHeader.OffsetByteSize ) ;
 
     // Image dimensions
     GetIFDEntry( IFDList,NumIFDEntries,ImageWidthTag,FieldType,NumValues,FFrameWidth) ;
@@ -1807,7 +1810,7 @@ begin
        for i := 0 to High(IFD.StripOffsets) do IFD.StripOffsets[i] := 0 ;
        if IFD.NumStrips > 1 then begin
           FileSeek( FileHandle, FileOffset, 0 ) ;
-          FileRead( FileHandle, IFD.StripOffsets, IFD.NumStrips*4 ) ;
+          FileRead( FileHandle, IFD.StripOffsets, IFD.NumStrips*TIFFHeader.OffsetByteSize ) ;
           end
        else IFD.StripOffsets[0] := FileOffset ;
        end
@@ -1820,7 +1823,7 @@ begin
        for i := 0 to High(IFD.StripByteCounts) do IFD.StripByteCounts[i] := 0 ;
        if IFD.NumStrips > 1 then begin
           FileSeek( FileHandle, FileOffset, 0 ) ;
-          FileRead( FileHandle, IFD.StripByteCounts, IFD.NumStrips*4 ) ;
+          FileRead( FileHandle, IFD.StripByteCounts, IFD.NumStrips*TIFFHeader.OffsetByteSize ) ;
           end
        else IFD.StripByteCounts[0] := FileOffset ;
        end
