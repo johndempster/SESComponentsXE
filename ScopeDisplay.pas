@@ -119,6 +119,7 @@ unit ScopeDisplay;
   29.09.15 ... JD Cursor link line now displays correctly when all-channel spanning cursors mode in use
                   trailing ', ' now removed from cursor text.
   16.10.15 ... JD Data exported to clipboard now min/max compressed to less than 20000 points.
+  08.02.16 ... JD .GridSpacing added to channel object (indicates vertical interval between horizontal grid lines
   }
 
 interface
@@ -179,6 +180,7 @@ type
          YSize : Single ;
          xLast : Integer ;
          yLast : Integer ;
+         GridSpacing : single ;
          end ;
     TMousePos = ( TopLeft,
               TopRight,
@@ -334,6 +336,8 @@ type
 
     procedure SetChanColor( Ch : Integer ; Value : TColor ) ;
     function GetChanColor( Ch : Integer ) : TColor ;
+
+    function GetChanGridSpacing( Ch : Integer ) : Single ;
 
     procedure SetXMin( Value : Integer ) ;
     procedure SetXMax( Value : Integer ) ;
@@ -498,6 +502,7 @@ type
     property ChanOffsets[ i : Integer ] : Integer read GetChanOffset write SetChanOffset ;
     property ChanVisible[ i : Integer ] : boolean read GetChanVisible write SetChanVisible ;
     property ChanColor[ i : Integer ] : TColor read GetChanColor write SetChanColor ;
+    property ChanGridSpacing[ i : Integer ] : single read GetChanGridSpacing ;
     property YSize[ i : Integer ] : Single read GetYSize write SetYSize ;
     property YMin[ i : Integer ] : single read GetYMin write SetYMin ;
     property YMax[ i : Integer ] : single read GetYMax write SetYMax ;
@@ -1229,6 +1234,7 @@ begin
          YTickMax := YTickSize*Floor(yScaledMax/YTickSize) ;
          YTickMin := YTickSize*Ceil(yScaledMin/YTickSize) ;
          NumTicks := Round((YTickMax - YTickMin)/YTickSize) + 1 ;
+         Channel[ch].GridSpacing := YTickSize ;
 
          // Plot ticks
          YTick := YTickMin ;
@@ -2173,6 +2179,16 @@ begin
      Result := Channel[Ch].CalBar ;
      end ;
 
+function TScopeDisplay.GetChanGridSpacing(
+          Ch : Integer
+          ) : single ;
+{ -----------------------------------
+  Get a channel grid spacing
+  ----------------------------------- }
+begin
+     Ch := IntLimitTo(Ch,0,ScopeChannelLimit) ;
+     Result := Channel[Ch].GridSpacing ;
+     end ;
 
 procedure TScopeDisplay.SetChanOffset(
           Ch : Integer ;
