@@ -17,6 +17,7 @@ unit dd1550;
 // 06.01.15 AXdd1550.dll and wdapi1140.dll now explicitly loaded from C:\Users\Public\Documents\SESLABIO
 //          to ensure that DLLs in program folder are not loaded by default. Copying and
 //          loading now handled by Dig1550_CopyAndLoadLibrary()
+// 09.02.16 wdapi1140.dll now loaded before axdd1550.dll to allow axdd1550.dll to be loaded under Windows XP
 
 interface
 
@@ -670,8 +671,8 @@ begin
 
      // Copy to settings folder
      if SourcePath <> '' then begin
-        AXDD1550Hnd := DIGD1550_CopyAndLoadLibrary( AxonDLL, SourcePath, SettingsDirectory ) ;
         wdapi1140Hnd := DIGD1550_CopyAndLoadLibrary( 'wdapi1140.dll', SourcePath, SettingsDirectory ) ;
+        AXDD1550Hnd := DIGD1550_CopyAndLoadLibrary( AxonDLL, SourcePath, SettingsDirectory ) ;
         CopyFile( PChar(SourcePath+'DD1550fpga.bin'), PChar(SettingsDirectory+'DD1550fpga.bin'), false ) ;
         end
      else ShowMessage( AxonDLL + ' missing from ' + SettingsDirectory ) ;

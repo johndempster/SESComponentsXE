@@ -26,6 +26,7 @@ unit dd1440;
 // 06.01.15 AXdd1400.dll and wdapi1140.dll now explicitly loaded from C:\Users\Public\Documents\SESLABIO
 //          to ensure that DLLs in program folder are not loaded by default. Copying and
 //          loading now handled by DD1440_CopyAndLoadLibrary()
+// 09.02.16 wdapi1140.dll now loaded before axdd1400.dll to allow axdd1400.dll to be loaded under Windows XP
 
 interface
 
@@ -694,8 +695,8 @@ begin
 
      if SourcePath <> '' then begin
         // Copy and load Axon DLLs
-        AXDD1400Hnd := DD1440_CopyAndLoadLibrary( AxonDLL, SourcePath, SettingsDirectory ) ;
         wdapi1140Hnd := DD1440_CopyAndLoadLibrary( 'wdapi1140.dll', SourcePath, SettingsDirectory ) ;
+        AXDD1400Hnd := DD1440_CopyAndLoadLibrary( AxonDLL, SourcePath, SettingsDirectory ) ;
         end
      else ShowMessage( AxonDLL + ' missing from ' + SettingsDirectory ) ;
 

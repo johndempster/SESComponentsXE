@@ -11,11 +11,12 @@ unit dd1550A;
 //          but no trigger occurs.
 //          Bug in AI channel mapping. If analog input number is not >= channel number
 //          channel mapping is mixed up. High channel numbers can NOT be mapped to low analog inputs
-// 21.08.15 AXdd1550.dll, wdapi1140.dll & DD1550fpga.bin now acquired from PCLAMP or AXOCLAMP folder and copied
+// 21.08.15 AXdd1550A.dll, wdapi1140.dll & DD1550fpga.bin now acquired from PCLAMP or AXOCLAMP folder and copied
 //          to settings folder C:\Users\Public\Documents\SESLABIO
-// 06.01.15 AXdd1550.dll and wdapi1140.dll now explicitly loaded from C:\Users\Public\Documents\SESLABIO
+// 06.01.15 AXdd1550A.dll and wdapi1140.dll now explicitly loaded from C:\Users\Public\Documents\SESLABIO
 //          to ensure that DLLs in program folder are not loaded by default. Copying and
 //          loading now handled by Dig1550A_CopyAndLoadLibrary()
+// 09.02.16 wdapi1140.dll now loaded before axdd1550A.dll to allow axdd1550A.dll to be loaded under Windows XP
 
 interface
 
@@ -671,8 +672,8 @@ begin
 
      // Copy to settings folder
      if SourcePath <> '' then begin
-        AXDD1550AHnd := DIGD1550A_CopyAndLoadLibrary( AxonDLL, SourcePath, SettingsDirectory ) ;
         wdapi1140Hnd := DIGD1550A_CopyAndLoadLibrary( 'wdapi1140.dll', SourcePath, SettingsDirectory ) ;
+        AXDD1550AHnd := DIGD1550A_CopyAndLoadLibrary( AxonDLL, SourcePath, SettingsDirectory ) ;
         CopyFile( PChar(SourcePath+'DD1550Afpga.bin'), PChar(SettingsDirectory+'DD1550Afpga.bin'), false ) ;
         end
      else ShowMessage( AxonDLL + ' missing from ' + SettingsDirectory ) ;
