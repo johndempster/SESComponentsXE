@@ -1680,7 +1680,7 @@ Function TImageFile.TIFLoadIFD(
 // Load image file directory from file
 // -----------------------------------
 var
-    IFDCount : SmallInt ;
+    IFDCount : UInt64 ;
     i : Integer ;
     IFDEntry : TTiffIFDEntry ;
     IFDList : Array[0..100] of  TTiffIFDEntry ;
@@ -1700,7 +1700,9 @@ begin
     FileSeek(FileHandle,IFDPointer,0) ;
 
     // Read number of entries in IFD
-    FileRead(FileHandle, IFDCount, SizeOf(IFDCount) ) ;
+    IFDCount := 0 ;
+    if TIFFHeader.Signature = BigTIFSignature then FileRead(FileHandle, IFDCount, SizeOf(UInt64) )
+                                              else FileRead(FileHandle, IFDCount, Sizeof(Word) ) ;
 
     Done := False ;
     NumIFDEntries := 0 ;
@@ -1804,34 +1806,36 @@ begin
     else IFD.UIC2Tag := 0 ;
 
     // Get pointers to image strips
-    OK := GetIFDEntry( IFDList, NumIFDEntries, StripOffsetsTag,
-                       FieldType, IFD.NumStrips, FileOffset ) ;
+    OK := GetIFDEntry( IFDList,NumIFDEntries,StripOffsetsTag,FieldType,IFD.NumStrips,FileOffset ) ;
     if OK then begin
-       for i := 0 to High(IFD.StripOffsets) do IFD.StripOffsets[i] := 0 ;
        if IFD.NumStrips > 1 then begin
           FileSeek( FileHandle, FileOffset, 0 ) ;
-          FileRead( FileHandle, IFD.StripOffsets, IFD.NumStrips*TIFFHeader.OffsetByteSize ) ;
+          for i := 0 to IFD.NumStrips-1 do begin
+              IFD.StripOffsets[i] := 0 ;
+              FileRead( FileHandle, IFD.StripOffsets[i], TIFFHeader.OffsetByteSize ) ;
+              end;
           end
        else IFD.StripOffsets[0] := FileOffset ;
        end
     else Exit ;
 
     // Get number of bytes in each image strip
-    OK := GetIFDEntry( IFDList, NumIFDEntries, StripByteCountsTag,
-                       FieldType, IFD.NumStrips, FileOffset ) ;
+    OK := GetIFDEntry(IFDList,NumIFDEntries,StripByteCountsTag,FieldType,IFD.NumStrips,FileOffset) ;
     if OK then begin
        for i := 0 to High(IFD.StripByteCounts) do IFD.StripByteCounts[i] := 0 ;
        if IFD.NumStrips > 1 then begin
           FileSeek( FileHandle, FileOffset, 0 ) ;
-          FileRead( FileHandle, IFD.StripByteCounts, IFD.NumStrips*TIFFHeader.OffsetByteSize ) ;
-          end
+          for i := 0 to IFD.NumStrips-1 do begin
+              IFD.StripByteCounts[i] := 0 ;
+              FileRead(FileHandle,IFD.StripByteCounts[i],TIFFHeader.OffsetByteSize ) ;
+              end
+           end
        else IFD.StripByteCounts[0] := FileOffset ;
        end
     else Exit ;
 
     // Get number of image rows in each strip
-    GetIFDEntry( IFDList, NumIFDEntries, RowsPerStripTag,
-                 FieldType, NumValues, IFD.RowsPerStrip ) ;
+    GetIFDEntry(IFDList,NumIFDEntries,RowsPerStripTag,FieldType,NumValues,IFD.RowsPerStrip ) ;
 
     Result := True ;
 
@@ -1923,6 +1927,7 @@ var
     NumBytesPerImage : UInt64 ;
     NumBytes,nBytesPerLine : UInt64 ;
     IFDPointer : UInt64 ;
+    FieldType : Integer ;
 begin
 
     NumBytesPerImage := FFrameWidth*FFrameHeight*FNumBytesPerPixel ;
@@ -2010,9 +2015,9 @@ begin
     // Write strip offsets & byte counts
     if IFD.NumStrips > 1 then begin
        IFD.StripOffsetsPointer := FileSeek( FileHandle, 0, 1 ) ;
-       FileWrite( FileHandle, IFD.StripOffsets, cIFDMaxStrips*SizeOf(UInt64) ) ;
+       for i := 0 to IFD.NumStrips-1 do FileWrite( FileHandle, IFD.StripOffsets[i], TIFFHeader.OffsetByteSize ) ;
        IFD.StripByteCountsPointer := FileSeek( FileHandle, 0, 1 ) ;
-       FileWrite( FileHandle, IFD.StripByteCounts, cIFDMaxStrips*SizeOf(UInt64) ) ;
+       for i := 0 to IFD.NumStrips-1 do FileWrite( FileHandle, IFD.StripByteCounts[i], TIFFHeader.OffsetByteSize ) ;
        end
     else begin
        // Offsets stored in .Offset field for single strip files
@@ -2021,10 +2026,10 @@ begin
        end ;
 
     // Update strip offsets & byte counts IFD entry
-    SetIFDEntry( IFDList, IFDCount, StripOffsetsTag, LongField,
-                 IFD.NumStrips, IFD.StripOffsetsPointer ) ;
-    SetIFDEntry( IFDList, IFDCount, StripByteCountsTag, LongField,
-                 IFD.NumStrips, IFD.StripByteCountsPointer ) ;
+    if TIFFHeader.Signature = BigTIFSignature then FieldType := LongField
+                                              else FieldType := Long8Field ;
+    SetIFDEntry(IFDList,IFDCount,StripOffsetsTag,FieldType,IFD.NumStrips,IFD.StripOffsetsPointer ) ;
+    SetIFDEntry(IFDList,IFDCount,StripByteCountsTag,FieldType,IFD.NumStrips,IFD.StripByteCountsPointer ) ;
 
     // Number of image rows in each strip
     IFD.RowsPerStrip := IFD.StripByteCounts[0] div
@@ -2058,9 +2063,9 @@ begin
 
     FileSeek( FileHandle, IFDPointer, 0 ) ;
 
-    // Write number of IFD entries
-    FileWrite(FileHandle, IFDCount, SizeOf(IFDCount) ) ;
-
+    // Write number of IFD entries (4 bytes TIFF / 8 bytes BigTIFF)
+    if TIFFHeader.Signature = BigTIFSignature then FileWrite(FileHandle, IFDCount, SizeOf(UInt64) )
+                                              else FileWrite(FileHandle, IFDCount, Sizeof(Word) ) ;
     // Write IFD entries
     for i := 0 to IFDCount-1 do begin
         FileWrite(FileHandle, IFDList[i].Tag, Sizeof(IFDList[i].Tag)) ;
