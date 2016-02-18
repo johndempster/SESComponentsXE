@@ -2136,9 +2136,12 @@ begin
           if ExternalTrigger = CamFreeRun then s := 'None' ;
           IMAQ_SetCameraAttributeString( Session.SessionID,'Sequence Mode',s) ;
           // Turn fan off for pixel shift modes
-          if NumPixelShiftFrames > 1 then begin
+          if NumPixelShiftFrames > 0 then begin
              IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOff) ;
-             end ;
+             end
+          else begin
+             IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOn) ;
+             end;
           end;
 
        // Set exposure time
@@ -2206,7 +2209,7 @@ begin
         Err := imgSessionSerialWrite(Session.SessionID,PANSIChar(s),BufSize,1000);
         Err := imgSessionSerialRead(Session.SessionID,@Buf,BufSize,1000);
         Err := imgSessionSerialRead(Session.SessionID,@Buf,BufSize,1000);
-        outputdebugstring(pchar(format('%s %d %d %d',[s,length(s),BufSize,Err])));
+        //outputdebugstring(pchar(format('%s %d %d %d',[s,length(s),BufSize,Err])));
         end
      else AOIVStart := 0 ;
 

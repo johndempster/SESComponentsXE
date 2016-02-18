@@ -85,10 +85,10 @@ type
 
     TTiffHeader = packed record
         ByteOrder : Word ;
-        Signature : Word ;         // 43
-        OffsetByteSize : Word ;    // Always 8
+        Signature : Word ;         // 42/43
+        OffsetByteSize : Word ;    // 8 or 4 bytes
         Reserved : Word ;          // Always 0
-        IFDOffset : Int64 ;
+        IFDOffset : UInt64 ;
         end ;
 
     TTiffIFDEntry = packed record
@@ -109,9 +109,9 @@ type
         StripByteCounts : Array[0..cIFDMaxStrips-1] of UInt64 ;
         RowsPerStrip : Cardinal ;
         ResolutionUnit : Cardinal ;
-        XResolutionPointer : Cardinal ;
-        YResolutionPointer : Cardinal ;
-        SamplesPerPixelPointer : Cardinal ;
+        XResolutionPointer : UInt64 ;
+        YResolutionPointer : UInt64 ;
+        SamplesPerPixelPointer : UInt64 ;
         Description : String ;
         DateTime : String ;
         Copyright : String ;
@@ -153,6 +153,7 @@ type
     FErrorMessage : String ;   // Last error
     TIFSingleFrame : Boolean ;     // TIFF file contains a single image
     TIFBigTIFF : Boolean ;          //
+    FSoftware : string ;      // Name and version of software used to create file
 
     // PIC fields
     PICHeader : TPICFileHeader ;      // PIC file header block
@@ -162,8 +163,11 @@ type
     TIFFHeader : TTiffHeader ;  // TIFF file header
     UICSTKFormat : Boolean ;
 
-    FIFDPointerList : Array[0..1000000] of Int64 ;
+    FIFDPointerList : Array[0..1000000] of UInt64 ;
     IFD : TImageFileDirectory ; // Current Image file directory
+
+    Keep : UInt64 ;
+    Keep1 : UInt64 ;
 
 //  PIC file methods
 //  ----------------
@@ -223,7 +227,7 @@ type
     function TIFSaveHeader( FileHandle : THandle ) : Boolean ;
 
     Function TIFLoadIFD(
-         IFDPointer : Int64   // Pointer offset to IFD in data file
+         IFDPointer : UInt64   // Pointer offset to IFD in data file
          ) : Boolean ;
 
     Function TIFSaveIFD(
@@ -335,10 +339,10 @@ type
 
     procedure SetIFDEntry(
               var IFD : Array of TTiffIFDEntry ; // IFD list being created
-              var NumEntries : Word ;            // No. of entries in list (IN/OUT)
+              var NumEntries : UInt64 ;            // No. of entries in list (IN/OUT)
               Tag : Integer ;                    // Tag to be added
               FieldType : Integer ;              // Field type
-              NumValues : Integer ;              // No. of values in entry
+              NumValues : UInt64 ;              // No. of values in entry
               Value : UInt64 ) ;                 // Entry value/offset
 
     function ReadRationalField(
@@ -347,7 +351,7 @@ type
              ) : Double ;            // Return as double
 
     procedure WriteRationalField(
-              FileOffset : UInt64 ;  // Offset to write to
+              var FileOffset : UInt64 ;  // Offset to write to
               Value : Double          // Value
               );
 
@@ -449,6 +453,7 @@ type
     Property ZResolution : Double Read FZResolution Write FZResolution ;
     Property TResolution : Double Read FTResolution Write FTResolution ;
     Property ErrorMessage : String Read FErrorMessage ;
+    Property Software : string Read FSoftware write FSoftware ;
   end;
 
 procedure Register;
@@ -599,6 +604,7 @@ begin
      FTResolution := 1.0 ;
 
      FDescription := '' ;
+     FSoftware := '' ;
 
      Properties := TStringList.Create ;
 
@@ -1073,7 +1079,7 @@ begin
 
         // Move pointer to end of file
         FileSeek( FileHandle,
-                  Int64(PICHeader.NumFrames)*Int64(FNumBytesPerFrame)+ Int64(SizeOf(PICHeader)),
+                  UInt64(PICHeader.NumFrames)*UInt64(FNumBytesPerFrame)+ UInt64(SizeOf(PICHeader)),
                   0 ) ;
 
         // Write X/Y resolution
@@ -1137,7 +1143,7 @@ function TImageFile.PICLoadFrame(
 // Load frame from BioRad PIC data file
 // ----------------------------------------
 var
-    FilePointer : Int64 ;      // File offset
+    FilePointer : UInt64 ;      // File offset
 begin
 
     if (FrameNum < 1) or (FrameNum > FNumFrames) then begin
@@ -1146,7 +1152,7 @@ begin
        end ;
 
     // Find file offset of start of frame
-    FilePointer := SizeOf(TPICFileHeader) + Int64(FrameNum-1)*Int64(FNumBytesPerFrame) ;
+    FilePointer := SizeOf(TPICFileHeader) + UInt64(FrameNum-1)*UInt64(FNumBytesPerFrame) ;
 
     // Read data from file
     FileSeek( FileHandle, FilePointer, 0 ) ;
@@ -1164,7 +1170,7 @@ function TImageFile.PICSaveFrame(
 // Save frame to BioRad PIC data file
 // ----------------------------------------
 var
-    FilePointer : Int64 ;      // File offset
+    FilePointer : UInt64 ;      // File offset
 begin
 
     if (FrameNum < 1) then begin
@@ -1173,7 +1179,7 @@ begin
        end ;
 
     // Find file offset of start of frame
-    FilePointer := SizeOf(TPICFileHeader) + Int64(FrameNum-1)*Int64(FNumBytesPerFrame) ;
+    FilePointer := SizeOf(TPICFileHeader) + UInt64(FrameNum-1)*UInt64(FNumBytesPerFrame) ;
 
     // Write data to file
     FileSeek( FileHandle, FilePointer, 0 ) ;
@@ -1252,11 +1258,11 @@ begin
 
 procedure TImageFile.SetIFDEntry(
           var IFD : Array of TTiffIFDEntry ; // IFD list being created
-          var NumEntries : Word ;             // No. of entries in list (IN/OUT)
+          var NumEntries : UInt64 ;          // No. of entries in list (IN/OUT)
           Tag : Integer ;                    // Tag to be added
           FieldType : Integer ;              // Field type
-          NumValues : Integer ;          // No. of values in entry
-          Value : UInt64 ) ;  // Entry value/offset
+          NumValues : UInt64 ;              // No. of values in entry
+          Value : UInt64 ) ;                 // Entry value/offset
 // ----------------------------------
 // Add an entry to TIFF IFD tag list
 // ----------------------------------
@@ -1281,9 +1287,15 @@ var
      Value : Double ;
 begin
 
-     FileSeek( FileHandle, FileOffset, 0 ) ;
-     FileRead( FileHandle, Numerator, SizeOf(Numerator) ) ;
-     FileRead( FileHandle, Denominator, SizeOf(Denominator) ) ;
+     if TIFFHeader.Signature = BigTIFSignature then begin
+        Numerator := FileOffset and $FFFF ;
+        Denominator := FileOffset shr 32 ;
+        end
+     else begin
+        FileSeek( FileHandle, FileOffset, 0 ) ;
+        FileRead( FileHandle, Numerator, SizeOf(Numerator) ) ;
+        FileRead( FileHandle, Denominator, SizeOf(Denominator) ) ;
+        end;
      Value := Numerator ;
      if Denominator <> 0 then Value := Value / Denominator
                          else Value := 0.0 ;
@@ -1292,24 +1304,30 @@ begin
 
 
 procedure TImageFile.WriteRationalField(
-          FileOffset : UInt64 ;  // Offset to write to
+          var FileOffset : UInt64 ;  // Offset to write to (or returned packed 8 byte value)
           Value : Double          // Value
           );
 // ----------------------------------------
 // Write`rational field entry to TIFF file
 // ----------------------------------------
 var
-     Numerator, Denominator : Integer ;
+     Numerator, Denominator : Cardinal ;
 begin
 
      Denominator := 1 ;
      while (Abs(Frac(Value)/Value) > 1E-4) and (Denominator < 100000) do Denominator := Denominator*10 ;
      Numerator := Round(Value*Denominator) ;
 
-     FileSeek( FileHandle, FileOffset, 0 ) ;
-     FileWrite( FileHandle, Numerator, SizeOf(Numerator) ) ;
-     FileWrite( FileHandle, Denominator, SizeOf(Denominator) ) ;
-
+     if TIFFHeader.Signature = BigTIFSignature then begin
+        FileOffset := Denominator ;
+        FileOffset := FileOffset shl 32 ;
+        FileOffset := FileOffset or Numerator ;
+        end
+     else begin
+        FileSeek( FileHandle, FileOffset, 0 ) ;
+        FileWrite( FileHandle, Numerator, SizeOf(Numerator) ) ;
+        FileWrite( FileHandle, Denominator, SizeOf(Denominator) ) ;
+        end ;
      end ;
 
 
@@ -1339,7 +1357,7 @@ begin
 
 procedure TImageFile.WriteASCIIField(
           FileHandle : THandle ;  // Open TIFF file handle
-          FileOffset : UInt64 ;  // Offset to start reading from
+          FileOffset : UInt64 ;  // Offset to start writing to
           Text : String ) ;
 // ----------------------------------------
 // Write`ASCII field entry from TIFF file
@@ -1472,8 +1490,7 @@ begin
     Result := False ;
 
     FileSeek(FileHandle,0,0) ;
-    nn := FileRead(FileHandle, TIFFHeader.ByteOrder,SizeOf(TIFFHeader.ByteOrder)) ;
-    outputdebugstring(pchar(format('nn=%d',[nn])));
+    FileRead(FileHandle, TIFFHeader.ByteOrder,SizeOf(TIFFHeader.ByteOrder)) ;
     if FileRead(FileHandle, TIFFHeader.Signature,SizeOf(TIFFHeader.Signature))
        <> SizeOf(TIFFHeader.Signature) then begin
         FErrorMessage := 'TIFF: Unable to read file header of' + FileName ;
@@ -1534,7 +1551,7 @@ begin
        TIFFHeader.Reserved := 0 ;
        FileWrite(FileHandle, TIFFHeader.Reserved,SizeOf(TIFFHeader.Reserved)) ;
        TIFFHeader.IFDOffset := SizeOf(TIFFHeader) ;
-       FileWrite(FileHandle, TIFFHeader.IFDOffset,SizeOf(TIFFHeader.IFDOffset)) ;
+       FileWrite(FileHandle, TIFFHeader.IFDOffset,TIFFHeader.OffsetByteSize) ;
        end
     else begin
        // Standard TIFF, 4 byte offsets
@@ -1601,6 +1618,8 @@ begin
     if NumBytesInFile > High(Cardinal) then TIFFHeader.Signature := BigTIFSignature
                                        else TIFFHeader.Signature := TIFSignature ;
 
+  TIFFHeader.Signature := BigTIFSignature ;
+
     // Clear array of pointers to frame IFDs
     for i := 0 to High(FIFDPointerList) do FIFDPointerList[i] := 0 ;
 
@@ -1623,6 +1642,8 @@ begin
      Result := False ;
      if not FileIsOpen then Exit ;
 
+     Keep := 0 ;
+     Keep1 := 0 ;
      if NewFile then begin
         // Ensure that all frames have IFDs
         for iFrame := 1 to FNumFrames do begin
@@ -1646,7 +1667,7 @@ function TImageFile.STKCloseFile : Boolean ;
 // Close STK file
 // ---------------
 var
-    FilePointer : Int64 ;
+    FilePointer : UInt64 ;
 begin
 
      if FileIsOpen then begin
@@ -1674,7 +1695,7 @@ begin
 
 
 Function TImageFile.TIFLoadIFD(
-         IFDPointer : Int64    // Pointer offset to IFD in data file
+         IFDPointer : UInt64    // Pointer offset to IFD in data file
          ) : Boolean ;
 // -----------------------------------
 // Load image file directory from file
@@ -1917,7 +1938,7 @@ Function TImageFile.TIFSaveIFD(
 // Save image file directory to file
 // -----------------------------------
 var
-    IFDCount : Word ;  // IFD list entry counter
+    IFDCount : UInt64 ;  // IFD list entry counter
     IFDList : Array[0..cIFDMaxTags-1] of  TTiffIFDEntry ;
     Temp : TTiffIFDEntry ;
     i,j : Integer ;
@@ -1931,7 +1952,7 @@ var
 begin
 
     NumBytesPerImage := FFrameWidth*FFrameHeight*FNumBytesPerPixel ;
-    IFDPointer := Int64((FrameNum-1)*(cIFDImageStart + NumBytesPerImage) + SizeOf(TTIFFHeader));
+    IFDPointer := UInt64((FrameNum-1)*UInt64(cIFDImageStart + NumBytesPerImage) + SizeOf(TTIFFHeader));
     FIFDPointerList[FrameNum-1] := IFDPointer ;
 
     // Move file pointer to end of tag list space
@@ -1973,7 +1994,7 @@ begin
     // Set image sub-file type
     if TIFSingleFrame then IFD.SubFileType := 0
                       else IFD.SubFileType := MultiPageImageBit ;
-    SetIFDEntry( IFDList, IFDCount, NewSubFileTypeTag, LongField, 1, 0 ) ;
+    SetIFDEntry( IFDList, IFDCount, NewSubFileTypeTag, LongField, 1, IFD.SubFileType ) ;
 
     // Set page number
     if not TIFSingleFrame then begin
@@ -2005,12 +2026,14 @@ begin
        // Write strip
        nBytesPerLine := FFrameWidth*FNumBytesPerPixel ;
        NumBytes := Min(NumBytesToWrite,(cIFDMaxBytesPerStrip div nBytesPerLine)*nBytesPerLine) ;
-
        IFD.StripByteCounts[IFD.NumStrips] := NumBytes ;
        Inc(IFD.NumStrips) ;
        IFD.StripOffsets[IFD.NumStrips] := IFD.StripOffsets[IFD.NumStrips-1] + NumBytes ;
        NumBytesToWrite := NumBytesToWrite - NumBytes ;
        end ;
+
+//    if Keep1 <> (IFD.StripOffsets[0]-Keep) then
+  //  OutputDebugString(pchar(format('%d %d',[FrameNum,IFD.StripOffsets[0]])));
 
     // Write strip offsets & byte counts
     if IFD.NumStrips > 1 then begin
@@ -2026,18 +2049,21 @@ begin
        end ;
 
     // Update strip offsets & byte counts IFD entry
-    if TIFFHeader.Signature = BigTIFSignature then FieldType := LongField
-                                              else FieldType := Long8Field ;
+    if TIFFHeader.Signature = BigTIFSignature then FieldType := Long8Field
+                                              else FieldType := LongField ;
     SetIFDEntry(IFDList,IFDCount,StripOffsetsTag,FieldType,IFD.NumStrips,IFD.StripOffsetsPointer ) ;
     SetIFDEntry(IFDList,IFDCount,StripByteCountsTag,FieldType,IFD.NumStrips,IFD.StripByteCountsPointer ) ;
 
     // Number of image rows in each strip
-    IFD.RowsPerStrip := IFD.StripByteCounts[0] div
-                        (FFrameWidth*FNumBytesPerPixel) ;
+    IFD.RowsPerStrip := IFD.StripByteCounts[0] div (UInt64(FFrameWidth)*UInt64(FNumBytesPerPixel)) ;
     SetIFDEntry( IFDList, IFDCount, RowsPerStripTag, LongField, 1, IFD.RowsPerStrip ) ;
 
     i := 0 ;
     SetIFDEntry( IFDList, IFDCount, ImageDescriptionTag, ASCIIField, 4, i ) ;
+
+//    FilePointer := FileSeek( FileHandle, 0, 1 ) ;
+//    WriteASCIIField( FilePointer, FSoftware ) ;
+//    SetIFDEntry( IFDList, IFDCount, SoftwareTag, ASCIIField, Length(FSoftware)+1, FilePointer ) ;
 
     // Write STK format tag
     if UICSTKFormat then begin
@@ -2050,6 +2076,8 @@ begin
            end ;
        SetIFDEntry( IFDList, IFDCount, UIC1Tag, RationalField, FNumFrames, IFD.UIC1Tag ) ;
        end ;
+
+    // Sort into ascending order
 
     for i := 0 to IFDCount-1 do begin
         for j := i+1 to IFDCount-1 do begin
@@ -2095,7 +2123,7 @@ Function TImageFile.TIFLoadFrame(
 // Load frame # <FrameNum> from TIFF file
 // --------------------------------------
 var
-    IFDPointer : Int64 ;    // Pointer to image file directory
+    IFDPointer : UInt64 ;    // Pointer to image file directory
     OK : Boolean ;
     Strip : Integer ;
     PBuf : Pointer ;
@@ -2221,7 +2249,7 @@ Function TImageFile.STKLoadFrame(
 // Load frame # <FrameNum> from STKle
 // --------------------------------------
 var
-    FrameOffset : Int64 ;
+    FrameOffset : UInt64 ;
 begin
 
      Result := False ;
@@ -2230,10 +2258,10 @@ begin
         (FrameNum > NumFrames) then Exit ;
 
      // Read image
-     FrameOffset := Int64(FrameNum-1)*Int64( IFD.StripOffsets[IFD.NumStrips-1] +
+     FrameOffset := UInt64(FrameNum-1)*UInt64( IFD.StripOffsets[IFD.NumStrips-1] +
                                              IFD.StripByteCounts[IFD.NumStrips-1] -
                                              IFD.StripOffsets[0] )
-                     + Int64(IFD.StripOffsets[0]) ;
+                     + UInt64(IFD.StripOffsets[0]) ;
      FileSeek( FileHandle, FrameOffset, 0 ) ;
      FileRead( FileHandle, PByteArray(PImageBuf)^, FNumBytesPerFrame ) ;
 
@@ -2249,15 +2277,15 @@ Function TImageFile.STKSaveFrame(
 // Save frame # <FrameNum> to STK file
 // --------------------------------------
 var
-    FrameOffset : Int64 ;
+    FrameOffset : UInt64 ;
 
 begin
 
      Result := False ;
 
      // Frame
-     FrameOffset := Int64(FrameNum-1)*Int64(FNumBytesPerFrame)
-                     + Int64(cIFDImageStart + SizeOf(TIFFHeader)) ;
+     FrameOffset := UInt64(FrameNum-1)*UInt64(FNumBytesPerFrame)
+                     + UInt64(cIFDImageStart + SizeOf(TIFFHeader)) ;
 
      // Frames are located in a contiguous block starting at
      // cIFDImageStart + SizeOf(TIFFHeader)
@@ -2596,7 +2624,7 @@ type
     PImageBuf8bit = ^TImageBuf8bit ;
 
 var
-    FilePointer : Int64 ;      // File offset
+    FilePointer : UInt64 ;      // File offset
     i,j : Integer ;
     ICSFrameNum : Integer ;
     ICSFNumBytesPerFrame : Integer ;
@@ -2612,7 +2640,7 @@ begin
     ICSFNumBytesPerFrame := FNumBytesPerFrame*FComponentsPerPixel ;
 
     // Find file offset of start of frame
-    FilePointer := Int64(ICSFrameNum)*Int64(ICSFNumBytesPerFrame) ;
+    FilePointer := UInt64(ICSFrameNum)*UInt64(ICSFNumBytesPerFrame) ;
 
     GetMem( pBuf, ICSFNumBytesPerFrame ) ;
 
