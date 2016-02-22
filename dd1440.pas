@@ -26,7 +26,8 @@ unit dd1440;
 // 06.01.15 AXdd1400.dll and wdapi1140.dll now explicitly loaded from C:\Users\Public\Documents\SESLABIO
 //          to ensure that DLLs in program folder are not loaded by default. Copying and
 //          loading now handled by DD1440_CopyAndLoadLibrary()
-// 09.02.16 wdapi1140.dll now loaded before axdd1400.dll to allow axdd1400.dll to be loaded under Windows XP
+// 22.02.16 4 byte packing added to end TDD1440_Protocol record to avoid 'Error writing to device' error
+//          when external trigger selected and running under 64 bit O/S Not clear why this is necessary
 
 interface
 
@@ -175,6 +176,10 @@ TDD1440_Protocol = packed record
    // DEBUG
    bSaveAI : ByteBool ;
    bSaveAO : ByteBool ;
+                                      // 22.2.16
+   Packing : Array[1..4] of Byte ;    // 4 byte packing of avoid 'Error writing to device' error
+                                      // when external trigger selected and running under 64 bit O/S
+                                      // Not clear why this is necessary
 
    end ;
 
@@ -215,12 +220,10 @@ TDD1440_StartAcqInfo = packed record
 TDD1440_Reset = Function : ByteBool ;  cdecl;
 
 TDD1440_GetDeviceInfo = Function(
-
                         pInfo : Pointer
                         ) : ByteBool ;  cdecl;
 
 TDD1440_SetSerialNumber = Function (
-
                           uSerialNumber : cardinal
                           ) : ByteBool ;  cdecl;
 
@@ -228,11 +231,9 @@ TDD1440_GetBufferGranularity =   Function  : Cardinal ;  cdecl;
 
 TDD1440_SetProtocol =   Function(
                         var DD1400_Protocol : TDD1440_Protocol
-                        //DD1400_Protocol : Pointer
                         ) : ByteBool ;  cdecl;
 
 TDD1440_GetProtocol =   Function (
-
                         var DD1400_Protocol : TDD1440_Protocol
                         ) : ByteBool ;  cdecl;
 
@@ -241,83 +242,72 @@ TDD1440_StopAcquisition =   Function  : ByteBool ;  cdecl;
 TDD1440_IsAcquiring =   Function  : ByteBool ;  cdecl;
 
 TDD1440_GetAIPosition =   Function(
-
                           var uSequences : Int64) : ByteBool ;  cdecl;
+
 TDD1440_GetAOPosition =   Function(
                           var uSequences : Int64) : ByteBool ;  cdecl;
 
 TDD1440_GetAIValue = Function(
-
                      uAIChannel : Cardinal ;
                      var nValue : SmallInt
                       ) : ByteBool ;  cdecl;
-TDD1440_GetDIValue = Function (
 
+TDD1440_GetDIValue = Function (
                      var wValue : Word
                      ) : ByteBool ;  cdecl;
 
 TDD1440_SetAOValue =   Function (
-
                        uAOChannel : Cardinal ;
                        nValue : SmallInt ) : ByteBool ;  cdecl;
 TDD1440_SetDOValue =   Function (
-
                        wValue : Word
                        ) : ByteBool ;  cdecl;
 
 TDD1440_SetTrigThreshold =   Function (
-
                              nValue : SmallInt
                              ) : ByteBool ;  cdecl;
-TDD1440_GetTrigThreshold =   Function (
 
+TDD1440_GetTrigThreshold =   Function (
                              var nValue : SmallInt
                              ) : ByteBool ;  cdecl;
 
 TDD1440_ReadTelegraphs =   Function (
-
                            uFirstChannel : Cardinal ;
                            var pnValue : SmallInt ;
                            uValues : Cardinal
                            ) : ByteBool ;  cdecl;
 
 TDD1440_GetTimeAtStartOfAcquisition =   procedure (
-
                                         var StartAcqInfo : TDD1440_StartAcqInfo
                                         ) ; cdecl;
 
 TDD1440_GetCalibrationParams =   Function (
-
                                   var Params : TDD1440_Calibration
                                   ) : ByteBool ;  cdecl;
 
 TDD1440_SetCalibrationParams = Function (
-
                                const Params : TDD1440_Calibration
                                ) : ByteBool ;  cdecl;
 
 TDD1440_GetPowerOnData = Function(
-
                          var Data : TDD1440_PowerOnData
                          ) : ByteBool ;  cdecl;
-TDD1440_SetPowerOnData =   Function (
 
+TDD1440_SetPowerOnData =   Function (
                            const Data : TDD1440_PowerOnData
                            )  : ByteBool ;  cdecl;
 
 TDD1440_GetEepromParams =   Function (
-
                             pvEepromImage : pointer ;
                             uBytes : Cardinal
                             )  : ByteBool ;  cdecl;
-TDD1440_SetEepromParams =   Function (
 
+TDD1440_SetEepromParams =   Function (
                             pvEepromImage : Pointer ;
                             uBytes : Cardinal
                             )  : ByteBool ;  cdecl;
 
 TDD1440_GetLastErrorText =   Function(
-
                             pszMsg : PANSIChar ;
                             uMsgLen : Cardinal
                             ) : ByteBool ;  cdecl;
