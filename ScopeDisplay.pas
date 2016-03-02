@@ -120,6 +120,9 @@ unit ScopeDisplay;
                   trailing ', ' now removed from cursor text.
   16.10.15 ... JD Data exported to clipboard now min/max compressed to less than 20000 points.
   08.02.16 ... JD .GridSpacing added to channel object (indicates vertical interval between horizontal grid lines
+  02.03.16 ... JD Time calibration bar shifted down one line for image copy and print out to avoid
+                  potential overlap of annotations
+                  TimeGridSpacing property added
   }
 
 interface
@@ -213,6 +216,7 @@ type
                                // when computing sample times
 
     Channel : Array[0..ScopeChannelLimit] of TScopeChannel ;
+    FTimeGridSpacing : single ;   // Spacing between vertical grid lines (s)
 //    KeepChannel : Array[0..ScopeChannelLimit] of TScopeChannel ;
     HorCursors : Array[0..ScopeChannelLimit] of TScopeChannel ;
     VertCursors : Array[0..64] of TScopeChannel ;
@@ -503,6 +507,8 @@ type
     property ChanVisible[ i : Integer ] : boolean read GetChanVisible write SetChanVisible ;
     property ChanColor[ i : Integer ] : TColor read GetChanColor write SetChanColor ;
     property ChanGridSpacing[ i : Integer ] : single read GetChanGridSpacing ;
+    property TimeGridSpacing : single read FTimeGridSpacing ;
+
     property YSize[ i : Integer ] : Single read GetYSize write SetYSize ;
     property YMin[ i : Integer ] : single read GetYMin write SetYMin ;
     property YMax[ i : Integer ] : single read GetYMax write SetYMax ;
@@ -680,6 +686,7 @@ begin
      FXMin := 0 ;
      FXMax := FMaxPoints - 1 ;
      FXOffset := 0 ;
+     FTimeGridSpacing := 0.0 ;
      FChanZeroAvg := 20 ;
      FBuf := Nil ;
      FNumBytesPerSample := 2 ;
@@ -1289,6 +1296,7 @@ begin
          XTickSize := TickBase*TickMultipliers[i] ;
          if (XRange/XTickSize) <= 10 then Break ;
          end ;
+     FTimeGridSpacing := XTickSize ;
 
      // Find minimum & maximum Y tick
      XTickMax := XTickSize*Floor(XScaledMax/XTickSize) ;
@@ -3407,7 +3415,7 @@ begin
         // Determine number of channels in use and the height
         TopSpaceNeeded := (3 + FTitle.Count)*Printer.Canvas.TextHeight('X') ;
         AvailableHeight := Printer.PageHeight
-                           - FPrinterBottomMargin
+                           - FPrinterBottomMargin - Printer.Canvas.TextHeight('X')*3
                            - FPrinterTopMargin
                            - TopSpaceNeeded ;
 
@@ -3547,7 +3555,7 @@ begin
           { Calculate position/size of bar }
           LastCh := 0 ;
           for ch := 0 to FNumChannels-1 do if Channel[ch].InUse then begin
-              Bar.Top := PrChan[ch].Bottom + Printer.Canvas.TextHeight(Lab) ;
+              Bar.Top := PrChan[ch].Bottom + Printer.Canvas.TextHeight(Lab)*3 ;
               LastCh := ch ;
               end ;
           Bar.Bottom := Bar.Top + (Printer.Canvas.TextHeight(Lab) div 2);
@@ -3573,7 +3581,6 @@ begin
                       ((i Mod 2)+1)*Printer.Canvas.TextHeight(FMarkerText.Strings[i]) ;
               Printer.Canvas.TextOut( xPix, yPix, FMarkerText.Strings[i] );
               end ;
-
 
           { Draw printer title }
           XPos := FPrinterLeftMargin ;
@@ -3654,7 +3661,7 @@ begin
                 end ;
 
              // Height available for each channel. NOTE This includes 3
-             AvailableHeight := TMF.Height - 4*TMFC.TextHeight('X') - 4 ;
+             AvailableHeight := TMF.Height - 6*TMFC.TextHeight('X') - 4 ;
 
             { Make space at left margin for channel names/cal. bars }
             LeftMarginShift := 0 ;
@@ -3780,7 +3787,7 @@ begin
                { Calculate position/size of bar }
                LastCh := 0 ;
                for ch := 0 to FNumChannels-1 do if Channel[ch].InUse then begin
-                   Bar.Top := MFChan[ch].Bottom + TMFC.TextHeight(Lab) ;
+                   Bar.Top := MFChan[ch].Bottom + TMFC.TextHeight(Lab)*3 ;
                    LastCh := ch ;
                    end ;
                Bar.Bottom := Bar.Top + (TMFC.TextHeight(Lab) div 2);
