@@ -123,6 +123,8 @@ unit ScopeDisplay;
   02.03.16 ... JD Time calibration bar shifted down one line for image copy and print out to avoid
                   potential overlap of annotations
                   TimeGridSpacing property added
+                  Printer exception when no default printer set or printers available now handled
+                  allowing printer margins to be set without exception halting application
   }
 
 interface
@@ -305,6 +307,8 @@ type
     ZoomChannel : Integer ;
     ZoomButtonList : Array[0..100] of TScopeDisplayZoomButtonList ;
     NumZoomButtons : Integer ;
+
+    PrinterException : Boolean ;
 
     { -- Property read/write methods -------------- }
 
@@ -751,6 +755,7 @@ begin
 
     ZoomRectCount := 0 ;
     NumZoomButtons := 0 ;
+    PrinterException := False ;
 
     end ;
 
@@ -2435,11 +2440,14 @@ procedure TScopeDisplay.SetPrinterLeftMargin(
   ----------------------- }
 begin
      { Printer pixel height (mm) }
-     if Printer.Printers.Count > 0 then begin
-        FPrinterLeftMargin := (Printer.PageWidth*Value)
-                              div GetDeviceCaps( printer.handle, HORZSIZE ) ;
-        end
-     else FPrinterLeftMargin := 0 ;
+     try
+        FPrinterLeftMargin := 0 ;
+        if Printer.Printers.Count > 0 then FPrinterLeftMargin :=
+           (Printer.PageWidth*Value) div GetDeviceCaps( printer.handle, HORZSIZE ) ;
+     except
+        on e:EPrinter do PrinterException := True ;
+     end;
+
      end ;
 
 
@@ -2448,11 +2456,13 @@ function TScopeDisplay.GetPrinterLeftMargin : integer ;
   Get printer left margin (returned in mm)
   ---------------------------------------- }
 begin
-     if Printer.Printers.Count > 0 then begin
-        Result := (FPrinterLeftMargin*GetDeviceCaps(Printer.Handle,HORZSIZE))
-                     div Printer.PageWidth ;
-        end
-     else Result := 0 ;
+     try
+       Result := 0 ;
+       if Printer.Printers.Count > 0 then Result :=
+          (FPrinterLeftMargin*GetDeviceCaps(Printer.Handle,HORZSIZE)) div Printer.PageWidth ;
+     except
+        on e:EPrinter do PrinterException := True ;
+        end;
      end ;
 
 
@@ -2463,13 +2473,15 @@ procedure TScopeDisplay.SetPrinterRightMargin(
   Set printer Right margin
   ----------------------- }
 begin
-     { Printe
-     r pixel height (mm) }
-     if Printer.Printers.Count > 0 then begin
-        FPrinterRightMargin := (Printer.PageWidth*Value)
-                                div GetDeviceCaps( printer.handle, HORZSIZE ) ;
-        end
-     else FPrinterRightMargin := 0 ;
+     { Printer pixel height (mm) }
+
+     try
+        FPrinterRightMargin := 0 ;
+        if Printer.Printers.Count > 0 then FPrinterRightMargin :=
+           (Printer.PageWidth*Value) div GetDeviceCaps( printer.handle, HORZSIZE ) ;
+     except
+        on e:EPrinter do PrinterException := True ;
+        end;
      end ;
 
 
@@ -2478,11 +2490,13 @@ function TScopeDisplay.GetPrinterRightMargin : integer ;
   Get printer Right margin (returned in mm)
   ---------------------------------------- }
 begin
-    if Printer.Printers.Count > 0 then begin
-       Result := (FPrinterRightMargin*GetDeviceCaps(Printer.Handle,HORZSIZE))
-                 div Printer.PageWidth ;
-       end
-    else Result := 0 ;
+    try
+       Result := 0 ;
+       if Printer.Printers.Count > 0 then Result :=
+          (FPrinterRightMargin*GetDeviceCaps(Printer.Handle,HORZSIZE)) div Printer.PageWidth ;
+     except
+        on e:EPrinter do PrinterException := True ;
+        end;
     end ;
 
 
@@ -2494,11 +2508,14 @@ procedure TScopeDisplay.SetPrinterTopMargin(
   ----------------------- }
 begin
      { Printer pixel height (mm) }
-     if Printer.Printers.Count > 0 then begin
-        FPrinterTopMargin := (Printer.PageHeight*Value)
-                           div GetDeviceCaps( printer.handle, VERTSIZE ) ;
-        end
-     else FPrinterTopMargin := 0 ;
+     try
+        FPrinterTopMargin := 0 ;
+        if Printer.Printers.Count > 0 then FPrinterTopMargin :=
+           (Printer.PageHeight*Value) div GetDeviceCaps( printer.handle, VERTSIZE ) ;
+     except
+        on e:EPrinter do PrinterException := True ;
+        end;
+
      end ;
 
 
@@ -2507,11 +2524,13 @@ function TScopeDisplay.GetPrinterTopMargin : integer ;
   Get printer Top margin (returned in mm)
   ---------------------------------------- }
 begin
-     if Printer.Printers.Count > 0 then begin
-        Result := (FPrinterTopMargin*GetDeviceCaps(Printer.Handle,VERTSIZE))
-                  div Printer.PageHeight ;
-        end
-     else Result := 0 ;
+     try
+        Result := 0 ;
+        if Printer.Printers.Count > 0 then Result :=
+           (FPrinterTopMargin*GetDeviceCaps(Printer.Handle,VERTSIZE)) div Printer.PageHeight ;
+     except
+        on e:EPrinter do PrinterException := True ;
+        end;
      end ;
 
 
@@ -2523,11 +2542,13 @@ procedure TScopeDisplay.SetPrinterBottomMargin(
   ----------------------- }
 begin
      { Printer pixel height (mm) }
-     if Printer.Printers.Count > 0 then begin
-        FPrinterBottomMargin := (Printer.PageHeight*Value)
-                                div GetDeviceCaps( printer.handle, VERTSIZE ) ;
-        end
-     else FPrinterBottomMargin := 0 ;
+     try
+         FPrinterBottomMargin := 0 ;
+        if Printer.Printers.Count > 0 then FPrinterBottomMargin :=
+           (Printer.PageHeight*Value) div GetDeviceCaps( printer.handle, VERTSIZE ) ;
+     except
+        on e:EPrinter do PrinterException := True ;
+        end;
      end ;
 
 
@@ -2536,11 +2557,13 @@ function TScopeDisplay.GetPrinterBottomMargin : integer ;
   Get printer Bottom margin (returned in mm)
   ---------------------------------------- }
 begin
-     if Printer.Printers.Count > 0 then begin
-        Result := (FPrinterBottomMargin*GetDeviceCaps(Printer.Handle,VERTSIZE))
-                  div Printer.PageHeight ;
-        end
-     else Result := 0 ;
+     try
+        Result := 0 ;
+        if Printer.Printers.Count > 0 then Result :=
+           (FPrinterBottomMargin*GetDeviceCaps(Printer.Handle,VERTSIZE)) div Printer.PageHeight ;
+     except
+        on e:EPrinter do PrinterException := True ;
+        end;
      end ;
 
 
