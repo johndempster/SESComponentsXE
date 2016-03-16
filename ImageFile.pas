@@ -1618,7 +1618,7 @@ begin
     if NumBytesInFile > High(Cardinal) then TIFFHeader.Signature := BigTIFSignature
                                        else TIFFHeader.Signature := TIFSignature ;
 
-  TIFFHeader.Signature := BigTIFSignature ;
+//  TIFFHeader.Signature := BigTIFSignature ;
 
     // Clear array of pointers to frame IFDs
     for i := 0 to High(FIFDPointerList) do FIFDPointerList[i] := 0 ;

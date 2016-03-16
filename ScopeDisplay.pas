@@ -125,6 +125,9 @@ unit ScopeDisplay;
                   TimeGridSpacing property added
                   Printer exception when no default printer set or printers available now handled
                   allowing printer margins to be set without exception halting application
+  16.03.16 ... JD StorageMode updated. StorageMode=TRUE now works correctly again superimposing
+                  traces on screen
+
   }
 
 interface
@@ -242,9 +245,6 @@ type
     FZoomDisableHorizontal : Boolean ;
     FZoomDisableVertical : Boolean ;
     FDisableChannelVisibilityButton : Boolean ;
-//    MousePos : TMousePos ;
-//    FXOld : Integer ;
-//    FYOld : Integer ;
     FTScale : single ;
     FTUnits : string ;
     FTCalBar : single ;
@@ -275,7 +275,8 @@ type
     FStorageFileName : Array[0..255] of char ;
     FStorageFile : TFileStream ;
 
-    FStorageList : Array[0..MaxStoredRecords-1] of Integer ;
+    FStorageList : Array[0..MaxStoredRecords-1] of Integer ; // storage mode list
+    FStorageListIndex : Integer ;                            // Last storage list element used index
     FRecordNum : Integer ;
     FDrawGrid : Boolean ;
 
@@ -743,7 +744,8 @@ begin
     { Create file for holding records in stored display mode }
     FStorageMode := False ;
     FStorageFile := Nil ;
-    for i := 0 to High(FStorageList) do FStorageList[i] := NoRecord ;
+    for i := 1 to High(FStorageList) do FStorageList[i] := NoRecord ;
+    FStorageListIndex := 0 ;
     FRecordNum := NoRecord ;
 
     FDrawGrid := True ;
@@ -812,7 +814,7 @@ var
    TempPath : Array[0..255] of Char ;
    KeepColor : Array[0..ScopeChannelLimit] of TColor ;
    xy : ^TPointArray ;
-
+   InList : Boolean ;
 begin
 
      { Create plotting points array }
@@ -870,15 +872,12 @@ begin
                end ;
 
            { Display old records stored in file }
-           Rec := 1 ;
-           while (FStorageList[Rec] <> NoRecord)
-                 and (Rec <= High(FStorageList)) do begin
-                 { Read buffer }
-                 FStorageFile.Read( FBuf^, NumBytesPerRecord ) ;
-                 { Plot record on display }
-                 PlotRecord( BackBitmap.Canvas, Channel, xy^) ;
-                 Inc(Rec) ;
-                 end ;
+           for Rec := 1 to High(FStorageList) do if FStorageList[Rec] <> NoRecord then
+               begin
+               outputdebugstring(pchar(format('storage list %d',[Rec])));
+               FStorageFile.Read( FBuf^, NumBytesPerRecord ) ;
+               PlotRecord( BackBitmap.Canvas, Channel, xy^) ;
+               end ;
 
            { Restore colour }
            for ch := 0 to FNumChannels-1 do Channel[Ch].Color := KeepColor[Ch] ;
@@ -887,24 +886,21 @@ begin
            FStorageFile.Seek( 0, soFromBeginning ) ;
            FStorageFile.Read( FBuf^, NumBytesPerRecord ) ;
 
-           { Determine whether current record is already in list }
-           Rec := 1 ;
-           while (FStorageList[Rec] <> FRecordNum)
-                 and (Rec <= High(FStorageList)) do Inc(Rec) ;
+           // Determine whether current record is already in list
+           InList := False ;
+           for Rec := 1 to High(FStorageList) do
+               if FStorageList[Rec] = FRecordNum then InList := True ;
 
-           { If record isn't in list add it to end }
-           if Rec > High(FStorageList) then begin
-              { Find next vacant storage slot }
-              Rec := 1 ;
-              while (FStorageList[Rec] <> NoRecord)
-                    and (Rec <= High(FStorageList)) do Inc(Rec) ;
-              { Add record number to list and store data in file }
-              if Rec <= High(FStorageList) then begin
-                 FStorageList[Rec] := FRecordNum ;
-                 FStorageFile.Seek( Rec*NumBytesPerRecord, soFromBeginning ) ;
-                 FStorageFile.Write( FBuf^, NumBytesPerRecord ) ;
-                 end ;
+           // Add to list (if it is a valid record)
+           if (not InList) and (FRecordNum <> NoRecord) then
+              begin
+              Inc(FStorageListIndex) ;
+              FStorageListIndex := Min(Max(1,FStorageListIndex),High(FStorageList)) ;
+              FStorageList[FStorageListIndex] := FRecordNum ;
+              FStorageFile.Seek( FStorageListIndex*NumBytesPerRecord, soFromBeginning ) ;
+              FStorageFile.Write( FBuf^, NumBytesPerRecord ) ;
               end ;
+
            end ;
 
         PlotRecord( BackBitmap.Canvas, Channel, xy^ ) ;
@@ -925,9 +921,7 @@ begin
           end ;
 
         // Copy from internal bitmap to control
-        Canvas.CopyRect( DisplayRect,
-                         BackBitmap.Canvas,
-                         DisplayRect) ;
+        Canvas.CopyRect( DisplayRect, BackBitmap.Canvas, DisplayRect) ;
 
         // Add cursors or zoom box
         { Horizontal Cursors }
@@ -1968,7 +1962,7 @@ procedure TScopeDisplay.SetNumPoints(
   Set the number of points per channel
   ------------------------------------ }
 begin
-     FNumPoints :=  Max(Value,1);//IntLimitTo(Value,0,High(TSmallIntArray)) ;
+     FNumPoints :=  Max(Value,1);
      end ;
 
 
@@ -1979,7 +1973,7 @@ procedure TScopeDisplay.SetMaxPoints(
   Set the maximum number of points per channel
   ------------------------------------------- }
 begin
-     FMaxPoints := Max(Value,1) ;//IntLimitTo(Value,1,High(TSmallIntArray)) ;
+     FMaxPoints := Max(Value,1) ;
      end ;
 
 
@@ -2456,8 +2450,8 @@ function TScopeDisplay.GetPrinterLeftMargin : integer ;
   Get printer left margin (returned in mm)
   ---------------------------------------- }
 begin
+     Result := 0 ;
      try
-       Result := 0 ;
        if Printer.Printers.Count > 0 then Result :=
           (FPrinterLeftMargin*GetDeviceCaps(Printer.Handle,HORZSIZE)) div Printer.PageWidth ;
      except
@@ -2474,7 +2468,6 @@ procedure TScopeDisplay.SetPrinterRightMargin(
   ----------------------- }
 begin
      { Printer pixel height (mm) }
-
      try
         FPrinterRightMargin := 0 ;
         if Printer.Printers.Count > 0 then FPrinterRightMargin :=
@@ -2490,8 +2483,8 @@ function TScopeDisplay.GetPrinterRightMargin : integer ;
   Get printer Right margin (returned in mm)
   ---------------------------------------- }
 begin
+    Result := 0 ;
     try
-       Result := 0 ;
        if Printer.Printers.Count > 0 then Result :=
           (FPrinterRightMargin*GetDeviceCaps(Printer.Handle,HORZSIZE)) div Printer.PageWidth ;
      except
@@ -2515,7 +2508,6 @@ begin
      except
         on e:EPrinter do PrinterException := True ;
         end;
-
      end ;
 
 
@@ -2524,8 +2516,8 @@ function TScopeDisplay.GetPrinterTopMargin : integer ;
   Get printer Top margin (returned in mm)
   ---------------------------------------- }
 begin
+     Result := 0 ;
      try
-        Result := 0 ;
         if Printer.Printers.Count > 0 then Result :=
            (FPrinterTopMargin*GetDeviceCaps(Printer.Handle,VERTSIZE)) div Printer.PageHeight ;
      except
@@ -2557,8 +2549,8 @@ function TScopeDisplay.GetPrinterBottomMargin : integer ;
   Get printer Bottom margin (returned in mm)
   ---------------------------------------- }
 begin
+     Result := 0 ;
      try
-        Result := 0 ;
         if Printer.Printers.Count > 0 then Result :=
            (FPrinterBottomMargin*GetDeviceCaps(Printer.Handle,VERTSIZE)) div Printer.PageHeight ;
      except
@@ -2579,7 +2571,9 @@ var
 begin
      FStorageMode := Value ;
      { Clear out list of stored records }
-     for i := 0 to High(FStorageList) do FStorageList[i] := NoRecord ;
+     for i := 1 to High(FStorageList) do FStorageList[i] := NoRecord ;
+     FStorageListIndex := 0 ;
+     FRecordNum := NoRecord ;
      Invalidate ;
      end ;
 
@@ -3501,16 +3495,13 @@ begin
         if FStorageMode then begin
            { Display all records stored on screen }
            NumBytesPerRecord := FNumChannels*FNumPoints*2 ;
-           Rec := 1 ;
-           while (FStorageList[Rec] <> NoRecord)
-                 and (Rec <= High(FStorageList)) do begin
-                 { Read buffer }
-                 FStorageFile.Seek( Rec*NumBytesPerRecord, soFromBeginning ) ;
-                 FStorageFile.Read( FBuf^, NumBytesPerRecord ) ;
-                 { Plot record on display }
-                 PlotRecord( Printer.Canvas, PrChan, xy^ ) ;
-                 Inc(Rec) ;
-                 end ;
+           for Rec := 1 to High(FStorageList) do if (FStorageList[Rec] <> NoRecord) then
+               begin
+               { Read buffer }
+               FStorageFile.Seek( Rec*NumBytesPerRecord, soFromBeginning ) ;
+               FStorageFile.Read( FBuf^, NumBytesPerRecord ) ;
+               PlotRecord( Printer.Canvas, PrChan, xy^ ) ;
+               end ;
            end
         else begin
            { Single-record mode }
@@ -3734,16 +3725,12 @@ begin
             if FStorageMode then begin
                { Display all records stored on screen }
                NumBytesPerRecord := FNumChannels*FNumPoints*2 ;
-               Rec := 1 ;
-               FStorageFile.Seek( Rec*NumBytesPerRecord, soFromBeginning ) ;
-               while (FStorageList[Rec] <> NoRecord)
-                     and (Rec <= High(FStorageList)) do begin
-                     { Read buffer }
-                     FStorageFile.Read( FBuf^, NumBytesPerRecord ) ;
-                     { Plot record on display }
-                     PlotRecord( TMFC, MFChan, xy^ ) ;
-                     Inc(Rec) ;
-                     end ;
+               for Rec := 1 to High(FStorageList) do if (FStorageList[Rec] <> NoRecord) then
+                   begin
+                   FStorageFile.Seek( Rec*NumBytesPerRecord, soFromBeginning ) ;
+                   FStorageFile.Read( FBuf^, NumBytesPerRecord ) ;
+                   PlotRecord( TMFC, MFChan, xy^ ) ;
+                   end ;
                end
             else begin
                { Single-record mode }

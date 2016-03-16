@@ -4083,7 +4083,7 @@ begin
     pc6header.CommentEnabled := 0 ;
 
     { Name of program which created file }
-    s := 'WinEDR' ;
+    s := 'WinEDR/WinWCP' ;
     CopyStringToANSIArray( pc6header.CreatorInfo, s ) ;
 
     { Analog input channel settings }

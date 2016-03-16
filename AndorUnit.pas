@@ -26,6 +26,7 @@ unit AndorUnit;
 // 10.09.14 JD GetDLLAddress now skipped if DLL not opened.
 // 11.09.14 Smallints changed to Integer,
 //          pointer arithmetic calculation now 64 compatible (NativeUInt rather than Cardinal)
+// 04.03.16 Andor_Set... procedure now exit if camera is not open
 
 interface
 
@@ -1346,6 +1347,7 @@ var
     cBuf : Array[0..79] of ANSIChar ;
 begin
 
+     if not Session.CameraOpen then Exit ;
      Session.WorkingTemperature := Round(TemperatureSetPoint) ;
 
      // Head model
@@ -1376,6 +1378,7 @@ procedure Andor_SetCooling(
 // -------------------
 begin
 
+     if not Session.CameraOpen then Exit ;
      if CoolingOn then Andor_CheckError( 'CoolerOn', CoolerOn )
                   else Andor_CheckError( 'CoolerOff', CoolerOff ) ;
 
@@ -1391,6 +1394,7 @@ procedure Andor_SetFanMode(
 // -------------------
 begin
 
+     if not Session.CameraOpen then Exit ;
      FanMode := Min(Max(2-FanMode,0),2) ;
      Andor_CheckError( 'SetFanMode', SetFanMode(FanMode) ) ;
 
@@ -1408,13 +1412,13 @@ var
     AmpType : Integer ;
 begin
 
+     if not Session.CameraOpen then Exit ;
      AmpType := Min(Max(Session.CameraMode,0),1) ;
      NumOutputAmplifiers := 1 ;
      GetNumberAmp( NumOutputAmplifiers ) ;
      if NumOutputAmplifiers > 1 then begin
         Andor_CheckError( 'SetOutputAmplifier', SetOutputAmplifier(AmpType)) ;
         end ;
-
 
      end ;
 
@@ -1427,6 +1431,8 @@ procedure Andor_SetPhotonCounting(
 // Use EMCCD or conventional CCD readout amplifier
 // -----------------------------------------------
 begin
+
+     if not Session.CameraOpen then Exit ;
 
      Mode := Min(Max(Mode,0),1) ;
      Andor_CheckError( 'SetOutputAmplifier', SetPhotonCounting(Mode)) ;
@@ -1458,6 +1464,7 @@ var
 begin
 
     Session.ADChannel := ADCNum ;
+    if not Session.CameraOpen then Exit ;
 
     if Session.CameraOpen then begin
        Andor_CheckError( 'GetBitDepth',
