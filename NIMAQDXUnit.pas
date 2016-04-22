@@ -1846,7 +1846,8 @@ begin
                            Session.VideoModes[VideoMode].Name ) ;
 
      // Get pixel formats available in this video mode
-     if Session.AttrPixelFormat >= 0 then begin
+     if Session.AttrPixelFormat >= 0 then
+        begin
         IMAQdxEnumerateAttributeValues( Session.id,
                                         Session.Attributes[Session.AttrPixelFormat].Name,
                                         Nil,
@@ -2629,31 +2630,37 @@ var
     x,y,ifrom,ito : Integer ;
 begin
 
-    if Session.NumBytesPerComponent = 1 then begin
+    if Session.NumBytesPerComponent = 1 then
+        begin
         // 1 bytes per component
         ito := 0 ;
-        for y := yTop to yTop + FrameHeight -1 do begin
+        for y := yTop to yTop + FrameHeight -1 do
+            begin
             ifrom := (y*FrameWidthMax + xLeft)*Session.NumPixelComponents + Session.UseComponent ;
-            for x := 0 to FrameWidth -1 do begin
+            for x := 0 to FrameWidth -1 do
+                begin
                 PByteArray(PToBuf)^[ito] := PByteArray(Session.Buf)^[ifrom] ;
                 ifrom := ifrom + Session.NumPixelComponents ;
                 Inc(ito) ;
                 end ;
             end ;
         end
-    else begin
+    else
+        begin
         // 2 bytes per component
         ito := 0 ;
-        for y := yTop to yTop + FrameHeight -1 do begin
+        for y := yTop to yTop + FrameHeight -1 do
+            begin
             ifrom := (y*FrameWidthMax + xLeft)*Session.NumPixelComponents + Session.UseComponent ;
-            for x := 0 to FrameWidth -1 do begin
+            for x := 0 to FrameWidth -1 do
+                begin
                 PWordArray(PToBuf)^[ito] := PWordArray(Session.Buf)^[ifrom] ;
                 ifrom := ifrom + Session.NumPixelComponents ;
                 Inc(ito) ;
                 end ;
             end ;
-       end;
-    end;
+        end;
+end;
 
 
 procedure IMAQDX_CopyImageMono12Packed(
