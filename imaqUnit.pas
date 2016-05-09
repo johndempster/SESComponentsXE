@@ -1066,6 +1066,7 @@ type
     FanOn : ANSIString ;
     FanOff : ANSIString ;
     GainCom : ANSIString ;
+    PulseID : Integer ;
     end ;
 
 //============================================================================
@@ -1550,6 +1551,17 @@ function IMAQ_SetCameraAttributeNumeric(
          Name : ANSIstring ;
          Value : Double ) : Boolean ;
 
+procedure IMAQ_Wait( Delay : Double ) ;
+
+procedure IMAQ_VA29MC5M_FanOn(
+         var Session : TIMAQSession ;           // Camera session #
+         FanOn : Boolean ) ;
+
+procedure IMAQ_TriggerPulse(
+           var Session : TIMAQSession ) ;
+
+
+
 var
 
  imgInterfaceOpen : TimgInterfaceOpen ;
@@ -1910,13 +1922,13 @@ begin
         Session.TriggerModeValFreeRun := 'Free Run';
         Session.TriggerModeValExtTrig := 'Standard' ;
         Session.TriggerSourceCom := 'Trigger Source' ;
-        Session.TriggerSourceVal := 'Ext' ;
+        Session.TriggerSourceVal := 'CC1';//'Ext' ;
         Session.TriggerPolarityCom := 'Trigger Polarity' ;
         Session.TriggerPolarityVal := 'Active High' ;
 
         // Expsure time
-        Session.ExposureModeCom := '' ;
-        Session.ExposureModeVal := '' ;
+        Session.ExposureModeCom := 'Exposure Mode' ;
+        Session.ExposureModeVal := 'Program' ;
         Session.ExposureTimeCom := 'Exposure Time' ;
 
         Session.FanModeCom := 'Fan' ;
@@ -2043,6 +2055,8 @@ begin
      FrameWidth := FittedFrameWidth ;
      FrameHeight := FittedFrameHeight ;
 
+     Session.PulseID := 0 ;
+
      end ;
 
 
@@ -2117,6 +2131,7 @@ begin
        IMAQ_SetCameraAttributeNumeric( Session.SessionID,PANSIChar(Session.GainCom),iGain) ;
        end ;
 
+
     if not Session.AnalogVideoBoard then begin
 
        // Cameralink interface cameras
@@ -2126,7 +2141,8 @@ begin
        IMAQ_SetBinning( Session, BinFactor ) ;
 
        // Extended resolution mode
-       if Session.CCDShiftSupported then begin
+       if Session.CCDShiftSupported then
+          begin
           case NumPixelShiftFrames of
              4 : s := '4 Shot Mono' ;
              9 : s := '9 Shot Mono' ;
@@ -2135,12 +2151,17 @@ begin
 
           if ExternalTrigger = CamFreeRun then s := 'None' ;
           IMAQ_SetCameraAttributeString( Session.SessionID,'Sequence Mode',s) ;
+
           // Turn fan off for pixel shift modes
-          if NumPixelShiftFrames > 0 then begin
+          if NumPixelShiftFrames > 0 then
+             begin
              IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOff) ;
+             IMAQ_VA29MC5M_FanOn(Session,False) ;
              end
-          else begin
+          else
+             begin
              IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOn) ;
+             IMAQ_VA29MC5M_FanOn(Session,TRue) ;
              end;
           end;
 
@@ -2150,12 +2171,14 @@ begin
                                        Max(Round(ExposureTime*Session.ExposureTimeScale),1.0)) ;
 
        // Internal/external triggering of frame capture
-       if ExternalTrigger = CamFreeRun then begin
+       if ExternalTrigger = CamFreeRun then
+          begin
           // Free run mode
           // -------------
           IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValFreeRun) ;
           end
-       else begin
+       else
+          begin
           // External Trigger
           // ----------------
           IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValExtTrig) ;
@@ -2200,9 +2223,9 @@ begin
 
      // Special processing to speed up VA-29MC-5M camera.
      // Select camera AOI mode and only read selected lines.
-     if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then begin
+     if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') and (BinFactor = 1) then begin
         AOIVStart := Min(FrameTop,Session.FrameHeightMax-501) ;
-        AOIVend := AOIVStart + Max(FrameHeight-1,500) ;
+        AOIVend := AOIVStart + Max(FrameHeight-1,500)  ;
         s := format('sva %d %d',[AOIVStart,AOIVend]) + #13 + #10;
         BufSize := Length(s) ;
         Err := imgSessionSerialFlush(Session.SessionID);
@@ -2221,10 +2244,12 @@ begin
                                              FrameWidth div BinFactor )) ;
 
     // Set up ring buffer
-    IMAQ_CheckError( imgRingSetup( Session.SessionID,
+    Err := imgRingSetup( Session.SessionID,
                                      NumFramesInBuffer,
                                      @Session.BufferList,
-                                     0, 0 ));
+                                     0, 0 );
+    outputdebugstring(pchar(format('ringsetup err=%d',[Err])));
+    if Err <> 0 then IMAQ_Wait(3.0) ;
 
     Session.NumFrameBuffers := NumFramesInBuffer ;
     Session.FrameBufPointer := PFrameBuffer ;
@@ -2237,6 +2262,8 @@ begin
 
     Result := True ;
     Session.AcquisitionInProgress := True ;
+
+    IMAQ_TriggerPulse( Session ) ;
 
     end;
 
@@ -2261,6 +2288,16 @@ begin
 
     end ;
 
+procedure IMAQ_Wait( Delay : Double ) ;
+var
+    t,tEnd : double ;
+begin
+      tEnd := TimegetTime*1E-3 + Delay ;
+      repeat
+          t := timeGetTime*1E-3 ;
+      until (t >= TEnd );
+end;
+
 procedure IMAQ_StopCapture(
           var Session : TIMAQSession            // Camera session #
           ) ;
@@ -2278,12 +2315,67 @@ begin
 
      if not Session.AnalogVideoBoard then begin
         IMAQ_SetCameraAttributeString(Session.SessionID,Session.FanModeCom,Session.FanOn) ;
+        IMAQ_VA29MC5M_FanOn(Session,True) ;
+
+        if Session.PulseID <> 0 then IMAQ_CheckError(imgPulseStop(Session.PulseID));
+
         end ;
+
+     IMAQ_CheckError(imgSessionSerialFlush(Session.SessionID));
 
      Session.AcquisitionInProgress := False ;
 
      end;
 
+
+procedure IMAQ_VA29MC5M_FanOn(
+         var Session : TIMAQSession ;           // Camera session #
+         FanOn : Boolean ) ;
+// --------------------------
+// Turn VA-29MC-5M fan on/off
+// --------------------------
+var
+    s : ansistring ;
+    BufSize,Err : Integer ;
+    Buf : Array[0..255] of ANSIChar ;
+begin
+
+
+    if FanOn then s := 'sft 1' + #13 + #10
+             else s := 'sft 0' + #13 + #10 ;
+    BufSize := Length(s) ;
+    Err := imgSessionSerialFlush(Session.SessionID);
+    Err := imgSessionSerialWrite(Session.SessionID,PANSIChar(s),BufSize,1000);
+    Err := imgSessionSerialRead(Session.SessionID,@Buf,BufSize,1000);
+    end;
+
+
+
+procedure IMAQ_TriggerPulse(
+           var Session : TIMAQSession ) ;
+// -----------------------------------------
+// Apply trigger pulse to External trigger 0
+// -----------------------------------------
+begin
+
+     if not Session.AcquisitionInProgress then Exit ;
+
+     if Session.PulseID = 0 then
+     IMAQ_CheckError(imgPulseCreate2(PULSE_TIMEBASE_50MHZ,
+                     50,
+                     50000,
+                     IMG_SIGNAL_STATUS,
+                     IMG_IMMEDIATE,
+                     IMG_TRIG_POLAR_ACTIVEH,
+                     IMG_SIGNAL_EXTERNAL,
+                     0,
+                     IMG_PULSE_POLAR_ACTIVEH,
+                     PULSE_MODE_SINGLE,
+                     Session.PulseID))
+     else IMAQ_CheckError(imgPulseStop(Session.PulseID));
+     IMAQ_CheckError(imgPulseStart(Session.PulseID, Session.SessionID));
+
+end;
 
 function IMAQ_SetCameraAttributeString(
          SessionID : Integer ;

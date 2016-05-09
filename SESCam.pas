@@ -300,6 +300,7 @@ type
     procedure ReadCamera ;
     function StartCapture : Boolean ;
     procedure StopCapture ;
+    procedure SoftwareTriggerCapture ;
     procedure GetFrameBufferPointer( var FrameBuf : Pointer ) ;
     procedure GetLatestFrameNumber( var FrameNum : Integer ) ;
     function GetCameraName( Num : Integer ) : String ;
@@ -2159,6 +2160,18 @@ begin
 
        end ;
      end ;
+
+
+procedure TSESCam.SoftwareTriggerCapture ;
+begin
+     if not FCameraActive then Exit ;
+
+     case FCameraType of
+       IMAQ : begin
+          IMAQ_TriggerPulse(IMAQSession) ;
+          end ;
+     end;
+end ;
 
 
 procedure TSESCam.GetLatestFrameNumber( var FrameNum : Integer ) ;
