@@ -1557,6 +1557,11 @@ procedure IMAQ_VA29MC5M_FanOn(
          var Session : TIMAQSession ;           // Camera session #
          FanOn : Boolean ) ;
 
+procedure IMAQ_VA29MC5M_ResetStage(
+          var Session : TIMAQSession // Camera session #
+          ) ;
+
+
 procedure IMAQ_TriggerPulse(
            var Session : TIMAQSession ) ;
 
@@ -1769,6 +1774,9 @@ var
     asBuf : ANSIString ;
     InterfaceFileName,Key : string ;
     InterfaceFile : TextFile ;
+    BufSize : Integer ;
+    Buf : Array[0..255] of ANSIChar ;
+    s : ANSIString ;
 begin
 
      Result := False ;
@@ -1943,6 +1951,16 @@ begin
         IMAQ_SetCameraAttributeString( Session.SessionID,'Bin Size','2') ;
         IMAQ_SetCameraAttributeString( Session.SessionID,'Data Bit','12') ;
         IMAQ_SetCameraAttributeString( Session.SessionID,'Mode','Normal') ;
+
+        IMAQ_VA29MC5M_ResetStage(Session) ;
+
+{        s := 'soo 1 5';
+        BufSize := Length(s) ;
+        Err := imgSessionSerialFlush(Session.SessionID);
+        Err := imgSessionSerialWrite(Session.SessionID,PANSIChar(s),BufSize,1000);
+        Err := imgSessionSerialRead(Session.SessionID,@Buf,BufSize,1000);
+        Err := imgSessionSerialRead(Session.SessionID,@Buf,BufSize,1000);}
+
 
         end
      else begin
@@ -2304,6 +2322,11 @@ procedure IMAQ_StopCapture(
 // ------------------
 // Stop frame capture
 // ------------------
+var
+    BufSize,Err : Integer ;
+    Buf : Array[0..255] of ANSIChar ;
+    s : ANSIString ;
+
 begin
 
      if not Session.AcquisitionInProgress then Exit ;
@@ -2315,9 +2338,13 @@ begin
 
      if not Session.AnalogVideoBoard then begin
         IMAQ_SetCameraAttributeString(Session.SessionID,Session.FanModeCom,Session.FanOn) ;
-        IMAQ_VA29MC5M_FanOn(Session,True) ;
 
-        if Session.PulseID <> 0 then IMAQ_CheckError(imgPulseStop(Session.PulseID));
+        if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
+           begin
+           IMAQ_VA29MC5M_FanOn(Session,True) ;
+           if Session.PulseID <> 0 then IMAQ_CheckError(imgPulseStop(Session.PulseID));
+           IMAQ_VA29MC5M_ResetStage(Session) ;
+           end ;
 
         end ;
 
@@ -2326,6 +2353,23 @@ begin
      Session.AcquisitionInProgress := False ;
 
      end;
+
+procedure IMAQ_VA29MC5M_ResetStage(
+          var Session : TIMAQSession // Camera session #
+          ) ;
+var
+    BufSize,Err : Integer ;
+    Buf : Array[0..255] of ANSIChar ;
+    s : ANSIString ;
+begin
+     exit ;
+     s := 'rnp';
+     BufSize := Length(s) ;
+     Err := imgSessionSerialFlush(Session.SessionID);
+     Err := imgSessionSerialWrite(Session.SessionID,PANSIChar(s),BufSize,1000);
+     Err := imgSessionSerialRead(Session.SessionID,@Buf,BufSize,1000);
+     Err := imgSessionSerialRead(Session.SessionID,@Buf,BufSize,1000);
+     end ;
 
 
 procedure IMAQ_VA29MC5M_FanOn(
