@@ -1984,6 +1984,7 @@ procedure TIDRFile.UpdateChannelScalingFactors(
 // ------------------------------
 var
    ch : Integer ;
+   Denom : single ;
 begin
 
      for ch := 0 to NumChannels-1 do begin
@@ -1997,10 +1998,10 @@ begin
             Channels[ch].ADCAmplifierGain := 1.0 ;
 
          // Calculate bits->units scaling factor
-         Channels[ch].ADCScale := ADCVoltageRange /
-                                (Channels[ch].ADCCalibrationFactor*
-                                 Channels[ch].ADCAmplifierGain
-                                 *(ADCMaxValue+1) ) ;
+         Denom := Channels[ch].ADCCalibrationFactor*Channels[ch].ADCAmplifierGain*(ADCMaxValue+1) ;
+         if Abs(Denom) > 1E-10 then Channels[ch].ADCScale := ADCVoltageRange / Denom
+                               else  Channels[ch].ADCScale := 1.0 ;
+
          end ;
      end ;
 
