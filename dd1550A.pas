@@ -17,6 +17,8 @@ unit dd1550A;
 //          to ensure that DLLs in program folder are not loaded by default. Copying and
 //          loading now handled by Dig1550A_CopyAndLoadLibrary()
 // 09.02.16 wdapi1140.dll now loaded before axdd1550A.dll to allow axdd1550A.dll to be loaded under Windows XP
+// 7.7.16 4 byte packing added to end TDD1550_Protocol record to avoid 'Error writing to device' error
+//          when external trigger selected  Not clear why this is necessary
 
 interface
 
@@ -177,6 +179,12 @@ TDIGD1550A_Protocol = packed record
  	 MinSequencePeriodUS : Double ;   // NST Minimum sequence period
 	 MaxSequencePeriodUS : Double ;   // NST Maximum Sequence Period as per change in Maximum Sampling Frequency 060612
 	 TriggerTimeout : Cardinal ;
+
+                                      // 7.7.16
+   Packing : Array[1..4] of Byte ;    // 4 byte packing of avoid 'Error writing to device' error
+                                      // when external trigger selected
+                                      // Not clear why this is necessary
+
 
    end ;
 
