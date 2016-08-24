@@ -14,6 +14,9 @@ unit imaqUnit;
 // 22-08-14 Support for Vieworks VA-29MC-5M camera with CameraLink interface added
 // 25-08-14 Support for Vieworks VA-29MC-5M camera now working correctly
 // 03-10-14 Support for Orca-100 being added.
+// 24-8-16  Vieworks VA-29MC-5M support now works (with a few bugs still)
+//          IMAQ_VA29MC5M_ResetStage disabled at present.
+//          VA-29MC-5M camera function now correctly separated from analog video avoiding spurious error messages.
 
 interface
 
@@ -2262,10 +2265,7 @@ begin
                                              FrameWidth div BinFactor )) ;
 
     // Set up ring buffer
-    Err := imgRingSetup( Session.SessionID,
-                                     NumFramesInBuffer,
-                                     @Session.BufferList,
-                                     0, 0 );
+    Err := imgRingSetup( Session.SessionID,NumFramesInBuffer,@Session.BufferList,0,0 );
     outputdebugstring(pchar(format('ringsetup err=%d',[Err])));
     if Err <> 0 then IMAQ_Wait(3.0) ;
 
@@ -2281,7 +2281,8 @@ begin
     Result := True ;
     Session.AcquisitionInProgress := True ;
 
-    IMAQ_TriggerPulse( Session ) ;
+    // Apply internal trigger pulse to start VA-29MC-5M pixel shift camera
+    if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then IMAQ_TriggerPulse( Session ) ;
 
     end;
 
@@ -2339,16 +2340,16 @@ begin
      if not Session.AnalogVideoBoard then begin
         IMAQ_SetCameraAttributeString(Session.SessionID,Session.FanModeCom,Session.FanOn) ;
 
+        // Turn fan on, reset trigger pulse and reset stage for Vieworks VA-29MC-5M camera
         if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
            begin
            IMAQ_VA29MC5M_FanOn(Session,True) ;
            if Session.PulseID <> 0 then IMAQ_CheckError(imgPulseStop(Session.PulseID));
            IMAQ_VA29MC5M_ResetStage(Session) ;
+           IMAQ_CheckError(imgSessionSerialFlush(Session.SessionID));
            end ;
 
         end ;
-
-     IMAQ_CheckError(imgSessionSerialFlush(Session.SessionID));
 
      Session.AcquisitionInProgress := False ;
 

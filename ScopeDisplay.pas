@@ -874,7 +874,6 @@ begin
            { Display old records stored in file }
            for Rec := 1 to High(FStorageList) do if FStorageList[Rec] <> NoRecord then
                begin
-               outputdebugstring(pchar(format('storage list %d',[Rec])));
                FStorageFile.Read( FBuf^, NumBytesPerRecord ) ;
                PlotRecord( BackBitmap.Canvas, Channel, xy^) ;
                end ;

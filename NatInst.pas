@@ -1298,7 +1298,7 @@ var
 begin
      P := GetProcAddress(Hnd,PChar(Name)) ;
      if {Integer(P) = Null} P = Nil then begin
-        MessageDlg(format('NIDAQ32.DLL- %s not found',[Name]),mtWarning,[mbOK],0) ;
+        ShowMessage(format('NIDAQ32.DLL- %s not found',[Name])) ;
         end ;
      Result := P ;
      end ;
@@ -1308,7 +1308,7 @@ procedure NI_ReportFailure(
           const ProcName : string
           ) ;
 begin
-     MessageDlg('NIDAQ.DLL- ' + ProcName + ' not found',mtWarning,[mbOK],0) ;
+     ShowMessage('NIDAQ.DLL- ' + ProcName + ' not found') ;
      end ;
 
 
@@ -1596,9 +1596,7 @@ procedure NI_CheckError(
   --------------------------------------------------------------}
 begin
 
-     if Err <> 0 then MessageDlg(' Lab. Interface Error = ' +
-                                   format('%d',[Err]),
-                                   mtWarning, [mbOK], 0 ) ;
+     if Err <> 0 then ShowMessage(' Lab. Interface Error = ' + format('%d',[Err]));
      end ;
 
 
@@ -1629,7 +1627,7 @@ begin
      // Quit if no D/A output facilities available
      if not DACHardwareAvailable then begin
         if not DACWarningDelivered then begin
-           MessageDlg( 'D/A output not supported by this card', mtWarning, [mbOK], 0 ) ;
+           ShowMessage( 'D/A output not supported by this card') ;
            DACWarningDelivered := True ;
            end ;
         DACActive := False ;

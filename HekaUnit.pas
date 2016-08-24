@@ -28,6 +28,8 @@ unit HekaUnit;
 // 05.11.15 HekaEPC9USB interface type added
 //          Current gain scale factor can be corrected using 'HekaGCF.txt' correction factor file.
 //          Heka_SetCurrentGain() Now correctly maps gain list to gain excluding skipped index numbers.
+// 13.07.16 Heka_SetOutputchannelMappings() added. Correct output channels now set by Heka_WriteDACS()
+//          fixing bug which caused holding voltage to be set to zero.
 
 interface
 
@@ -739,6 +741,7 @@ function EPC9_LoadFileProcType(
     procedure Heka_EPC9GetVoltageADCInput( var Value : Integer ) ;
     procedure Heka_EPC9SetVoltageADCInput( var Value : Integer ) ;
     procedure HEKA_SetChannelMappings( var ADCChannelInputNumber : Array of Integer ) ;
+    procedure HEKA_SetOutputChannelMappings ;
 
 implementation
 
@@ -1362,32 +1365,46 @@ var
     ch : Integer ;
 begin
 
-     // Default setting of AO channel mapping
-     for ch := 0 to High(AOChannelList) do AOChannelList[ch] := 0 ;
-
-     if EPC9Available then begin
+     if EPC9Available then
+        begin
         // EPC-9/10 current/voltage channel mappings
         // Re-map current and voltage input channels to default settings if channels are unmapped
         // Ch.0->AI 0,Ch.0->AI 1
         if (ADCChannelInputNumber[0] = 0) and (ADCChannelInputNumber[1] = 1) then begin
            ADCChannelInputNumber[0] := EPC9CurrentADCInput ;
-//           ADCChannelInputNumber[EPC9CurrentADCInput] := 0 ;
            ADCChannelInputNumber[1] := EPC9VoltageADCInput ;
-//           ADCChannelInputNumber[EPC9VoltageADCInput] := 1 ;
            end;
-
-       // Output : Map Analog out 3 to AO 0
-       AOChannelList[0] := 3 ;
-       AOChannelList[1] := 1 ;
-       AOChannelList[2] := 2 ;
-       AOChannelList[3] := 0 ;
-
-       end ;
+        end ;
 
      // Copy to internal AI mapping array
      for  ch := 0  to High(AIChannelList) do AIChannelList[ch] := ADCChannelInputNumber[ch] ;
 
+     // Set analogue output channel mappingx
+     HEKA_SetOutputChannelMappings ;
+
      end ;
+
+
+procedure HEKA_SetOutputChannelMappings ;
+// ------------------------------------
+// Set analogue output channel mappings
+// ------------------------------------
+var
+    ch : integer ;
+begin
+
+     // Default setting of AO channel mapping
+     for ch := 0 to High(AOChannelList) do AOChannelList[ch] := ch ;
+
+     if EPC9Available then
+        begin
+        // Output : Map Analog out 3 to AO 0
+        AOChannelList[0] := 3 ;
+        AOChannelList[1] := 1 ;
+        AOChannelList[2] := 2 ;
+        AOChannelList[3] := 0 ;
+        end ;
+    end;
 
 
 procedure HEKA_ConfigureHardware(
@@ -1758,6 +1775,9 @@ begin
 
      if not DeviceInitialised then HEKA_InitialiseBoard ;
      if not DeviceInitialised then Exit ;
+
+     // Set output channel to physical channe; mappings
+     Heka_SetOutputChannelMappings ;
 
      //EPC9_SetVHold( -0.1 ) ;
 
