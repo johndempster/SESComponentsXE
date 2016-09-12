@@ -1826,7 +1826,7 @@ procedure TXMultiYPlot.DrawLines(
    Draw lines on plot
   -------------------}
 var
-   xPix,yPix,i,L,iPlot,Temp : Integer ;
+   xPix,yPix,i,L,iPlot : Integer ;
    x, y : single ;
    OutOfRange, LineBreak : Boolean ;
    SavePen : TPen ;
@@ -2039,7 +2039,7 @@ procedure TXMultiYPlot.Print ;
   Print hard copy of plot
   -----------------------}
 var
-   i,KeepLineWidth : Integer ;
+   KeepLineWidth : Integer ;
 begin
 
      Printer.BeginDoc ;

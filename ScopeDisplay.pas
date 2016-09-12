@@ -3229,9 +3229,8 @@ procedure TScopeDisplay.CopyDataToClipBoard ;
 const
       MaxPoints = 10000 ;
 var
-   L,i,j,ch,Line,NumLines,jPoint : Integer ;
+   L,i,ch,NumLines,jPoint : Integer ;
    y,yMin,YMax,iYMin,iYMax,NumCompressed,NumPointsPerBlock,iBlock,iPoint,NumChannelsInUse,LineCount : Integer ;
-   t : single ;
    iCell,Col,Row,RowStart,ColOffset,NumColumns : Integer ;
    CompBuf : PSingleArray ;
    InUse : PSMallIntArray ;

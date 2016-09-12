@@ -1622,7 +1622,7 @@ function  HEKA_MemoryToDACAndDigitalOut(
 const
     MinBufferDuration = 1.0 ;
 var
-   i,j,k,ch,iTo,iFrom,DigCh,MaxOutPointer,NPWrite,AcquisitionMode,NPDACValues,MaxAOPointer : Integer ;
+   i,ch,iTo,iFrom,DigCh,MaxOutPointer,NPWrite,AcquisitionMode,NPDACValues,MaxAOPointer : Integer ;
    AODataBufs : Array[0..LIH_MaxDacChannels] of PSmallIntArray ;
    OK : LongInt ;
    SetStimEnd,ReadContinuously,Immediate :Byte ;

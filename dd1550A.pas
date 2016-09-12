@@ -19,6 +19,10 @@ unit dd1550A;
 // 09.02.16 wdapi1140.dll now loaded before axdd1550A.dll to allow axdd1550A.dll to be loaded under Windows XP
 // 7.7.16 4 byte packing added to end TDD1550_Protocol record to avoid 'Error writing to device' error
 //          when external trigger selected  Not clear why this is necessary
+// 04.09.16 Updated to be compatible with drivers installed by PCLAMP V10.7
+//          axdd?????.dll now loaded from program folder of latest version of PCLAMP or AxoScope installed
+//          Whatever version number of wdapi????.dll available in folder is now loaded (instead of
+//          only WDAPI1140.dll)
 
 interface
 
@@ -490,7 +494,7 @@ var
 
    DD1550AHnd : THandle ;         // axDIGD1550.dll library handle
    AxDD1550AHnd : THandle ;       // AxDD1550A.dll library handle
-   wdapi1140Hnd : THandle ;      // wdapi1140.dll library handle
+   wdapiHnd : THandle ;      // wdapi.dll library handle
 
    LibraryLoaded : boolean ;      // Libraries loaded flag
    Protocol : TDIGD1550A_Protocol ;  // Digidata command protocol
@@ -640,7 +644,7 @@ var
      SourcePath,TrialPath : string ;
      Path : Array[0..255] of Char ;
      VMaj,VMin : Integer ;
-
+     SearchRec : TSearchRec ;
 begin
 
      ProgramDir := ExtractFilePath(ParamStr(0)) ;
@@ -650,27 +654,30 @@ begin
 //   Find Axdd1550A.dll and copy to settings folder
      AxonDLL :=  'AxDD1550A.DLL' ;
      SourcePath := '' ;
-     for VMaj := 7 to 15 do for VMin := 0 to 9 do begin
+     for VMaj := 15 downto 7 do for VMin := 9 downto 0 do begin
          // Check for PCLAMP installation
          TrialPath := format( '%s\Program Files\Molecular Devices\pCLAMP%d.%d\',
                                [SYSDrive,VMaj,VMin,AxonDLL]);
          if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
+         if SourcePath <> '' then Break ;
 
          TrialPath := format( '%s\Program Files (x86)\Molecular Devices\pCLAMP%d.%d\',
                                [SYSDrive,VMaj,VMin,AxonDLL]);
          if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
+         if SourcePath <> '' then Break ;
 
           // Check for Axoscope installation
          TrialPath := format( '%s\Program Files\Molecular Devices\Axoscope%d.%d\',
                                [SYSDrive,VMaj,VMin,AxonDLL]);
          if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
+         if SourcePath <> '' then Break ;
 
          TrialPath := format( '%s\Program Files\Molecular Devices (x86)\Axoscope%d.%d\',
                                [SYSDrive,VMaj,VMin,AxonDLL]);
          if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
-
          if SourcePath <> '' then Break ;
-           end;
+
+         end;
 
      // If not available, use version from installation
      if SourcePath = '' then begin
@@ -680,7 +687,9 @@ begin
 
      // Copy to settings folder
      if SourcePath <> '' then begin
-        wdapi1140Hnd := DIGD1550A_CopyAndLoadLibrary( 'wdapi1140.dll', SourcePath, SettingsDirectory ) ;
+        Err := FindFirst( SourcePath + 'wdapi*.dll', faAnyFile, SearchRec ) ;
+        if Err = 0 then
+           wdapiHnd := DIGD1550A_CopyAndLoadLibrary( SearchRec.Name, SourcePath, SettingsDirectory ) ;
         AXDD1550AHnd := DIGD1550A_CopyAndLoadLibrary( AxonDLL, SourcePath, SettingsDirectory ) ;
         CopyFile( PChar(SourcePath+'DD1550Afpga.bin'), PChar(SettingsDirectory+'DD1550Afpga.bin'), false ) ;
         end
@@ -1387,8 +1396,8 @@ begin
      DD1550AHnd := 0 ;
      if AxDD1550AHnd > 0 then FreeLibrary(AxDD1550AHnd) ;
      AxDD1550AHnd := 0 ;
-     if WDAPI1140Hnd > 0 then FreeLibrary(WDAPI1140Hnd) ;
-     WDAPI1140Hnd := 0 ;
+     if wdapiHnd > 0 then FreeLibrary(wdapiHnd) ;
+     wdapiHnd := 0 ;
 
      if OutValues <> Nil then FreeMem( OutValues ) ;
      OutValues := Nil ;

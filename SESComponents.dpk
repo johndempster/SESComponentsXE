@@ -17,7 +17,7 @@ package SESComponents;
 {$ALIGN 8}
 {$ASSERTIONS ON}
 {$BOOLEVAL OFF}
-{$DEBUGINFO OFF}
+{$DEBUGINFO ON}
 {$EXTENDEDSYNTAX ON}
 {$IMPORTEDDATA ON}
 {$IOCHECKS ON}
@@ -102,6 +102,7 @@ contains
   HekaUnit in 'HekaUnit.pas',
   ThorLabsUnit in 'ThorLabsUnit.pas',
   dd1550 in 'dd1550.pas',
-  dd1550A in 'dd1550A.pas';
+  dd1550A in 'dd1550A.pas',
+  dd1550B in 'dd1550B.pas';
 
 end.
