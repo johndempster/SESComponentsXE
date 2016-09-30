@@ -17,6 +17,7 @@ unit imaqUnit;
 // 24-8-16  Vieworks VA-29MC-5M support now works (with a few bugs still)
 //          IMAQ_VA29MC5M_ResetStage disabled at present.
 //          VA-29MC-5M camera function now correctly separated from analog video avoiding spurious error messages.
+// 30-9-16  Exposure time limited to 10 microsecond steps for compatibility with VA-29MC-5M
 
 interface
 
@@ -2132,6 +2133,7 @@ var
     i,iGain : Integer ;
     s : ANSIString ;
     BufSize,Err,AOIVStart,AOIVEnd : Integer ;
+    ExpTimeMicroSecs : Integer ;
     Buf : Array[0..255] of ANSIChar ;
 begin
 
@@ -2188,8 +2190,10 @@ begin
 
        // Set exposure time
        IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,Session.ExposureModeVal) ;
-       IMAQ_SetCameraAttributeNumeric( Session.SessionID,Session.ExposureTimeCom,
-                                       Max(Round(ExposureTime*Session.ExposureTimeScale),1.0)) ;
+       // Exposure limited to 10 microsecond steps (for VA29MC camera)
+       ExpTimeMicroSecs := Max(Round(ExposureTime*Session.ExposureTimeScale),10) ;
+       ExpTimeMicroSecs := (ExpTimeMicroSecs div 10)*10 ;
+       IMAQ_SetCameraAttributeNumeric( Session.SessionID,Session.ExposureTimeCom,ExpTimeMicroSecs) ;
 
        // Internal/external triggering of frame capture
        if ExternalTrigger = CamFreeRun then
