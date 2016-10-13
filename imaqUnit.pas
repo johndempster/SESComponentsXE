@@ -18,6 +18,9 @@ unit imaqUnit;
 //          IMAQ_VA29MC5M_ResetStage disabled at present.
 //          VA-29MC-5M camera function now correctly separated from analog video avoiding spurious error messages.
 // 30-9-16  Exposure time limited to 10 microsecond steps for compatibility with VA-29MC-5M
+// 13-10-16 Minor changes when during testing of VA-29MC-5M exposure time
+//          Exposure time attribute corrected in Vieworks VA-29MC-5M.icd file. Now correctly sets
+//          exposure time 10 us - 7s. Exposure frame capture rates now faster
 
 interface
 
@@ -2138,24 +2141,28 @@ var
 begin
 
     // Stop any acquisition which is in progress
-    if Session.AcquisitionInProgress then begin
+    if Session.AcquisitionInProgress then
+       begin
        IMAQ_CheckError(imgSessionStopAcquisition(Session.SessionID)) ;
        Session.AcquisitionInProgress := false ;
        end ;
 
     // Create buffer list
-    for i := 0 to High(Session.BufferList) do begin
+    for i := 0 to High(Session.BufferList) do
+        begin
         Session.BufferList[i] := Nil ;
         Session.BufferFilled[i] := False ;
         end ;
 
-    if (Session.GainMin <> Session.GainMax) and (Session.GainCom <> '') then begin
+    if (Session.GainMin <> Session.GainMax) and (Session.GainCom <> '') then
+       begin
        iGain := Session.GainMin + Round((Session.GainMax-Session.GainMin)*(AmpGain*0.01)) ;
        IMAQ_SetCameraAttributeNumeric( Session.SessionID,PANSIChar(Session.GainCom),iGain) ;
        end ;
 
 
-    if not Session.AnalogVideoBoard then begin
+    if not Session.AnalogVideoBoard then
+       begin
 
        // Cameralink interface cameras
        // ----------------------------
@@ -2211,10 +2218,12 @@ begin
           IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerPolarityCom,Session.TriggerPolarityVal) ;
           end ;
       end
-    else begin
+    else
+      begin
       // Analog video cameras
       // --------------------
-      if ExternalTrigger = CamFreeRun then begin
+      if ExternalTrigger = CamFreeRun then
+         begin
          // Free run mode
          IMAQ_CheckError(imgSessionTriggerConfigure2( Session.SessionID,
                                                       IMG_SIGNAL_EXTERNAL,
@@ -2229,7 +2238,8 @@ begin
                                                  IMG_TRIG_POLAR_ACTIVEH,
                                                  IMG_TRIG_DRIVE_FRAME_DONE)) ;
          end
-     else begin
+     else
+        begin
         // External trigger mode (Disable trigger output)
         IMAQ_CheckError(imgSessionTriggerDrive2( Session.SessionID,
                                                  IMG_SIGNAL_EXTERNAL,
@@ -2248,7 +2258,8 @@ begin
 
      // Special processing to speed up VA-29MC-5M camera.
      // Select camera AOI mode and only read selected lines.
-     if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') and (BinFactor = 1) then begin
+     if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') and (BinFactor = 1) then
+        begin
         AOIVStart := Min(FrameTop,Session.FrameHeightMax-501) ;
         AOIVend := AOIVStart + Max(FrameHeight-1,500)  ;
         s := format('sva %d %d',[AOIVStart,AOIVend]) + #13 + #10;
