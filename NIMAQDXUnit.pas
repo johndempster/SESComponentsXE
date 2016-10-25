@@ -26,6 +26,7 @@ unit NIMAQDXUnit;
 //          Min/Max/Incremental steps now checked by IMAQDX_SetAttribute() which is now a function returning value set
 // 16-11-15 Support for Mono12 packed formats added
 // 08-12-15 Min/max check in IMAQDX_SetAttribute() disabled because Basler camera reporting incorrect values
+// 23-10-16 Support for Point Grey Grasshopper camera added
 
 interface
 
@@ -401,6 +402,7 @@ Type
     AttrExposureTime : Integer ;
     AttrExposureMode : Integer ;
     AttrExposureAuto : Integer ;
+    AttrPgrExposureCompensationAuto : Integer ;
     AttrAcquisitionFrameRateEnabled : Integer ;
     AttrAcquisitionFrameRate : Integer ;
     AttrAcquisitionFrameRateAuto : Integer ;
@@ -1136,6 +1138,7 @@ var
     DMin,DMax,DInc : Double ;
     iMin,iMax,Inc64 : Int64 ;
     uMin,uMax,Inc32 : Integer ;
+  iOpening, NumCameraInits : Integer;
 begin
 
      Result := False ;
@@ -1170,6 +1173,14 @@ begin
      CameraInfo.Add( 'Model: ' + IMAQDX_CharArrayToString(Session.CameraInfo[SelectedCamera].ModelName)) ;
      CameraInfo.Add( 'Camera File: ' + IMAQDX_CharArrayToString(Session.CameraInfo[SelectedCamera].CameraFileName)) ;
      CameraInfo.Add( 'URL: ' + IMAQDX_CharArrayToString(Session.CameraInfo[SelectedCamera].CameraAttributeURL)) ;
+
+     // Open and initialise camera TWICE
+     // 23/10/16 This is a fix to ensure that 'AcquisitionFrameRateAuto=Off' is recognised by Point Grey
+     // Grasshopper cameras which seem to require the camera to be open/closed before the setting
+     // is recognised.
+
+     NumCameraInits := 0 ;
+     repeat
 
      // Open camera
      Err := IMAQdxOpenCamera ( Session.CameraInfo[SelectedCamera].InterfaceName,
@@ -1249,6 +1260,7 @@ begin
      if Session.AttrExposureMode < 0 then Session.AttrExposureMode  := IMAQDX_FindAttribute( Session, 'ExposureMode', false ) ;
 
      Session.AttrExposureAuto := IMAQDX_FindAttribute( Session, 'AcquisitionControl::ExposureAuto', false ) ;
+     Session.AttrPgrExposureCompensationAuto := IMAQDX_FindAttribute( Session, 'AcquisitionControl::pgrExposureCompensationAuto', false ) ;
 
      Session.AttrAcquisitionFrameRateEnabled := IMAQDX_FindAttribute( Session, 'AcquisitionFrameRateEnabled', false ) ;
      Session.AttrAcquisitionFrameRate := IMAQDX_FindAttribute( Session, 'CameraAttributes::AcquisitionControl::AcquisitionFrameRate', true ) ;
@@ -1354,6 +1366,12 @@ begin
      CameraInfo.Add( format('CCD: Width %d, Height %d, Pixel depth %d',
                              [Session.FrameWidthMax,Session.FrameHeightMax,Session.PixelDepth]));
 
+     // Disable automatic exposure setting features and set to timed exposure mode
+     IMAQdx_SetAttribute( Session, Session.AttrExposureAuto, 'Off' ) ;
+     IMAQdx_SetAttribute( Session, Session.AttrPgrExposureCompensationAuto, 'Off' ) ;
+     IMAQdx_SetAttribute( Session, Session.AttrExposureMode, 'Timed' ) ;
+     IMAQdx_SetAttribute( Session, Session.AttrAcquisitionFrameRateAuto, 'Off' ) ;
+
      // List camera attributes
      CameraInfo.Add('Camera Attributes:') ;
      for i := 0 to Session.NumAttributes-1 do begin
@@ -1411,6 +1429,10 @@ begin
          end ;
 
      IMAQdx_SetAttribute( Session,Session.AttrPacketSize, 8000 ) ;
+
+     if NumCameraInits = 0 then IMAQdxCloseCamera( Session.ID ) ;
+     Inc( NumCameraInits ) ;
+     until NumCameraInits >= 2 ;
 
      // Clear flags
      Session.AcquisitionInProgress := False ;
@@ -2152,20 +2174,17 @@ begin
                                  ExposureTime,
                                  ReadOutTime) ;
 
-      // Set exposure time
- //     IMAQdx_SetAttribute( Session, Session.AttrExposureMode, 'manual' ) ;
-      IMAQdx_SetAttribute( Session, Session.AttrExposureAuto, 'off' ) ;
-      IMAQdx_SetAttribute( Session, Session.AttrExposureMode, 'Timed' ) ;
+     // Set exposure time
+     IMAQdx_SetAttribute( Session, Session.AttrExposureMode, 'Timed' ) ;
 
      // Internal/external triggering of frame capture
 
      if ExternalTrigger = CamFreeRun then begin
         // Free run trigger mode
         // ---------------------
-        IMAQdx_SetAttribute( Session,Session.AttrTriggerMode, 'off' ) ;
+        IMAQdx_SetAttribute( Session,Session.AttrTriggerMode, 'Off' ) ;
         // Set frame rate
         IMAQdx_SetAttribute( Session, Session.AttrAcquisitionFrameRateEnabled, True ) ;
-        IMAQdx_SetAttribute( Session, Session.AttrAcquisitionFrameRateAuto, 'off' ) ;
         FrameRate := 1.0/FrameInterval ;
         FrameRate := IMAQdx_SetAttribute( Session, Session.AttrAcquisitionFrameRate, FrameRate ) ;
         IMAQdx_GetAttribute( Session, Session.AttrAcquisitionFrameRate, FrameRate ) ;
@@ -2254,6 +2273,8 @@ var
     i64Value,Inc64,Max64,Min64 : Int64 ;
     i32Value : Integer ;
 begin
+      outputdebugstring(pchar(format('Int64 %d %s,%d',
+      [Attribute,ansistring(Session.Attributes[Attribute].name),Value])));
 
       Result := Value ;
       if Attribute < 0 then Exit ;
@@ -2305,6 +2326,8 @@ var
     i64Value : Int64 ;
     i32Value,Inc32,Max32,Min32 : Integer ;
 begin
+      outputdebugstring(pchar(format('Int32 %d %s,%d',
+      [Attribute,ansistring(Session.Attributes[Attribute].name),Value])));
 
       Result := Value ;
       if Attribute < 0 then Exit ;
@@ -2356,6 +2379,8 @@ var
     i64Value : Int64 ;
     i32Value : Integer ;
 begin
+      outputdebugstring(pchar(format('double %d %s,%.3g',
+      [Attribute,ansistring(Session.Attributes[Attribute].name),Value])));
 
       Result := Value ;
       if Attribute < 0 then Exit ;
@@ -2406,6 +2431,8 @@ var
     List : Array[0..100] of TIMAQdxEnumItem ;
     i,nList : Cardinal ;
 begin
+      outputdebugstring(pchar(format('Int64 %d %s,%s',
+      [Attribute,ansistring(Session.Attributes[Attribute].name),Value])));
 
       Result := Value ;
       if Attribute < 0 then Exit ;
@@ -2448,6 +2475,9 @@ begin
       Result := Value ;
       if Attribute < 0 then Exit ;
       if not Session.Attributes[Attribute].Writable then Exit ;
+
+      outputdebugstring(pchar(format('bool %d %s,%d',
+      [Attribute,ansistring(Session.Attributes[Attribute].name),Integer(Value)])));
 
       case Session.Attributes[Attribute].iType of
           IMAQdxAttributeTypeBool : begin
@@ -2902,11 +2932,16 @@ function IMAQDX_CheckFrameInterval(
 // Check that selected frame interval is valid
 // -------------------------------------------
 //
+var
+    RateMin,RateMax,RateInc : Double ;
+    IntervalMin,IntervalMax,IntervalInc : Double ;
 begin
 
      // Get frame interval (this is a read-only value)
-     //IMAQdx_GetAttributeF64( Session,IMAQdxAttributeFrameInterval,FrameInterval ) ;
-     //FrameInterval := FrameInterval*0.001 ;
+     IMAQdx_GetAttrRange( Session, Session.AttrAcquisitionFrameRate,RateMin,RateMax,RateInc ) ;
+     IntervalMin := 1.0/RateMax ;
+     IntervalMax := 1.0/RateMin ;
+     FrameInterval := Min(Max(IntervalMin,FrameInterval),IntervalMax);
      Result := 0 ;
      end ;
 

@@ -2535,7 +2535,7 @@ begin
           end ;
 
        IMAQDX : begin
-          //IMAQDX_CheckFrameInterval( IMAQDXSession, FFrameInterval ) ;
+          IMAQDX_CheckFrameInterval( IMAQDXSession, FFrameInterval ) ;
           end ;
 
        DTOL : begin
