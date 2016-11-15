@@ -127,7 +127,9 @@ unit ScopeDisplay;
                   allowing printer margins to be set without exception halting application
   16.03.16 ... JD StorageMode updated. StorageMode=TRUE now works correctly again superimposing
                   traces on screen
-
+  27.10.16 ... JD Support for single, double floating point and 8 byte integer arrays added
+                  .FloatingPointSamples property added
+  04.11.16 ... JD ADCZero and cursors position properties now single type rather than integer
   }
 
 interface
@@ -176,18 +178,18 @@ type
          ADCUnits : string ;
          ADCName : string ;
          ADCScale : single ;
-         ADCZero : integer ;
+         ADCZero : single ;
          ADCZeroAt : Integer ;
          CalBar : single ;
          InUse : Boolean ;
          ADCOffset : Integer ;
          color : TColor ;
-         Position : Integer ;
+         Position : single ;
          ChanNum : Integer ;
          ZeroLevel : Boolean ;
          YSize : Single ;
          xLast : Integer ;
-         yLast : Integer ;
+         yLast : single ;
          GridSpacing : single ;
          end ;
     TMousePos = ( TopLeft,
@@ -222,7 +224,6 @@ type
 
     Channel : Array[0..ScopeChannelLimit] of TScopeChannel ;
     FTimeGridSpacing : single ;   // Spacing between vertical grid lines (s)
-//    KeepChannel : Array[0..ScopeChannelLimit] of TScopeChannel ;
     HorCursors : Array[0..ScopeChannelLimit] of TScopeChannel ;
     VertCursors : Array[0..64] of TScopeChannel ;
     FNumVerticalCursorLinks : Integer ;
@@ -230,8 +231,9 @@ type
     FChanZeroAvg : Integer ;
     FTopOfDisplayArea : Integer ;
     FBottomOfDisplayArea : Integer ;
-    FBuf : Pointer {^TSmallIntArray} ;
+    FBuf : Pointer ;
     FNumBytesPerSample : Integer ;
+    FFloatingPointSamples : Boolean ; // TRue = floating point samples
 
     FCursorsEnabled : Boolean ;
     FHorCursorActive : Boolean ;
@@ -329,8 +331,8 @@ type
     procedure SetChanCalBar( Ch : Integer ; Value : single ) ;
     function GetChanCalBar( Ch : Integer ) : single ;
 
-    procedure SetChanZero( Ch : Integer ; Value : Integer ) ;
-    function GetChanZero( Ch : Integer ) : Integer ;
+    procedure SetChanZero( Ch : Integer ; Value : single ) ;
+    function GetChanZero( Ch : Integer ) : single ;
 
     procedure SetChanZeroAt( Ch : Integer ; Value : Integer ) ;
     function GetChanZeroAt( Ch : Integer ) : Integer ;
@@ -357,10 +359,10 @@ type
     procedure SetYSize( Ch : Integer ; Value : single ) ;
     function GetYSize( Ch : Integer ) : single ;
 
-    procedure SetHorCursor( iCursor : Integer ; Value : Integer ) ;
-    function GetHorCursor( iCursor : Integer ) : Integer ;
-    procedure SetVertCursor( iCursor : Integer ; Value : Integer ) ;
-    function GetVertCursor( iCursor : Integer ) : Integer ;
+    procedure SetHorCursor( iCursor : Integer ; Value : single ) ;
+    function GetHorCursor( iCursor : Integer ) : single ;
+    procedure SetVertCursor( iCursor : Integer ; Value : single ) ;
+    function GetVertCursor( iCursor : Integer ) : single ;
 
     procedure SetPrinterFontName( Value : string ) ;
     function GetPrinterFontName : string ;
@@ -505,7 +507,7 @@ type
     property ChanUnits[ i : Integer ] : string read GetChanUnits write SetChanUnits ;
     property ChanScale[ i : Integer ] : single read GetChanScale write SetChanScale ;
     property ChanCalBar[ i : Integer ] : single read GetChanCalBar write SetChanCalBar ;
-    property ChanZero[ i : Integer ] : Integer read GetChanZero write SetChanZero ;
+    property ChanZero[ i : Integer ] : single read GetChanZero write SetChanZero ;
     property ChanZeroAt[ i : Integer ] : Integer read GetChanZeroAt write SetChanZeroAt ;
     property ChanZeroAvg : Integer read FChanZeroAvg write SetChanZeroAvg ;
     property ChanOffsets[ i : Integer ] : Integer read GetChanOffset write SetChanOffset ;
@@ -518,9 +520,9 @@ type
     property YMin[ i : Integer ] : single read GetYMin write SetYMin ;
     property YMax[ i : Integer ] : single read GetYMax write SetYMax ;
     property XScreenCoord[ Value : Integer ] : Integer read GetXScreenCoord ;
-    property HorizontalCursors[ i : Integer ] : Integer
+    property HorizontalCursors[ i : Integer ] : single
              read GetHorCursor write SetHorCursor ;
-    property VerticalCursors[ i : Integer ] : Integer
+    property VerticalCursors[ i : Integer ] : single
              read GetVertCursor write SetVertCursor ;
 
   published
@@ -596,6 +598,7 @@ type
     property NumVerticalCursors : Integer read GetNumVerticalCursors ;
     property NumHorizontalCursors : Integer read GetNumHorizontalCursors ;
     property NumBytesPerSample : Integer read FNumBytesPerSample write FNumBytesPerSample ;
+    property FloatingPointSamples : Boolean read FFloatingPointSamples write FFloatingPointSamples ;
     property FixZeroLevels : Boolean read FFixZeroLevels write SetFixZeroLevels ;
     property DisplaySelected : Boolean
              read FDisplaySelected write FDisplaySelected ;
@@ -624,6 +627,41 @@ type
     PIntArray = ^TIntArray ;
     TSingleArray = Array[0..$FFFFFF] of Single ;
     PSingleArray = ^TSingleArray ;
+    TDoubleArray = Array[0..$FFFFFF] of Single ;
+    PDoubleArray = ^TSingleArray ;
+
+function GetSample(
+         Buf : Pointer ;                 // Pointer to start of buffer
+         i : Integer ;                   // Index of sample
+         NumBytesPerSample : Integer ;   // No. bytes per sample
+         FloatingPointSamples : Boolean  // TRUE = floating point format
+         ) : Single ; Inline ;
+// ---------------------------
+// Get sample value from array
+// ---------------------------
+begin
+    if FloatingPointSamples then
+       begin
+       // Floating point data
+       case NumBytesPerSample of
+            4 : Result := PSingleArray(Buf)^[i] ;
+            8 : Result := PDoubleArray(Buf)^[i] ;
+            else Result := 0 ;
+            end ;
+       end
+    else
+       begin
+       // Int
+       case NumBytesPerSample of
+            2 : Result := PSmallIntArray(Buf)^[i] ;
+            4 : Result := PIntArray(Buf)^[i] ;
+            else Result := 0 ;
+            end ;
+       end ;
+    end;
+
+
+
 
 procedure Register;
 begin
@@ -695,6 +733,7 @@ begin
      FChanZeroAvg := 20 ;
      FBuf := Nil ;
      FNumBytesPerSample := 2 ;
+     FFloatingPointSamples := False ;
      for ch := 0 to High(Channel) do begin
          Channel[ch].InUse := True ;
          Channel[ch].ADCName := format('Ch.%d',[ch]) ;
@@ -967,7 +1006,8 @@ procedure TScopeDisplay.PlotRecord(
   ----------------------------------- }
 var
    ch,n,i,j,iStart,iEnd,iStep,iPlot : Integer ;
-   XPix,XPixRange,YMin,YMax,y,iYMin,iYMax : Integer ;
+   XPix,XPixRange,iYMin,iYMax : Integer ;
+   YMin,YMax,y : single ;
 begin
 
      // Exit if no buffer
@@ -991,12 +1031,11 @@ begin
          iPlot := iStart ;
          iYMin := 0 ;
          iYMax := 1 ;
-         YMin := High(YMin) ;
-         YMax := Low(YMax) ;
+         YMin := 1E30 ;
+         YMax := -YMin ;
          repeat
 
-             if FNumBytesPerSample > 2 then y := PIntArray(FBuf)^[j]
-                                       else y := PSmallIntArray(FBuf)^[j] ;
+             y := GetSample( FBuf, j, FNumBytesPerSample, FFloatingPointSamples ) ;
 
              if y < Ymin then begin
                 iYMin := i ;
@@ -1029,8 +1068,8 @@ begin
                    Channels[ch].yLast := yMin ;
                    Inc(n) ;
                    end ;
-                YMin := High(YMin) ;
-                YMax := Low(YMax) ;
+                YMin := 1E30 ;
+                YMax := -YMin ;
                 iPlot := Min(iPlot + iStep,iEnd) ;
                 end;
 
@@ -1472,7 +1511,8 @@ procedure TScopeDisplay.DisplayNewPoints(
   -----------------------------------------}
 var
    i,iStep,j,ch,iPlot : Integer ;
-   StartAt,EndAt,XPix,XPixRange,XPixLeft,XPixRight,YMin,YMax,y,iYMin,iYMax : Integer ;
+   StartAt,EndAt,XPix,XPixRange,XPixLeft,XPixRight,iYMin,iYMax : Integer ;
+   YMin,YMax,y : single ;
 begin
 
      { Start plot lines at last point in buffer }
@@ -1490,9 +1530,19 @@ begin
 
          Canvas.Pen.Color := Channel[ch].Color ;
 
+         i := StartAt ;
+         j := (i*FNumChannels) + Channel[ch].ADCOffset ;
+         iStep := Max((EndAt - StartAt) div (XPixRange*2),1) ;
+         iPlot := StartAt ;
+         YMin := 1E30 ;
+         YMax := -YMin ;
+         iYMin := 0 ;
+         iYMax := 0 ;
+         XPixLeft := Channel[ch].Left ;
+         XPixRight := Channel[ch].Right ;
+
          if StartAt = 0 then begin
-            if FNumBytesPerSample > 2 then y := PIntArray(FBuf)^[ch]
-                                      else y := PSmallIntArray(FBuf)^[ch] ;
+            y := GetSample( FBuf, j, FNumBytesPerSample, FFloatingPointSamples ) ;
             Canvas.MoveTo( Channel[ch].Left, YToCanvasCoord( Channel[ch], y) ) ;
             end
          else begin
@@ -1500,19 +1550,8 @@ begin
                            YToCanvasCoord( Channel[ch],Channel[ch].yLast ) ) ;
             end;
 
-         i := StartAt ;
-         j := (i*FNumChannels) + Channel[ch].ADCOffset ;
-         iStep := Max((EndAt - StartAt) div (XPixRange*2),1) ;
-         iPlot := StartAt ;
-         YMin := High(YMin) ;
-         YMax := Low(YMax) ;
-         iYMin := 0 ;
-         iYMax := 0 ;
-         XPixLeft := Channel[ch].Left ;
-         XPixRight := Channel[ch].Right ;
          repeat
-            if FNumBytesPerSample > 2 then y := PIntArray(FBuf)^[j]
-                                      else y := PSmallIntArray(FBuf)^[j] ;
+             y := GetSample( FBuf, j, FNumBytesPerSample, FFloatingPointSamples ) ;
             if y <= Ymin then begin
                iYMin := i ;
                YMin := y ;
@@ -1537,8 +1576,8 @@ begin
                        Channel[ch].yLast := yMin ;
                        end ;
                     end ;
-                 YMin := High(YMin) ;
-                 YMax := Low(YMax) ;
+                 YMin := 1E30 ;
+                 YMax := -YMin ;
                  iPlot := Min(iPlot + iStep,EndAt) ;
                  end;
             Inc(i) ;
@@ -1803,10 +1842,9 @@ begin
          s := VertCursors[iCurs].ADCName ;
 
          // Cursor signal level reading
-         j := (VertCursors[iCurs].Position*FNumChannels) + Channel[ch].ADCOffset ;
+         j := (Round(VertCursors[iCurs].Position)*FNumChannels) + Channel[ch].ADCOffset ;
          if (j >= 0) and (j < (FMaxPoints*FNumChannels)) and (FBuf <> Nil) then begin
-            if FNumBytesPerSample > 2 then y := PIntArray(FBuf)^[j]
-                                      else y := PSmallIntArray(FBuf)^[j] ;
+            y := GetSample( FBuf, j, FNumBytesPerSample, FFloatingPointSamples ) ;
             end
          else y := 0 ;
 
@@ -1824,16 +1862,15 @@ begin
 
          // Display sample index
          if ANSIContainsText(VertCursors[iCurs].ADCName,'?i') then begin
-            s := s + format('i=%d, ',[VertCursors[iCurs].Position]) ;
+            s := s + format('i=%.0f, ',[VertCursors[iCurs].Position]) ;
             end ;
 
          // Display signal level
          if ANSIContainsText(VertCursors[iCurs].ADCName,'?y0') then begin
             // Display signal level (relative to cursor 0)
-            j := (VertCursors[0].Position*FNumChannels) + Channel[ch].ADCOffset ;
+            j := Round(VertCursors[0].Position)*FNumChannels + Channel[ch].ADCOffset ;
             if (j >= 0) and (j < (FMaxPoints*FNumChannels)) and (FBuf <> Nil) then begin
-               if FNumBytesPerSample > 2 then yz := PIntArray(FBuf)^[j]
-                                         else yz := PSmallIntArray(FBuf)^[j] ;
+               y := GetSample( FBuf, j, FNumBytesPerSample, FFloatingPointSamples ) ;
                end
             else yz := 0 ;
             s := s + format('%6.5g %s',[(y-yz)*Channel[ch].ADCScale,Channel[ch].ADCUnits]) ;
@@ -2223,7 +2260,7 @@ begin
 
 procedure TScopeDisplay.SetChanZero(
           Ch : Integer ;
-          Value : Integer
+          Value : single
           ) ;
 { ------------------------
   Set a channel zero level
@@ -2236,7 +2273,7 @@ begin
 
 function TScopeDisplay.GetChanZero(
           Ch : Integer
-          ) : Integer ;
+          ) : single ;
 { ----------------------------
   Get a channel A/D zero level
   ---------------------------- }
@@ -2248,7 +2285,7 @@ begin
 
 procedure TScopeDisplay.SetChanZeroAt(
           Ch : Integer ;
-          Value : Integer
+          Value : integer
           ) ;
 { ------------------------
   Set a channel zero level
@@ -2335,7 +2372,7 @@ begin
 
 function TScopeDisplay.GetHorCursor(
          iCursor : Integer
-         ) : Integer ;
+         ) : single ;
 { ---------------------------------
   Get position of horizontal cursor
   ---------------------------------}
@@ -2348,7 +2385,7 @@ begin
 
 procedure TScopeDisplay.SetHorCursor(
           iCursor : Integer ;           { Cursor # }
-          Value : Integer               { New Cursor position }
+          Value : single              { New Cursor position }
           )  ;
 { ---------------------------------
   Set position of horizontal cursor
@@ -2369,7 +2406,7 @@ begin
 
 function TScopeDisplay.GetVertCursor(
          iCursor : Integer
-         ) : Integer ;
+         ) : single ;
 { -------------------------------
   Get position of vertical cursor
   -------------------------------}
@@ -2382,7 +2419,7 @@ begin
 
 procedure TScopeDisplay.SetVertCursor(
           iCursor : Integer ;           { Cursor # }
-          Value : Integer               { New Cursor position }
+          Value : single                { New Cursor position }
           )  ;
 { -------------------------------
   Set position of Vertical cursor
@@ -2756,6 +2793,7 @@ begin
      end ;
 
 
+
 procedure TScopeDisplay.MouseMove(
           Shift: TShiftState;
           X, Y: Integer) ;
@@ -3052,8 +3090,8 @@ procedure TScopeDisplay.MoveActiveVerticalCursor( Step : Integer ) ;
   ---------------------------------------------------------------- }
 begin
 
-    VertCursors[FLastVertCursorSelected].Position := IntLimitTo(
-        VertCursors[FLastVertCursorSelected].Position + Step,FXMin,FXMax );
+    VertCursors[FLastVertCursorSelected].Position := Max(FXMin,Min(FXMax,
+                        VertCursors[FLastVertCursorSelected].Position + Step ));
 
      { Notify a change in cursors }
      if Assigned(OnCursorChange) and
@@ -3230,7 +3268,8 @@ const
       MaxPoints = 10000 ;
 var
    L,i,ch,NumLines,jPoint : Integer ;
-   y,yMin,YMax,iYMin,iYMax,NumCompressed,NumPointsPerBlock,iBlock,iPoint,NumChannelsInUse,LineCount : Integer ;
+   iYMin,iYMax,NumCompressed,NumPointsPerBlock,iBlock,iPoint,NumChannelsInUse,LineCount : Integer ;
+   y,yMin,YMax : single ;
    iCell,Col,Row,RowStart,ColOffset,NumColumns : Integer ;
    CompBuf : PSingleArray ;
    InUse : PSMallIntArray ;
@@ -3278,14 +3317,13 @@ begin
          // Initiialise compression block min/max
          iYMin := 0 ;
          iYMax := 0 ;
-         YMin := High(YMin) ;
-         YMax := Low(YMax) ;
+         YMin := 1E30 ;
+         YMax := -YMin ;
 
          for iPoint := Max(FXMin,0) to Min(FXMax,FNumPoints-1) do begin
 
              // Get data point
-             if FNumBytesPerSample > 2 then y := PIntArray(FBuf)^[jPoint]
-                                       else y := PSmallIntArray(FBuf)^[jPoint] ;
+             y := GetSample( FBuf, jPoint, FNumBytesPerSample, FFloatingPointSamples ) ;
 
              // Update min/max limits
              if y < Ymin then begin
@@ -3333,8 +3371,8 @@ begin
                    end;
 
                 iBlock := 0 ;
-                YMin := High(YMin) ;
-                YMax := Low(YMax) ;
+                YMin := 1E30 ;
+                YMax := -YMin ;
 
                 end;
 

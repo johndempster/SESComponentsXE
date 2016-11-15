@@ -113,7 +113,7 @@ TChannel = record
          Top : LongInt ;
          Bottom : LongInt ;
          TimeZero : single ;
-         ADCZero : LongInt ;
+         ADCZero : single ;
          ADCZeroAt : LongInt ;
          ADCSCale : single ;
          ADCCalibrationFactor : single ;
@@ -1880,7 +1880,7 @@ begin
          AppendString( Header, format('YN%d=',[ch]), Channels[ch].ADCName ) ;
          AppendFloat(Header,format('YCF%d=',[ch]),Channels[ch].ADCCalibrationFactor) ;
          AppendFloat( Header, format('YAG%d=',[ch]), Channels[ch].ADCAmplifierGain) ;
-         AppendInt( Header, format('YZ%d=',[ch]), Channels[ch].ADCZero) ;
+         AppendFloat( Header, format('YZ%d=',[ch]), Channels[ch].ADCZero) ;
          AppendInt( Header, format('YR%d=',[ch]), Channels[ch].ADCZeroAt) ;
          end ;
 
@@ -1941,7 +1941,7 @@ begin
          ReadString( Header, format('YN%d=',[ch]), Channels[ch].ADCName ) ;
          ReadFloat(Header,format('YCF%d=',[ch]),Channels[ch].ADCCalibrationFactor) ;
          ReadFloat( Header, format('YAG%d=',[ch]), Channels[ch].ADCAmplifierGain) ;
-         ReadInt( Header, format('YZ%d=',[ch]), Channels[ch].ADCZero) ;
+         ReadFloat( Header, format('YZ%d=',[ch]), Channels[ch].ADCZero) ;
          ReadInt( Header, format('YR%d=',[ch]), Channels[ch].ADCZeroAt) ;
          end ;
 
