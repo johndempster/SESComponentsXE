@@ -29,6 +29,7 @@ unit XYPlotDisplay;
               square root axis starts from zero
  18.02.14 ... pXY now all defined as Pointer (not PCHAR)
               Integer() -> NativeInt()
+ 17.11.16 ... Axis tick numbers now display up 99999 before switching to powers of 10.
  }
 
 interface
@@ -2617,11 +2618,11 @@ begin
                Exponent.Add('') ;
                PowerofTen := False ;
                end
-            Else If (Abs(TickValue) <= 999. )
+            Else If (Abs(TickValue) <= 99999. )
                And  (Abs(TickValue) >= 0.01 )
                And  (PowerofTen = False) Then begin
                { Print values }
-               Mantissa.Add(TidyNumber(Format('%8.3g',[TickValue]))) ;
+               Mantissa.Add(TidyNumber(Format('%10.5g',[TickValue]))) ;
                PowerofTen := False ;
                Exponent.Add( '' ) ;
                end
