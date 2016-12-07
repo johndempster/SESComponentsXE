@@ -27,6 +27,8 @@ unit NIMAQDXUnit;
 // 16-11-15 Support for Mono12 packed formats added
 // 08-12-15 Min/max check in IMAQDX_SetAttribute() disabled because Basler camera reporting incorrect values
 // 23-10-16 Support for Point Grey Grasshopper camera added
+// 02-12-16 CameraAttributes::ImageFormatControl::OffsetX and CameraAttributes::ImageFormatControl::OffsetY
+//          now used  to correctly locate X and Y offset for Point Grey Grasshopper cameras
 
 interface
 
@@ -1231,10 +1233,12 @@ begin
      if Session.AttrHeight < 0 then Session.AttrHeight := IMAQDX_FindAttribute( Session, 'AOI::Height', false ) ;
      if Session.AttrHeight < 0 then Session.AttrHeight := IMAQDX_FindAttribute( Session, 'Height', false ) ;
 
-     Session.AttrXOffset := IMAQDX_FindAttribute( Session, 'AOI::OffsetX', false ) ;
+     Session.AttrXOffset := IMAQDX_FindAttribute( Session, 'CameraAttributes::ImageFormatControl::OffsetX', true ) ;
+     if Session.AttrXOffset < 0 then Session.AttrXOffset := IMAQDX_FindAttribute( Session, 'AOI::OffsetX', false ) ;
      if Session.AttrXOffset < 0 then Session.AttrXOffset := IMAQDX_FindAttribute( Session, 'OffsetX', false ) ;
 
-     Session.AttrYOffset := IMAQDX_FindAttribute( Session, 'AOI::OffsetY', false ) ;
+     Session.AttrYOffset := IMAQDX_FindAttribute( Session, 'CameraAttributes::ImageFormatControl::OffsetY', true ) ;
+     if Session.AttrYOffset < 0 then Session.AttrYOffset := IMAQDX_FindAttribute( Session, 'AOI::OffsetY', false ) ;
      if Session.AttrYOffset < 0 then Session.AttrYOffset := IMAQDX_FindAttribute( Session, 'OffsetY', false ) ;
 
      Session.AttrXBin := IMAQDX_FindAttribute( Session, 'AOI::BinningHorizontal', false ) ;
