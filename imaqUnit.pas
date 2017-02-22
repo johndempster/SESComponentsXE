@@ -1846,7 +1846,8 @@ begin
        repeat
          ReadLn( InterfaceFile, asBuf ) ;
          Key := 'Channel0 =' ;
-         if ANSIContainsText(asBuf, Key) and (Session.CameraName = '') then begin
+         if ANSIContainsText(asBuf, Key) and (Session.CameraName = '') then
+            begin
             asBuf := ANSIReplaceText( asBuf, Key, '');
             asBuf := ANSIReplaceText( asBuf, '"', '');
             asBuf := ANSIReplaceText( asBuf, '"', '');
@@ -1859,7 +1860,8 @@ begin
      CameraInfo.Add('Camera: ' + Session.CameraName );
 
      if ANSIContainsText(Session.CameraName, 'Orca') or
-        ANSIContainsText(Session.CameraName, '4742')then begin
+        ANSIContainsText(Session.CameraName, '4742')then
+        begin
         // Orca -100
         // Pixel bit depths
         Session.PixelDepths[0] := 12 ;
@@ -1907,7 +1909,8 @@ begin
         Session.GainMax := 255 ;
 
         end
-     else if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then begin
+     else if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
+        begin
 
         // Initialisation for Vieworks VA-29MC-5M
 
