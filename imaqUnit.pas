@@ -21,6 +21,9 @@ unit imaqUnit;
 // 13-10-16 Minor changes when during testing of VA-29MC-5M exposure time
 //          Exposure time attribute corrected in Vieworks VA-29MC-5M.icd file. Now correctly sets
 //          exposure time 10 us - 7s. Exposure frame capture rates now faster
+// 08.03.17 if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then IMAQ_TriggerPulse( Session ) removed from
+//          end of StartCapture because it was causing incorrect first frame of pixel-shift sequence
+//          Camera triggered by Cam1.SoftwareTriggerCapture call.
 
 interface
 
@@ -1781,9 +1784,6 @@ var
     asBuf : ANSIString ;
     InterfaceFileName,Key : string ;
     InterfaceFile : TextFile ;
-    BufSize : Integer ;
-    Buf : Array[0..255] of ANSIChar ;
-    s : ANSIString ;
 begin
 
      Result := False ;
@@ -2300,7 +2300,8 @@ begin
     Session.AcquisitionInProgress := True ;
 
     // Apply internal trigger pulse to start VA-29MC-5M pixel shift camera
-    if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then IMAQ_TriggerPulse( Session ) ;
+//    Removed because unnecessary and causing
+//    if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then IMAQ_TriggerPulse( Session ) ;
 
     end;
 
@@ -2355,7 +2356,8 @@ begin
 
      IMAQ_CheckError(imgInterfaceReset(Session.SessionID)) ;
 
-     if not Session.AnalogVideoBoard then begin
+     if not Session.AnalogVideoBoard then
+        begin
         IMAQ_SetCameraAttributeString(Session.SessionID,Session.FanModeCom,Session.FanOn) ;
 
         // Turn fan on, reset trigger pulse and reset stage for Vieworks VA-29MC-5M camera
