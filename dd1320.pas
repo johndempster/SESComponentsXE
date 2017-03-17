@@ -942,7 +942,7 @@ function  DD132X_MemoryToDACAndDigitalOut(
   --------------------------------------------------------------}
 var
    i,ch,iTo,iFrom,DigCh,MaxOutPointer : Integer ;
-   t,tstep : single ;
+   tstep : single ;
 begin
 
     Result := False ;

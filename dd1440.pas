@@ -644,7 +644,7 @@ procedure DD1440_LoadLibrary  ;
   Load AXDD1440.DLL library into memory
   -------------------------------------}
 var
-     DD1440Path,AxonDLL,DLLName,ProgramDir,FileName,SYSDrive : String ; // DLL file paths
+     AxonDLL,ProgramDir,SYSDrive : String ; // DLL file paths
      SourcePath,TrialPath : string ;
      Path : Array[0..255] of Char ;
      VMaj,VMin : Integer ;

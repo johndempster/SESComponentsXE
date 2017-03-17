@@ -81,7 +81,7 @@ unit Ced1401;
 }
 interface
 
-uses WinTypes,Dialogs, SysUtils, WinProcs, Classes,use1401, math, strutils ;
+uses WinTypes,Dialogs, SysUtils, WinProcs, Classes,use1401, math, strutils, UITypes ;
 
 const
      MaxADCChannel = 15 ;

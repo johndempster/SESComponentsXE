@@ -22,7 +22,7 @@ interface
 
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
-  Clipbrd, printers, strutils ;
+  Clipbrd, printers, strutils, Types ;
 
 const
      MaxLines = 1000 ;

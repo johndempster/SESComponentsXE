@@ -14,7 +14,7 @@ unit HTMLLabel;
 interface
 
 uses
-  SysUtils, Classes, Controls, StrUtils, Graphics, Types ;
+  SysUtils, Classes, Controls, StrUtils, Graphics, Types, UITypes ;
 
 type
   THTMLLabel = class(TGraphicControl)

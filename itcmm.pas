@@ -22,7 +22,7 @@ unit itcmm;
 
 interface
 
-uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math;
+uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math, UITypes ;
 
   procedure ITCMM_InitialiseBoard ;
   procedure ITCMM_LoadLibrary  ;
