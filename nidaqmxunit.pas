@@ -59,6 +59,9 @@ unit NidaqMXUnit;
 //          existing ADC task setups
 // 05.11.15 USB-6002/3 P1.0->PFI0+PFI1 now used as trigger line for A/D and D/A start synchronisation
 //          instead of P0.0->PFI0+PFI1
+// 28.04.17 NIMX_CheckMaxADCChannels() now checks channels using +/-5V input range
+//          to avoid errors with boards which only support maximum of +/-5V input range
+//
 
 
 interface
@@ -2282,6 +2285,7 @@ begin
           ANSIContainsText(FBoardModel,'6005') then FNoTriggerOnSampleClock := True
        else FNoTriggerOnSampleClock := False ;
 
+
        end
     else begin
        // Timing properties not available. Based limits on board type
@@ -2386,7 +2390,7 @@ begin
     FDACMinValue := -FDACMaxValue - 1 ;
 
     Err := 0 ;
-    While (Err = 0) {and FDACClockSupported} do begin
+    While (Err = 0) do begin
 
         NIMX_CheckError( DAQmxCreateTask( '', Task ) ) ;
         ChannelName := format('%s/ao%d',[DeviceName,FDACNumChannels]) ;
@@ -2424,18 +2428,11 @@ begin
     FADCResolution := 16 ;
     FADCMaxValue := 32767 ;
     FADCMinValue := -FADCMaxValue - 1 ;
-    //NIMX_CheckMaxADCChannels( DAQmx_Val_PseudoDiff ) ;
-    //NIMX_CheckMaxADCChannels( DAQmx_Val_NRSE ) ;
-    //NIMX_CheckMaxADCChannels( DAQmx_Val_Diff ) ;
-    //NIMX_CheckMaxADCChannels( DAQmx_Val_RSE ) ;
-    //NIMX_CheckMaxADCChannels( DAQmx_Val_Diff ) ;
 
     // Enable floating point exceptions
     NIMX_EnableFPUExceptions ;
 
     // Create input buffer
-    //GetMem(InBuf,MaxADCSamples*4) ;
-    //New(DBuf) ;
     GetMem(DBuf,MaxADCSamples*8) ;
 
     BoardInitialised := True ;
@@ -2464,14 +2461,16 @@ begin
     Err := 0 ;
     While Err = 0 do begin
 
+        // Note. +/- 5V range used to be compatible with
+        // interfaces (like PCI-6010) which have +/-5V max input range
         NIMX_CheckError( DAQmxCreateTask( '', Task ) ) ;
         ChannelName := format('%s/ai%d',[DeviceName,ADCNumChannels]) ;
         Err := DAQmxCreateAIVoltageChan( Task,
                                       PANSIChar(ChannelName),
                                       nil ,
                                       ADCInputMode,
-                                      -10,
-                                      10,
+                                      -5.0,
+                                      5.0,
                                       DAQmx_Val_Volts,
                                       nil);
         if Err = 0 then begin
@@ -2850,12 +2849,11 @@ begin
                                          nil);
 
         if Err = 0 then begin
-          NIMX_CheckError( DAQmxGetAIMax( ADCTask, PANSIChar(ChannelName), DValue ));
-          if Abs((DValue - VRanges[i])/VRanges[i]) < 0.1 then begin
+          Err := DAQmxGetAIMax( ADCTask, PANSIChar(ChannelName), DValue );
+          if (Err = 0) and (Abs((DValue - VRanges[i])/VRanges[i]) < 0.1) then begin
              ADCVoltageRanges[NumADCVoltageRanges] := DValue ;
              if NumADCVoltageRanges <= High(ADCVoltageRanges) then Inc(NumADCVoltageRanges) ;
              end ;
-
           end ;
         NIMX_CheckError( DAQmxClearTask( ADCTask ) ) ;
         end ;
@@ -2902,13 +2900,6 @@ procedure NIMX_GetChannelOffsets(
 var
     i : Integer ;
 begin
-
-//    ADCModeCode := NIMX_GetADCInputModeCode( ADCInputMode ) ;
-//    FADCNumChannels := NIMX_CheckMaxADCChannels( ADCModeCode ) ;
-//    NumChannels := Min(FADCNumChannels,NumChannels) ;
-//    for i := 0 to NumChannels-1 do Offsets[i] := i ;
-//  No longer checks for number of channels, just fills array with incrementing number 29.07.15
-//  to avoid NIMX_CheckMaxADCChannels() messing up
 
     for i := 0 to High(Offsets) do Offsets[i] := i ;
 
