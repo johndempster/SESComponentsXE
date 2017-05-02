@@ -29,6 +29,8 @@ unit NIMAQDXUnit;
 // 23-10-16 Support for Point Grey Grasshopper camera added
 // 02-12-16 CameraAttributes::ImageFormatControl::OffsetX and CameraAttributes::ImageFormatControl::OffsetY
 //          now used  to correctly locate X and Y offset for Point Grey Grasshopper cameras
+// 02-05-17 StartCapture() In external trigger mode, 0.0005s added to readout time because it is
+//          misreported as too short immediately after switching from free run mode with GrassHopper 3.
 
 interface
 
@@ -2200,18 +2202,21 @@ begin
      else begin
         // External trigger
         // ----------------
-        // Set camera exposure time. Note subtraction of readout time because external trigger mode
-        // results in post-exposure readout.
+        IMAQdx_SetAttribute( Session,Session.AttrTriggerMode, 'on' ) ;
+        IMAQdx_SetAttribute( Session,Session.AttrTriggerSelector, 'frame start' ) ;   // Trigger frame
+        IMAQdx_SetAttribute( Session,Session.AttrTriggerSource, 'line 1' ) ;     // Line 1
+        IMAQdx_SetAttribute( Session,Session.AttrTriggerActivation, 'rising edge' ) ; //Rising Edge
+
+        // Set camera exposure time.
+        // Note 0.0005 s added to readout time because extra time seems to be required in
+        // triggered mode.
+        IMAQdx_GetAttrRange( Session, Session.AttrAcquisitionFrameRate, DMin, DMax,DInc ) ;
+        ReadoutTime := (1.0/DMax) + 0.0005 ;
         ExposureTime := (FrameInterval - ReadOutTime - AdditionalReadoutTime)*IMAQDX_ExposureTimeScale( Session ) ;
         // Keep within min/max exposure time limits
         IMAQdx_GetAttrRange( Session, Session.AttrExposureTime, DMin, DMax,DInc) ;
         ExposureTime := Min(Max(ExposureTime,DMin),DMax);
         IMAQdx_SetAttribute( Session, Session.AttrExposureTime, ExposureTime ) ;
-
-        IMAQdx_SetAttribute( Session,Session.AttrTriggerMode, 'on' ) ;
-        IMAQdx_SetAttribute( Session,Session.AttrTriggerSelector, 'frame start' ) ;   // Trigger frame
-        IMAQdx_SetAttribute( Session,Session.AttrTriggerSource, 'line 1' ) ;     // Line 1
-        IMAQdx_SetAttribute( Session,Session.AttrTriggerActivation, 'rising edge' ) ; //Rising Edge
 
         end ;
 
@@ -2938,7 +2943,7 @@ function IMAQDX_CheckFrameInterval(
 //
 var
     RateMin,RateMax,RateInc : Double ;
-    IntervalMin,IntervalMax,IntervalInc : Double ;
+    IntervalMin,IntervalMax : Double ;
 begin
 
      // Get frame interval (this is a read-only value)
