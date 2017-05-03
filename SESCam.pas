@@ -1460,6 +1460,7 @@ begin
 
             Thorlabs : begin
               Thorlabs_GetImage( ThorlabsSession ) ;
+              FFrameCount := ThorlabsSession.FrameCounter ;
               end ;
             end ;
         end ;
