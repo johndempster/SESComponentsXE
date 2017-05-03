@@ -67,6 +67,8 @@ unit SESCam;
                Support for Vieworks VA-29MC-5M camera with CameraLink interface added
  14.05.15 JD   .DisableExposureIntervalLimit property added.
                FrameInterval checking against readout time can be disabled.
+ 03.05.17 JD   Thorlabs: FReadoutSpeed now preserved when camera re-opened to avoid
+               being reset to minimum. Note this fix may be required for other cameras
   ================================================================================ }
 {$OPTIMIZATION OFF}
 {$POINTERMATH ON}
@@ -1336,7 +1338,7 @@ begin
 
              // List of readout speeds
              Thorlabs_GetCameraReadoutSpeedList( ThorlabsSession, CameraReadoutSpeedList ) ;
-             FReadoutSpeed := 0 ;
+             FReadoutSpeed := Max(Min(FReadoutSpeed,CameraReadoutSpeedList.Count-1),0) ;
              ThorlabsSession.PixelClock := FReadoutSpeed ;
 
              // Calculate grey levels from pixel depth
@@ -1346,11 +1348,6 @@ begin
              FGreyLevelMin := 0 ;
              FCCDRegionReadoutAvailable := True ;
 
-             // Set temperature set point
-//             AndorSDK3_SetTemperature( AndorSDK3Session, FTemperatureSetPoint ) ;
-//             AndorSDK3_SetCooling( AndorSDK3Session, FCameraCoolingOn ) ;
-//             AndorSDK3_SetFanMode( AndorSDK3Session, FCameraFanMode ) ;
-//             AndorSDK3_SetCameraMode( AndorSDK3Session, FCameraMode ) ;
              FNumCameras := 1 ;
              end ;
 

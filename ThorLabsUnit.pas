@@ -5,6 +5,7 @@ unit ThorLabsUnit;
 // 5.09.14 Tested with DCC1240M (drops frames when operating above 17 MHz pixel clock)
 // 8.10.14 is_DeviceFeature() now only called to set shutter mode for CMOS cameras
 //         to avoid call unsupported error with DCU223 and similar cameras.
+// 3.05.17
 
 interface
 
@@ -3590,7 +3591,7 @@ begin
      FrameInterval := Min(Max(FrameInterval,TMin),TMax) ;
 
      is_SetFrameRate(Session.CamHandle, (1.0/FrameInterval), ActualFPS);
-     FrameInterval := 1.0/ActualFPS ;
+     if ActualFPS > 0.0 then FrameInterval := 1.0/ActualFPS ;
 
      Result := True ;
 

@@ -31,6 +31,7 @@ unit NIMAQDXUnit;
 //          now used  to correctly locate X and Y offset for Point Grey Grasshopper cameras
 // 02-05-17 StartCapture() In external trigger mode, 0.0005s added to readout time because it is
 //          misreported as too short immediately after switching from free run mode with GrassHopper 3.
+// 03-05-17 IMAQDX_CheckFrameInterval() Divide by zero avoided when no camera available
 
 interface
 
@@ -2830,7 +2831,6 @@ begin
     end;
 
 
-
 procedure IMAQDX_CopyImageBGRA(
           var Session : TIMAQDXSession ;  // Session record
           xLeft : Integer ;               // Start copy at column X
@@ -2940,17 +2940,18 @@ function IMAQDX_CheckFrameInterval(
 // -------------------------------------------
 // Check that selected frame interval is valid
 // -------------------------------------------
-//
 var
     RateMin,RateMax,RateInc : Double ;
     IntervalMin,IntervalMax : Double ;
 begin
-
      // Get frame interval (this is a read-only value)
      IMAQdx_GetAttrRange( Session, Session.AttrAcquisitionFrameRate,RateMin,RateMax,RateInc ) ;
-     IntervalMin := 1.0/RateMax ;
-     IntervalMax := 1.0/RateMin ;
-     FrameInterval := Min(Max(IntervalMin,FrameInterval),IntervalMax);
+     if (RateMax > 0.0) and (RateMin > 0.0) then
+        begin
+        IntervalMin := 1.0/RateMax ;
+        IntervalMax := 1.0/RateMin ;
+        FrameInterval := Min(Max(IntervalMin,FrameInterval),IntervalMax);
+        end;
      Result := 0 ;
      end ;
 
