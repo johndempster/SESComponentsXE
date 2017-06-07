@@ -26,6 +26,7 @@ unit imaqUnit;
 //          Camera triggered by Cam1.SoftwareTriggerCapture call.
 // 27.04.17 IMAQ_TriggerPulse restored to StartCapture, Cam1.SoftwareTriggerCapture removed from calling program
 //          ResetStage now functional again
+// 07.07.17 VA-29MC-5M Fan on/off now handle via attribute string
 
 interface
 
@@ -2191,12 +2192,12 @@ begin
           if NumPixelShiftFrames > 0 then
              begin
              IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOff) ;
-             IMAQ_VA29MC5M_FanOn(Session,False) ;
+    //         IMAQ_VA29MC5M_FanOn(Session,False) ;
              end
           else
              begin
              IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOn) ;
-             IMAQ_VA29MC5M_FanOn(Session,TRue) ;
+    //         IMAQ_VA29MC5M_FanOn(Session,TRue) ;
              end;
           end;
 
@@ -2359,12 +2360,13 @@ begin
 
      if not Session.AnalogVideoBoard then
         begin
-        IMAQ_SetCameraAttributeString(Session.SessionID,Session.FanModeCom,Session.FanOn) ;
+        //IMAQ_SetCameraAttributeString(Session.SessionID,Session.FanModeCom,Session.FanOn) ;
 
         // Turn fan on, reset trigger pulse and reset stage for Vieworks VA-29MC-5M camera
         if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
            begin
-           IMAQ_VA29MC5M_FanOn(Session,True) ;
+        //   IMAQ_VA29MC5M_FanOn(Session,True) ;
+           IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOn) ;
            if Session.PulseID <> 0 then IMAQ_CheckError(imgPulseStop(Session.PulseID));
            IMAQ_VA29MC5M_ResetStage(Session) ;
            IMAQ_CheckError(imgSessionSerialFlush(Session.SessionID));
@@ -2425,6 +2427,8 @@ procedure IMAQ_TriggerPulse(
 begin
 
      if not Session.AcquisitionInProgress then Exit ;
+
+     outputdebugstring(pchar('Trigger'));
 
      if Session.PulseID = 0 then
      IMAQ_CheckError(imgPulseCreate2(PULSE_TIMEBASE_50MHZ,
