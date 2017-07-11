@@ -20,6 +20,8 @@ unit HamDCAMUnit;
 //            both 32 and 64 bits. 64 bite version tested with Flash 4.0
 // 16.05.14 JD DCAM_GetDLLAddress: Handle now defined as THandle
 //             rather than Integer (possible cause of errors with 64 bit version)
+// 15.06.17 JD DCAMAPI_SetCooling(), DCAMAPI_SetFanMode(),
+//             DCAMAPI_SetTemperature(),DCAMAPI_SpotNoiseReduction() added.
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, messages,
@@ -1632,7 +1634,27 @@ procedure DCAMAPI_CheckROIBoundaries(
          var ReadoutTime : Double ;          // Frame readout time (s)
          ExternalTrigger : Integer );        // Trigger mode ;
 
-function DCAMAPI_CheckStepSize( Value : Integer ;
+procedure DCAMAPI_SetFanMode(
+          var Session : TDCAMAPISession ;    // Session record
+          FanMode : Integer                  // 0 = Off, 1=low, 2=high
+          ) ;
+
+procedure DCAMAPI_SetCooling(
+          var Session : TDCAMAPISession ;    // Session record
+          Enabled : Boolean                // TRUE = On FALSE = Off
+          ) ;
+
+procedure DCAMAPI_SetTemperature(
+          var Session : TDCAMAPISession ;    // Session record
+          Temperature : Double               // Target temperature
+          ) ;
+
+procedure DCAMAPI_SpotNoiseReduction(
+          var Session : TDCAMAPISession ;    // Session record
+          Enabled : Boolean                // TRUE = On FALSE = Off
+          ) ;
+
+          function DCAMAPI_CheckStepSize( Value : Integer ;
                                 StepSize : Integer ) : Integer ;
 
 procedure DCAMAPI_SetProperty(
@@ -2459,6 +2481,79 @@ begin
     Session.CapturingImages := False ;
 
     end ;
+
+
+procedure DCAMAPI_SetFanMode(
+          var Session : TDCAMAPISession ;    // Session record
+          FanMode : Integer                  // 0 = Off, 1=low, 2=high
+          ) ;
+// -------------------
+// Set camera fan mode
+// -------------------
+var
+    Mode : Double ;
+begin
+    if not Session.CameraOpen then Exit ;
+
+    if FanMode = 0 then Mode := DCAMPROP_MODE__ON
+                   else Mode := DCAMPROP_MODE__OFF ;
+    DCAMAPI_SetProperty( Session,DCAM_IDPROP_SENSORCOOLERFAN,Mode);
+
+    end;
+
+procedure DCAMAPI_SetCooling(
+          var Session : TDCAMAPISession ;    // Session record
+          Enabled : Boolean              // TRUE = On
+          ) ;
+// -------------------
+// Set camera cooling mode
+// -------------------
+var
+    Mode : Double ;
+begin
+    if not Session.CameraOpen then Exit ;
+
+    if Enabled then Mode := DCAMPROP_SENSORCOOLER__ON
+               else Mode := DCAMPROP_SENSORCOOLER__OFF ;
+    DCAMAPI_SetProperty( Session,DCAM_IDPROP_SENSORCOOLER,Mode);
+
+    end;
+
+
+procedure DCAMAPI_SetTemperature(
+          var Session : TDCAMAPISession ;    // Session record
+          Temperature : Double               // Target temperature
+          ) ;
+// -------------------------------------
+// Set camera cooling target temperature
+// -------------------------------------
+var
+    TargetTemperature : Double ;
+begin
+    if not Session.CameraOpen then Exit ;
+    TargetTemperature := Temperature ;
+    DCAMAPI_SetProperty( Session,DCAM_IDPROP_SENSORTEMPERATURETARGET,TargetTemperature);
+    end ;
+
+
+procedure DCAMAPI_SpotNoiseReduction(
+          var Session : TDCAMAPISession ;    // Session record
+          Enabled : Boolean              // TRUE = On
+          ) ;
+// ---------------------------------------------
+// Enable/disable on-camera spot noise reduction
+// ---------------------------------------------
+var
+    Mode : Double ;
+begin
+    if not Session.CameraOpen then Exit ;
+
+    if Enabled then Mode :=  DCAMPROP_MODE__ON
+               else Mode :=  DCAMPROP_MODE__OFF ;
+    DCAMAPI_SetProperty( Session,DCAM_IDPROP_SPOTNOISEREDUCER,Mode);
+
+    end;
+
 
 procedure DCAMAPI_CheckError(
           FuncName : String ;   // Name of function called
