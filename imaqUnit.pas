@@ -1947,7 +1947,7 @@ begin
         Session.TriggerPolarityCom := 'Trigger Polarity' ;
         Session.TriggerPolarityVal := 'Active High' ;
 
-        // Expsure time
+        // Exposure time
         Session.ExposureModeCom := 'Exposure Mode' ;
         Session.ExposureModeVal := 'Program' ;
         Session.ExposureTimeCom := 'Exposure Time' ;
@@ -2187,17 +2187,18 @@ begin
 
           if ExternalTrigger = CamFreeRun then s := 'None' ;
           IMAQ_SetCameraAttributeString( Session.SessionID,'Sequence Mode',s) ;
+//          IMAQ_SetCameraAttributeString( Session.SessionID,'Multishot Mode','Enable') ;
 
           // Turn fan off for pixel shift modes
           if NumPixelShiftFrames > 0 then
              begin
              IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOff) ;
-    //         IMAQ_VA29MC5M_FanOn(Session,False) ;
+             IMAQ_VA29MC5M_FanOn(Session,False) ;
              end
           else
              begin
              IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOn) ;
-    //         IMAQ_VA29MC5M_FanOn(Session,TRue) ;
+            IMAQ_VA29MC5M_FanOn(Session,TRue) ;
              end;
           end;
 
@@ -2365,7 +2366,7 @@ begin
         // Turn fan on, reset trigger pulse and reset stage for Vieworks VA-29MC-5M camera
         if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
            begin
-        //   IMAQ_VA29MC5M_FanOn(Session,True) ;
+           IMAQ_VA29MC5M_FanOn(Session,True) ;
            IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOn) ;
            if Session.PulseID <> 0 then IMAQ_CheckError(imgPulseStop(Session.PulseID));
            IMAQ_VA29MC5M_ResetStage(Session) ;
