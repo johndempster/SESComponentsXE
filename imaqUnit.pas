@@ -27,6 +27,7 @@ unit imaqUnit;
 // 27.04.17 IMAQ_TriggerPulse restored to StartCapture, Cam1.SoftwareTriggerCapture removed from calling program
 //          ResetStage now functional again
 // 07.07.17 VA-29MC-5M Fan on/off now handle via attribute string
+// 12.07.17 VA-29MC-5M Fan on/off now handled by call again
 
 interface
 
