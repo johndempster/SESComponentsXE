@@ -70,6 +70,7 @@ unit SESCam;
  03.05.17 JD   Thorlabs: FReadoutSpeed now preserved when camera re-opened to avoid
                being reset to minimum. Note this fix may be required for other cameras
  15.06.17 JD   .FanMode, .CoolerOn .Temperature and .SpotNoiseReduction support added to DCAM cameras
+ 31.07.17 JD  .SpotNoiseReduction support removed
 
   ================================================================================ }
 {$OPTIMIZATION OFF}
@@ -183,7 +184,6 @@ type
     FNumComponentsPerPixel : Integer ; // No. of colour components per pixel
     FMaxComponentsPerPixel : Integer ; // Max. no. of colour components per pixel
     FMonochromeImage : Boolean ;   // TRUE = Extract monochrome image from colour sources
-    FSpotNoiseReduction : Boolean ;    // TRUE = Spot noise reduction enabled
 
     FLensMagnification : Single ;   // Camera lens magification factor
     FPixelWidth : Single ;          // Pixel width
@@ -284,7 +284,6 @@ type
     procedure SetCameraCoolingOn( Value : Boolean ) ;
     procedure SetCameraFanMode( Value : Integer ) ;
     procedure SetDisableEMCCD( Value : Boolean ) ;
-    procedure SetSpotNoiseReduction( Value : Boolean ) ;
 
     procedure SetCameraMode( Value : Integer ) ;
     procedure SetCameraADC( Value : Integer ) ;
@@ -400,7 +399,6 @@ type
     Property NumPixelShiftFrames : Integer read FNumPixelShiftFrames write FNumPixelShiftFrames ;
     Property DisableExposureIntervalLimit : Boolean read FDisableExposureIntervalLimit write FDisableExposureIntervalLimit ;
     Property MonochromeImage : Boolean read FMonochromeImage write SetMonochromeImage ;
-    Property SpotNoiseReduction : Boolean read FSpotNoiseReduction write SetSpotNoiseReduction ;
   end;
 
 procedure Register;
@@ -633,7 +631,6 @@ begin
      FNumComponentsPerPixel := 1 ;
      FMaxComponentsPerPixel := 1 ;
      FMonochromeImage := false ;
-     FSpotNoiseReduction := false ;
      FPixelDepth :=  8 ;
      FGreyLevelMin := 0 ;
      FGreyLevelMax := $FF ;
@@ -1169,7 +1166,6 @@ begin
              DCAMAPI_SetTemperature( DCAMSession, FTemperatureSetPoint ) ;
              DCAMAPI_SetCooling( DCAMSession, FCameraCoolingOn ) ;
              DCAMAPI_SetFanMode( DCAMSession, FCameraFanMode ) ;
-             DCAMAPI_SpotNoiseReduction( DCAMSession, FSpotNoiseReduction ) ;
 
              end ;
 
@@ -3217,21 +3213,6 @@ begin
     if FMonochromeImage then FNumComponentsPerPixel := 1
                         else FNumComponentsPerPixel := FMaxComponentsPerPixel ;
     end;
-
-
-procedure TSESCam.SetSpotNoiseReduction( Value : Boolean ) ;
-// ----------------------------------
-// Set on camera spot noise reduction
-// ----------------------------------
-begin
-    FSpotNoiseReduction := Value ;
-    case FCameraType of
-       DCAM : begin
-           DCAMAPI_SpotNoiseReduction( DCAMSession, FSpotNoiseReduction  ) ;
-           end;
-       end;
-    end;
-
 
 
 end.

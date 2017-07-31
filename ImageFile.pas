@@ -20,7 +20,11 @@ unit ImageFile;
 //          to avoid scrambling of large TIF file images
 // 18.08.15 PixelDepth coerced to multiple of 8 bits for compatibility with TIF format
 // 22.01.16 BigTIFF format now supported
-
+// 27.07.17 STK format export now works again (TIFSaveHeader(FileHandle) used in STKClose)
+//          BIGTIFF files: cIFDMaxBytesPerStrip = 1Gbyte to force images as single strips
+//          to get files to import into Image-J using BIOFORMATS. Not clear why this is
+//          necessary (possibly a fault in strip processing
+//          PageNumberTag now saved as longfield.
 interface
 
 uses
@@ -35,7 +39,8 @@ const
 
      cIFDMaxStrips = 1000 ;
      cIFDMaxTags = 100 ;
-     cIFDMaxBytesPerStrip = 4000000 ; //32768*2 ;
+//     cIFDMaxBytesPerStrip = 4000000 ; //32768*2 ;
+     cIFDMaxBytesPerStrip = 1000000000 ; //32768*2 ;
      cIFDTagsSpace = cIFDMaxTags*12 + 8 ;
      cIFDStripsOffset = cIFDTagsSpace ;
      cIFDStripsSpace = cIFDMaxStrips*8 ;
@@ -1618,7 +1623,7 @@ begin
     if NumBytesInFile > High(Cardinal) then TIFFHeader.Signature := BigTIFSignature
                                        else TIFFHeader.Signature := TIFSignature ;
 
-//  TIFFHeader.Signature := BigTIFSignature ;
+//    TIFFHeader.Signature := BigTIFSignature ;
 
     // Clear array of pointers to frame IFDs
     for i := 0 to High(FIFDPointerList) do FIFDPointerList[i] := 0 ;
@@ -1676,10 +1681,8 @@ begin
            // Save IFD
            FilePointer := FileSeek( FileHandle, 0, 2 ) ;
            TIFFHeader.IFDOffset := TIFSaveIFD( 1, True ) ;
-
            // Write TIFF file header
-           FileSeek(FileHandle,0,0) ;
-           FileWrite(FileHandle, TIFFHeader, SizeOf(TIFFHeader)) ;
+           TIFSaveHeader(FileHandle);
            end ;
 
         // Close file
@@ -1703,7 +1706,6 @@ Function TImageFile.TIFLoadIFD(
 var
     IFDCount : UInt64 ;
     i : Integer ;
-    IFDEntry : TTiffIFDEntry ;
     IFDList : Array[0..100] of  TTiffIFDEntry ;
     Done : Boolean ;
     NumIFDEntries : Integer ;
@@ -1999,7 +2001,8 @@ begin
     // Set page number
     if not TIFSingleFrame then begin
        IFD.PageNumber := FrameNum ;
-       SetIFDEntry( IFDList, IFDCount, PageNumberTag, ShortField, 1, IFD.PageNumber ) ;
+//       SetIFDEntry( IFDList, IFDCount, PageNumberTag, ShortField, 1, IFD.PageNumber ) ;
+       SetIFDEntry( IFDList, IFDCount, PageNumberTag, LongField, 1, IFD.PageNumber ) ;
        end ;
 
     // Set spatial resolution information
@@ -2031,9 +2034,6 @@ begin
        IFD.StripOffsets[IFD.NumStrips] := IFD.StripOffsets[IFD.NumStrips-1] + NumBytes ;
        NumBytesToWrite := NumBytesToWrite - NumBytes ;
        end ;
-
-//    if Keep1 <> (IFD.StripOffsets[0]-Keep) then
-  //  OutputDebugString(pchar(format('%d %d',[FrameNum,IFD.StripOffsets[0]])));
 
     // Write strip offsets & byte counts
     if IFD.NumStrips > 1 then begin
@@ -2107,6 +2107,7 @@ begin
     else begin
        IFD.NextIFDOffset := IFDPointer + cIFDImageStart + NumBytesPerImage ;
        end ;
+
     FileWrite(FileHandle, IFD.NextIFDOffset, TIFFHeader.OffsetByteSize ) ;
 
     // Return IFD pointer
@@ -2233,8 +2234,7 @@ begin
     TIFFHeader.ByteOrder := LittleEndian ;
     TIFFHeader.Signature := TIFSignature ;
     TIFFHeader.IFDOffset := 0 ;
-    FileSeek(FileHandle,0,0) ;
-    FileWrite(FileHandle, TIFFHeader, SizeOf(TIFFHeader)) ;
+    TIFSaveHeader(FileHandle) ;
 
     Result := True ;
 
@@ -2312,7 +2312,6 @@ var
     s,ICSText : String ;
     Pars : Array[0..10] of String ;
     Values : Array[0..10] of Integer ;
-    Done : Boolean ;        // Loop done flag
     NumBytes,NumValues : Integer ;
     i,ix  : Integer ;
     iByte : Byte ;

@@ -2346,11 +2346,6 @@ procedure IMAQ_StopCapture(
 // ------------------
 // Stop frame capture
 // ------------------
-var
-    BufSize,Err : Integer ;
-    Buf : Array[0..255] of ANSIChar ;
-    s : ANSIString ;
-
 begin
 
      if not Session.AcquisitionInProgress then Exit ;

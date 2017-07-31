@@ -1143,7 +1143,7 @@ var
     DMin,DMax,DInc : Double ;
     iMin,iMax,Inc64 : Int64 ;
     uMin,uMax,Inc32 : Integer ;
-  iOpening, NumCameraInits : Integer;
+    NumCameraInits : Integer;
 begin
 
      Result := False ;

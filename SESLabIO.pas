@@ -140,6 +140,7 @@ unit SESLabIO;
            Interface now initialised by LoadFromXMLFile()
            LoadFromXMLFile1() now checks if XML file contains settings and avoids access violation.
   09.09.16 Digidata 1550B support added.
+  20.07.17 .ADCStart Analog input channels checked for duplicates and acquisition aborted.
   ================================================================================ }
 
 interface
@@ -1869,6 +1870,18 @@ var
    WaitForExtTrigger : Boolean ;
 begin
      if not FLabInterfaceAvailable then Exit ;
+
+     // Abort if duplicate channels in input list
+     for i := 0 to FADCNumChannels-1 do begin
+         for j := 0 to FADCNumChannels-1 do
+            if (i<>j) and (FADCChannelInputNumber[i] = FADCChannelInputNumber[j])  then
+               begin
+               ShowMessage(format(
+               'Error! Input channels Ch.%d and Ch.%d mapped to AI.%d in analogue inputs list. Acquisition aborted.',
+               [i,j,FADCChannelInputNumber[i]]));
+               exit ;
+               end;
+         end;
 
      { Fill buffer with empty flag }
      j := 0 ;

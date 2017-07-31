@@ -1689,6 +1689,7 @@ begin
     Result := 0 ;
     if not LibraryLoaded then Exit ;
 
+    LatestFramePointer := 0 ;
     Err := pl_exp_get_latest_frame( Session.Handle, LatestFramePointer ) ;
     PVCAM_DisplayErrorMessage( 'pl_exp_get_latest_frame ' ) ;
 
