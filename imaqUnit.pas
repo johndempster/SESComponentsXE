@@ -28,6 +28,7 @@ unit imaqUnit;
 //          ResetStage now functional again
 // 07.07.17 VA-29MC-5M Fan on/off now handle via attribute string
 // 12.07.17 VA-29MC-5M Fan on/off now handled by call again
+// 02.08.17
 
 interface
 
@@ -1055,6 +1056,7 @@ type
     NumPixelDepths : Integer ;
     GainMin : Integer ;
     GainMax : Integer ;
+    ExposureTime : Double ;
     MinExposureTime : Double ;
     MaxExposureTime : Double ;
     ExposureTimeScale : Double ;
@@ -1942,7 +1944,7 @@ begin
         // Free run / externla triggering commands
         Session.TriggerModeCom := 'Trigger Mode' ;
         Session.TriggerModeValFreeRun := 'Free Run';
-        Session.TriggerModeValExtTrig := 'Standard' ;
+        Session.TriggerModeValExtTrig := 'Overlap';//'Standard' ;
         Session.TriggerSourceCom := 'Trigger Source' ;
         Session.TriggerSourceVal := 'CC1';//'Ext' ;
         Session.TriggerPolarityCom := 'Trigger Polarity' ;
@@ -2209,18 +2211,22 @@ begin
        ExpTimeMicroSecs := Max(Round(ExposureTime*Session.ExposureTimeScale),10) ;
        ExpTimeMicroSecs := (ExpTimeMicroSecs div 10)*10 ;
        IMAQ_SetCameraAttributeNumeric( Session.SessionID,Session.ExposureTimeCom,ExpTimeMicroSecs) ;
+       Session.ExposureTime := ExpTimeMicroSecs*1e-6 ;
 
        // Internal/external triggering of frame capture
        if ExternalTrigger = CamFreeRun then
           begin
           // Free run mode
           // -------------
+          IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,Session.ExposureModeVal) ;
           IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValFreeRun) ;
           end
        else
           begin
           // External Trigger
           // ----------------
+//          if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
+//             IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,'Pulse Width') ;
           IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValExtTrig) ;
           IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerSourceCom,Session.TriggerSourceVal) ;
           IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerPolarityCom,Session.TriggerPolarityVal) ;
@@ -2421,16 +2427,20 @@ procedure IMAQ_TriggerPulse(
 // -----------------------------------------
 // Apply trigger pulse to External trigger 0
 // -----------------------------------------
+var
+  ClockTicks : LongWord ;
 begin
 
      if not Session.AcquisitionInProgress then Exit ;
 
      outputdebugstring(pchar('Trigger'));
 
+     ClockTicks := Round(Session.ExposureTime*5E7) ;
+
      if Session.PulseID = 0 then
      IMAQ_CheckError(imgPulseCreate2(PULSE_TIMEBASE_50MHZ,
                      50,
-                     50000,
+                     ClockTicks,
                      IMG_SIGNAL_STATUS,
                      IMG_IMMEDIATE,
                      IMG_TRIG_POLAR_ACTIVEH,
