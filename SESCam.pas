@@ -71,6 +71,7 @@ unit SESCam;
                being reset to minimum. Note this fix may be required for other cameras
  15.06.17 JD   .FanMode, .CoolerOn .Temperature and .SpotNoiseReduction support added to DCAM cameras
  31.07.17 JD  .SpotNoiseReduction support removed
+ 03.08.17 JD  .CCDXShift and .CCDYShift added setting of CCD X,Y stage position for VNP-29MC camera
 
   ================================================================================ }
 {$OPTIMIZATION OFF}
@@ -145,6 +146,8 @@ type
     FCCDType : string ;          // Type CCD in camera
     FCCDClearPreExposure : Boolean ; // Clear CCD before exposure
     FCCDPostExposureReadout : Boolean ; // CCD readout is after exposure
+    FCCDXShift : Double ;         // CCD shift (fraction of pixel size)
+    FCCDYShift : Double ;         // CCD shift (fraction of pixel size)
     FCameraAvailable : Boolean ; // Camera is available for use
     FCameraActive : Boolean ;    // Camera is in use
 
@@ -292,6 +295,9 @@ type
     procedure SetCCDPostExposureReadout( Value : Boolean ) ;
     procedure SetMonochromeImage( Value : Boolean ) ;
 
+    procedure SetCCDXShift( Value : Double );
+    procedure SetCCDYShift( Value : Double );
+
   protected
     { Protected declarations }
   public
@@ -399,6 +405,8 @@ type
     Property NumPixelShiftFrames : Integer read FNumPixelShiftFrames write FNumPixelShiftFrames ;
     Property DisableExposureIntervalLimit : Boolean read FDisableExposureIntervalLimit write FDisableExposureIntervalLimit ;
     Property MonochromeImage : Boolean read FMonochromeImage write SetMonochromeImage ;
+    Property CCDXShift : Double read FCCDXShift write SetCCDXShift ;
+    Property CCDYShift : Double read FCCDYShift write SetCCDYShift ;
   end;
 
 procedure Register;
@@ -3213,6 +3221,36 @@ begin
     if FMonochromeImage then FNumComponentsPerPixel := 1
                         else FNumComponentsPerPixel := FMaxComponentsPerPixel ;
     end;
+
+
+procedure TSESCam.SetCCDYShift( Value : Double );
+// ---------------------------------------------------
+// Shift CCD stage Y position (fraction of pixel size)
+// ---------------------------------------------------
+begin
+    case FCameraType of
+      IMAQ :
+        begin
+        FCCDYShift := Value ;
+        IMAQ_SetCCDYShift( IMAQSession,Value)
+      end;
+    end;
+end;
+
+
+procedure TSESCam.SetCCDXShift( Value : Double );
+// ---------------------------------------------------
+// Shift CCD stage X position (fraction of pixel size)
+// ---------------------------------------------------
+begin
+    case FCameraType of
+      IMAQ :
+        begin
+        FCCDYShift := Value ;
+        IMAQ_SetCCDXShift( IMAQSession,Value)
+      end;
+    end;
+end;
 
 
 end.

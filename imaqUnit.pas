@@ -28,7 +28,7 @@ unit imaqUnit;
 //          ResetStage now functional again
 // 07.07.17 VA-29MC-5M Fan on/off now handle via attribute string
 // 12.07.17 VA-29MC-5M Fan on/off now handled by call again
-// 02.08.17
+// 02.08.17 IMAQ_SetCCDXShift() and IMAQ_SetCCDYShift() added allowing control of VNP-29MC camera stage
 
 interface
 
@@ -1083,6 +1083,7 @@ type
     FanOff : ANSIString ;
     GainCom : ANSIString ;
     PulseID : Integer ;
+    PixelSizeNm : Cardinal ;
     end ;
 
 //============================================================================
@@ -1577,6 +1578,13 @@ procedure IMAQ_VA29MC5M_ResetStage(
           var Session : TIMAQSession // Camera session #
           ) ;
 
+procedure IMAQ_SetCCDXShift(
+          var Session : TIMAQSession ;  // Camera session
+          Value : Double );
+
+procedure IMAQ_SetCCDYShift(
+          var Session : TIMAQSession ;  // Camera session
+          Value : Double );
 
 procedure IMAQ_TriggerPulse(
            var Session : TIMAQSession ) ;
@@ -1930,6 +1938,7 @@ begin
         Session.MaxExposureTime := 100.0 ;
         Session.ExposureTimeScale := 1E6 ;  // Scale to microseconds
         Session.CCDShiftSupported := True ;
+        Session.PixelSizeNm := 5500 ;       // Pixel size 5500 nm
 
         // Binning
         Session.BinFactorMax := 4 ;
@@ -2410,8 +2419,6 @@ var
     BufSize,Err : Integer ;
     Buf : Array[0..255] of ANSIChar ;
 begin
-
-
     if FanOn then s := 'sft 1' + #13 + #10
              else s := 'sft 0' + #13 + #10 ;
     BufSize := Length(s) ;
@@ -2420,6 +2427,38 @@ begin
     Err := imgSessionSerialRead(Session.SessionID,@Buf,BufSize,1000);
     end;
 
+procedure IMAQ_SetCCDXShift(
+          var Session : TIMAQSession ;           // Camera session
+          Value : Double );
+// -------------------------
+// Set CCD stage X position
+// -------------------------
+var
+    iPosNm : Cardinal ;
+begin
+    if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
+       begin
+       iPosNm := Round(Value*Session.PixelSizeNm) ;
+       IMAQ_SetCameraAttributeNumeric( Session.SessionID,'StagePositionX',iPosNm) ;
+       end;
+    end;
+
+
+procedure IMAQ_SetCCDYShift(
+          var Session : TIMAQSession ;           // Camera session
+          Value : Double );
+// -------------------------
+// Set CCD stage Y position
+// -------------------------
+var
+    iPosNm : Cardinal ;
+begin
+    if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
+       begin
+       iPosNm := Round(Value*Session.PixelSizeNm) ;
+       IMAQ_SetCameraAttributeNumeric( Session.SessionID,'StagePositionY',iPosNm) ;
+       end;
+    end;
 
 
 procedure IMAQ_TriggerPulse(
