@@ -1953,7 +1953,7 @@ begin
         // Free run / externla triggering commands
         Session.TriggerModeCom := 'Trigger Mode' ;
         Session.TriggerModeValFreeRun := 'Free Run';
-        Session.TriggerModeValExtTrig := 'Overlap';//'Standard' ;
+        Session.TriggerModeValExtTrig := 'Standard' ;
         Session.TriggerSourceCom := 'Trigger Source' ;
         Session.TriggerSourceVal := 'CC1';//'Ext' ;
         Session.TriggerPolarityCom := 'Trigger Polarity' ;
@@ -2198,8 +2198,9 @@ begin
              end;
 
           if ExternalTrigger = CamFreeRun then s := 'None' ;
+          s := 'None' ;
           IMAQ_SetCameraAttributeString( Session.SessionID,'Sequence Mode',s) ;
-//          IMAQ_SetCameraAttributeString( Session.SessionID,'Multishot Mode','Enable') ;
+          IMAQ_SetCameraAttributeString( Session.SessionID,'Multishot Mode','Disable') ;
 
           // Turn fan off for pixel shift modes
           if NumPixelShiftFrames > 0 then
@@ -2234,8 +2235,6 @@ begin
           begin
           // External Trigger
           // ----------------
-//          if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
-//             IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,'Pulse Width') ;
           IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValExtTrig) ;
           IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerSourceCom,Session.TriggerSourceVal) ;
           IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerPolarityCom,Session.TriggerPolarityVal) ;
@@ -2439,7 +2438,7 @@ begin
     if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
        begin
        iPosNm := Round(Value*Session.PixelSizeNm) ;
-       IMAQ_SetCameraAttributeNumeric( Session.SessionID,'StagePositionX',iPosNm) ;
+       IMAQ_SetCameraAttributeNumeric( Session.SessionID,'Stage Shift X',iPosNm) ;
        end;
     end;
 
@@ -2456,7 +2455,7 @@ begin
     if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
        begin
        iPosNm := Round(Value*Session.PixelSizeNm) ;
-       IMAQ_SetCameraAttributeNumeric( Session.SessionID,'StagePositionY',iPosNm) ;
+       IMAQ_SetCameraAttributeNumeric( Session.SessionID,'Stage Shift Y',iPosNm) ;
        end;
     end;
 
@@ -2469,12 +2468,12 @@ procedure IMAQ_TriggerPulse(
 var
   ClockTicks : LongWord ;
 begin
-
+     exit;
      if not Session.AcquisitionInProgress then Exit ;
 
      outputdebugstring(pchar('Trigger'));
 
-     ClockTicks := Round(Session.ExposureTime*5E7) ;
+     ClockTicks := 1;//Round(Session.ExposureTime*5E7) ;
 
      if Session.PulseID = 0 then
      IMAQ_CheckError(imgPulseCreate2(PULSE_TIMEBASE_50MHZ,
@@ -2486,7 +2485,7 @@ begin
                      IMG_SIGNAL_EXTERNAL,
                      0,
                      IMG_PULSE_POLAR_ACTIVEH,
-                     PULSE_MODE_SINGLE,
+                     PULSE_MODE_SINGLE_REARM,
                      Session.PulseID))
      else IMAQ_CheckError(imgPulseStop(Session.PulseID));
      IMAQ_CheckError(imgPulseStart(Session.PulseID, Session.SessionID));
