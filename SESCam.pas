@@ -331,7 +331,8 @@ type
                           FrameTop : Integer ;
                           FrameRight : Integer ;
                           FrameBottom : Integer ) ;
-
+    function PauseCapture : Boolean ;
+    function RestartCapture : Boolean ;
 
   published
     { Published declarations }
@@ -2817,7 +2818,7 @@ function TSESCam.IsLSM( iCameraType : Integer ) : Boolean ;
 //
 begin
 
-     case iCameraType of
+     case FCameraType of
           BioRad,UltimaLSM : Result := True ;
           else Result := False ;
           end ;
@@ -2841,6 +2842,30 @@ begin
     ImageAreaChanged := True ;
 
     end ;
+
+function TSESCam.PauseCapture : Boolean ;
+//
+// Pause image capture
+//
+begin
+     case FCameraType of
+        imaQ : IMAQ_PauseCapture(IMAQSession) ;
+     end;
+end;
+
+function TSESCam.RestartCapture : Boolean ;
+//
+// Restart image capture
+//
+begin
+     case FCameraType of
+        imaQ : IMAQ_RestartCapture(IMAQSession) ;
+     end;
+
+end;
+
+
+
 
 
 procedure TSESCam.SetTemperature(
