@@ -72,6 +72,7 @@ unit SESCam;
  15.06.17 JD   .FanMode, .CoolerOn .Temperature and .SpotNoiseReduction support added to DCAM cameras
  31.07.17 JD  .SpotNoiseReduction support removed
  03.08.17 JD  .CCDXShift and .CCDYShift added setting of CCD X,Y stage position for VNP-29MC camera
+ 15.08.17 JD  .SnapImage added (acquires a single image)
 
   ================================================================================ }
 {$OPTIMIZATION OFF}
@@ -311,6 +312,7 @@ type
     procedure ReadCamera ;
     function StartCapture : Boolean ;
     procedure StopCapture ;
+    function SnapImage : Boolean ;
     procedure SoftwareTriggerCapture ;
     procedure GetFrameBufferPointer( var FrameBuf : Pointer ) ;
     procedure GetLatestFrameNumber( var FrameNum : Integer ) ;
@@ -2091,6 +2093,323 @@ begin
      Result := True ;
 
      end ;
+
+
+function TSESCam.SnapImage : Boolean ;
+{ ----------------------
+  Acquire a single image
+  ---------------------- }
+var
+     ReadoutRate : Integer ;
+begin
+
+     Result := False ;
+
+     // Exit if no frame buffer allocated
+     if PFrameBuffer = Nil then Exit ;
+
+     if FAmpGain < 0 then FAmpGain := 0 ;
+
+     case FCameraType of
+
+       ITEX_CCIR : begin
+          FCameraActive := ITEX_StartCapture( ITEX,
+                           FFrameLeft,
+                           FFrameRight,
+                           FFrameTop,
+                           FFrameBottom,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FFrameWidth,
+                           FFrameHeight ) ;
+
+          end ;
+
+       ITEX_C4880_10,ITEX_C4880_12 : begin
+          // Start frame grabber
+          FCameraActive := ITEX_StartCapture( ITEX,
+                           0,
+                           ((FFrameRight - FFrameLeft + 1) div FBinFactor)-1,
+                           0,
+                           ((FFrameBottom - FFrameTop + 1) div FBinFactor)-1,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FFrameWidth,
+                           FFrameHeight ) ;
+          FFrameRight := FFrameLeft + FFrameWidth*FBinFactor - 1 ;
+          // Select camera readout rate
+          if FCameraType = ITEX_C4880_10 then ReadoutRate := FastReadout
+                                         else ReadoutRate := SlowReadout ;
+          // Start camera
+          FCameraActive := C4880_StartCapture(
+                           ReadoutRate,
+                           FFrameInterval,
+                           FAmpGain,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameTop,
+                           FFrameWidth*FBinFactor,
+                           FFrameHeight*FBinFactor,
+                           FBinFactor,
+                           FReadoutTime ) ;
+
+          end ;
+
+       RS_PVCAM,RS_PVCAM_PENTAMAX : begin
+          FCameraActive := PVCAM_StartCapture( PVCAMSession,
+                                               FFrameLeft,
+                                               FFrameRight,
+                                               FFrameTop,
+                                               FFrameBottom,
+                                               FBinFactor,
+                                               PFrameBuffer,
+                                               FNumBytesInFrameBuffer,
+                                               FFrameInterval,
+                                               Max(FAdditionalReadoutTime,FShortenExposureBy),
+                                               FAmpGain,
+                                               FFrameWidth,
+                                               FFrameHeight,
+                                               FTriggerMode,
+                                               FReadoutSpeed,
+                                               FCCDClearPreExposure,
+                                               FCCDPostExposureReadout ) ;
+          FTemperature := PVCAMSession.Temperature ;
+          end ;
+
+       IMAQ_1394 : begin
+          FCameraActive := IMAQ1394_StartCapture(
+                           Session,
+                           FFrameInterval,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
+                           FAmpGain,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameTop,
+                           FFrameWidth*FBinFactor,
+                           FFrameHeight*FBinFactor,
+                           FBinFactor,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FNumBytesPerFrame
+                           ) ;
+          FrameCounter := 0 ;
+          end ;
+
+       PIXELFLY : begin
+          FCameraActive := PixelFly_StartCapture(
+                           PixelFlySession,
+                           FFrameInterval,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
+                           FAmpGain,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameTop,
+                           FFrameWidth*FBinFactor,
+                           FFrameHeight*FBinFactor,
+                           FBinFactor,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FNumBytesPerFrame
+                           ) ;
+          FrameCounter := 0 ;
+          end ;
+
+      SENSICAM : begin
+          FCameraActive := SENSICAM_StartCapture(
+                           SENSICAMSession,
+                           FFrameInterval,       // this should be the ExposureTime ?
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
+                           FAmpGain,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameTop,
+                           FFrameWidth*FBinFactor,
+                           FFrameHeight*FBinFactor,
+                           FBinFactor,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FNumBytesPerFrame
+                           ) ;
+          FrameCounter := 0 ;
+          end ;
+
+
+
+       ANDOR : begin
+          // Note Andor cameras do not support additional readout time
+          FCameraActive := Andor_StartCapture(
+                           AndorSession,
+                           FFrameInterval,
+                           FAmpGain,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameTop,
+                           FFrameWidth*FBinFactor,
+                           FFrameHeight*FBinFactor,
+                           FBinFactor,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FNumBytesPerFrame,
+                           FReadoutTime
+                           ) ;
+          FrameCounter := 0 ;
+          FTemperature := AndorSession.Temperature ;
+          end ;
+
+       ANDORSDK3 : begin
+          // Note Andor cameras do not support additional readout time
+          FCameraActive := AndorSDK3_StartCapture(
+                           AndorSDK3Session,
+                           FFrameInterval,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
+                           FAmpGain,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameTop,
+                           FFrameWidth*FBinFactor,
+                           FFrameHeight*FBinFactor,
+                           FBinFactor,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FNumBytesPerFrame,
+                           FReadoutTime
+                           ) ;
+          FrameCounter := 0 ;
+          FTemperature := AndorSDK3Session.Temperature ;
+          end ;
+
+       QCAM : begin
+          FCameraActive := QCAMAPI_StartCapture(
+                           QCAMSession,
+                           FFrameInterval,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
+                           FAmpGain,
+                           FReadoutSpeed,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameRight,
+                           FFrameTop,
+                           FFrameBottom,
+                           FBinFactor,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FNumBytesPerFrame,
+                           FCCDClearPreExposure
+                           ) ;
+          FrameCounter := 0 ;
+          FTemperature := QCAMSession.Temperature ;
+          end ;
+
+       DCAM : begin
+          FCameraActive := DCAMAPI_StartCapture(
+                           DCAMSession,
+                           FFrameInterval,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
+                           FAmpGain,
+                           FReadoutSpeed,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameRight,
+                           FFrameTop,
+                           FFrameBottom,
+                           FBinFactor,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FNumBytesPerFrame,
+                           FDisableEMCCD
+                           ) ;
+          FrameCounter := 0 ;
+          //FTemperature := QCAMSession.Temperature ;
+          end ;
+
+       IMAQ : begin
+          FCameraActive := IMAQ_SnapImage(
+                           IMAQSession,
+                           FFrameInterval,
+                           FAmpGain,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameTop,
+                           FFrameWidth*FBinFactor,
+                           FFrameHeight*FBinFactor,
+                           FBinFactor,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FNumBytesPerFrame,
+                           FNumPixelShiftFrames
+                           ) ;
+          FrameCounter := 0 ;
+          end ;
+
+       IMAQDX : begin
+          FCameraActive := IMAQDX_SnapImage(
+                           IMAQDXSession,
+                           FFrameInterval,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
+                           FAmpGain,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameTop,
+                           FFrameWidth*FBinFactor,
+                           FFrameHeight*FBinFactor,
+                           FBinFactor,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FNumBytesPerFrame,
+                           FMonochromeImage
+                           ) ;
+          FrameCounter := 0 ;
+          FFrameCount := IMAQDXSession.FrameCounter ;
+          end ;
+
+       DTOL : begin
+          FCameraActive := DTOL_StartCapture(
+                           DTOLSession,
+                           FFrameInterval,
+                           FAmpGain,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameTop,
+                           FFrameWidth*FBinFactor,
+                           FFrameHeight*FBinFactor,
+                           FBinFactor,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FNumBytesPerFrame
+                           ) ;
+          FrameCounter := 0 ;
+          end ;
+
+       Thorlabs : begin
+          // Note Andor cameras do not support additional readout time
+          FCameraActive := Thorlabs_StartCapture(
+                           ThorlabsSession,
+                           FFrameInterval,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
+                           FAmpGain,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameTop,
+                           FFrameWidth*FBinFactor,
+                           FFrameHeight*FBinFactor,
+                           FBinFactor,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FNumBytesPerFrame,
+                           FReadoutTime
+                           ) ;
+          FrameCounter := 0 ;
+          FTemperature := AndorSDK3Session.Temperature ;
+          end ;
+
+
+       end ;
+
+     FCameraRestartRequired := False ;
+     Result := True ;
+
+     end ;
+
 
 
 procedure TSESCam.StopCapture ;

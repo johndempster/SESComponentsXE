@@ -32,6 +32,7 @@ unit NIMAQDXUnit;
 // 02-05-17 StartCapture() In external trigger mode, 0.0005s added to readout time because it is
 //          misreported as too short immediately after switching from free run mode with GrassHopper 3.
 // 03-05-17 IMAQDX_CheckFrameInterval() Divide by zero avoided when no camera available
+// 15-08-17 IMAQDX_SnapImage() added
 
 interface
 
@@ -425,6 +426,7 @@ Type
     GainMin : Integer ;
     GainMax : Integer ;
     AOIAvailable : Boolean ;
+    SingleImage : Boolean ;
     end ;
 
 
@@ -774,6 +776,24 @@ function IMAQDX_StartCapture(
          NumBytesPerFrame : Integer ;
          MonochromeImage : Boolean
          ) : Boolean ;
+
+function IMAQDX_SnapImage(
+         var Session : TIMAQDXSession ;          // Camera session #
+         var FrameInterval : Double ;      // Frame exposure interval (s)
+         AdditionalReadoutTime : Double ;  // Additional readout time
+         AmpGain : Integer ;              // Camera amplifier gain index
+         ExternalTrigger : Integer ;      // Trigger mode
+         FrameLeft : Integer ;            // Left pixel in CCD readout area
+         FrameTop : Integer ;             // Top pixel in CCD eadout area
+         FrameWidth : Integer ;           // Width of CCD readout area
+         FrameHeight : Integer ;          // Width of CCD readout area
+         BinFactor : Integer ;             // Binning factor (1,2,4,8,16)
+         PFrameBuffer : Pointer ;         // Pointer to start of ring buffer
+         NumFramesInBuffer : Integer ;    // No. of frames in ring buffer
+         NumBytesPerFrame : Integer ;      // No. of bytes/frame
+         MonochromeImage : Boolean       // TRUE = extract monochrome image
+         ) : Boolean ;
+
 
 procedure IMAQDX_StopCapture(
           var Session : TIMAQDXSession              // Camera session #
@@ -2245,8 +2265,133 @@ begin
 
      Result := True ;
      Session.AcquisitionInProgress := True ;
+     Session.SingleImage := False ;
 
      end;
+
+
+function IMAQDX_SnapImage(
+         var Session : TIMAQDXSession ;          // Camera session #
+         var FrameInterval : Double ;      // Frame exposure interval (s)
+         AdditionalReadoutTime : Double ;  // Additional readout time
+         AmpGain : Integer ;              // Camera amplifier gain index
+         ExternalTrigger : Integer ;      // Trigger mode
+         FrameLeft : Integer ;            // Left pixel in CCD readout area
+         FrameTop : Integer ;             // Top pixel in CCD eadout area
+         FrameWidth : Integer ;           // Width of CCD readout area
+         FrameHeight : Integer ;          // Width of CCD readout area
+         BinFactor : Integer ;             // Binning factor (1,2,4,8,16)
+         PFrameBuffer : Pointer ;         // Pointer to start of ring buffer
+         NumFramesInBuffer : Integer ;    // No. of frames in ring buffer
+         NumBytesPerFrame : Integer ;      // No. of bytes/frame
+         MonochromeImage : Boolean       // TRUE = extract monochrome image
+         ) : Boolean ;
+// ----------------------
+// Acquire a single image
+// ----------------------
+var
+    FrameRight,FrameBottom : Integer ;
+    ExposureTime,FrameRate : Double ;
+    DMin,DMax,DInc : DOuble ;
+    ReadOutTime : Double ;
+begin
+
+      // Stop any acquisition which is in progress
+      if Session.AcquisitionInProgress then begin
+          IMAQDX_StopCapture( Session ) ;
+          end ;
+
+      // Set monochrome image extraction flag
+      Session.MonochromeImage := MonochromeImage ;
+
+      // Set camera gain
+      // Set gain mode to manual
+      IMAQdx_SetAttribute( Session, Session.AttrGainMode, 'manual' ) ;
+      IMAQdx_SetAttribute( Session, Session.AttrGainAuto, 'Off' ) ;
+      IMAQdx_SetAttribute( Session, Session.AttrGain, Session.GainMin + AmpGain ) ;
+
+      // Set AOI boundaries
+      FrameRight := FrameLeft + FrameWidth - 1 ;
+      FrameBottom := FrameTop + FrameHeight - 1 ;
+      IMAQDX_CheckROIBoundaries( Session,
+                                 FrameLeft,
+                                 FrameRight,
+                                 FrameTop,
+                                 FrameBottom,
+                                 BinFactor,
+                                 FrameWidth,
+                                 FrameHeight,
+                                 ExposureTime,
+                                 ReadOutTime) ;
+
+     // Set exposure time
+     IMAQdx_SetAttribute( Session, Session.AttrExposureMode, 'Timed' ) ;
+
+     // Internal/external triggering of frame capture
+
+     if ExternalTrigger = CamFreeRun then begin
+        // Free run trigger mode
+        // ---------------------
+        IMAQdx_SetAttribute( Session,Session.AttrTriggerMode, 'Off' ) ;
+        // Set frame rate
+        IMAQdx_SetAttribute( Session, Session.AttrAcquisitionFrameRateEnabled, True ) ;
+        FrameRate := 1.0/FrameInterval ;
+        FrameRate := IMAQdx_SetAttribute( Session, Session.AttrAcquisitionFrameRate, FrameRate ) ;
+        IMAQdx_GetAttribute( Session, Session.AttrAcquisitionFrameRate, FrameRate ) ;
+        // Set exposure time to match frame rate
+        ExposureTime :=  (1.0/FrameRate)*IMAQDX_ExposureTimeScale( Session ) ;
+        IMAQdx_SetAttribute( Session, Session.AttrExposureTime, ExposureTime ) ;
+
+        end
+     else begin
+        // External trigger
+        // ----------------
+        IMAQdx_SetAttribute( Session,Session.AttrTriggerMode, 'on' ) ;
+        IMAQdx_SetAttribute( Session,Session.AttrTriggerSelector, 'frame start' ) ;   // Trigger frame
+        IMAQdx_SetAttribute( Session,Session.AttrTriggerSource, 'line 1' ) ;     // Line 1
+        IMAQdx_SetAttribute( Session,Session.AttrTriggerActivation, 'rising edge' ) ; //Rising Edge
+
+        // Set camera exposure time.
+        // Note 0.0005 s added to readout time because extra time seems to be required in
+        // triggered mode.
+        IMAQdx_GetAttrRange( Session, Session.AttrAcquisitionFrameRate, DMin, DMax,DInc ) ;
+        ReadoutTime := (1.0/DMax) + 0.0005 ;
+        ExposureTime := (FrameInterval - ReadOutTime - AdditionalReadoutTime)*IMAQDX_ExposureTimeScale( Session ) ;
+        // Keep within min/max exposure time limits
+        IMAQdx_GetAttrRange( Session, Session.AttrExposureTime, DMin, DMax,DInc) ;
+        ExposureTime := Min(Max(ExposureTime,DMin),DMax);
+        IMAQdx_SetAttribute( Session, Session.AttrExposureTime, ExposureTime ) ;
+
+        end ;
+
+      // Allocate camera buffer
+      if Session.Buf <> Nil then FreeMem(Session.Buf) ;
+      Session.BufSize := Session.FrameWidthMax*Session.FrameHeightMax*
+                         Session.NumPixelComponents*Session.NumBytesPerComponent ;
+      GetMem( Session.Buf, Session.BufSize ) ;
+
+      // Set up ring buffer to acquire a single image
+      IMAQDX_CheckError( IMAQdxConfigureAcquisition( Session.ID,0,NumFramesInBuffer)) ;
+
+      Session.NumFramesInBuffer := NumFramesInBuffer ;
+      Session.FrameBufPointer := PFrameBuffer ;
+      Session.NumBytesPerFrame := NumBytesPerFrame ;
+      Session.BufferIndex := 0 ;
+      Session.FrameCounter := 0 ;
+      Session.FrameHeight := FrameHeight ;
+      Session.FrameWidth := FrameWidth ;
+      Session.FrameLeft := FrameLeft ;
+      Session.FrameTop := FrameTop ;
+
+     // Start acquisition
+     IMAQDX_CheckError(IMAQdxStartAcquisition(Session.id));
+
+     Result := True ;
+     Session.AcquisitionInProgress := True ;
+     Session.SingleImage := True ;
+
+     end;
+
 
 function IMAQDX_ExposureTimeScale(
          var Session : TIMAQDXSession ) : double ;
@@ -2543,6 +2688,8 @@ begin
     if Session.AttrAcqInProgress < 0 then Exit ;
     if Session.AttrLastBufferNumber < 0 then Exit ;
     if Session.AttrLastBufferCount < 0 then Exit ;
+
+    if Session.SingleImage and (Session.FrameCounter >= 1) then Exit ;
 
     // If no buffers yet .. exit
     IMAQdx_GetAttribute( Session,Session.AttrLastBufferCount,LatestFrameCount);

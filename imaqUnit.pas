@@ -29,6 +29,7 @@ unit imaqUnit;
 // 07.07.17 VA-29MC-5M Fan on/off now handle via attribute string
 // 12.07.17 VA-29MC-5M Fan on/off now handled by call again
 // 02.08.17 IMAQ_SetCCDXShift() and IMAQ_SetCCDYShift() added allowing control of VNP-29MC camera stage
+// 15.08.17 IMAQ_SnapImage added (acquires a single image)
 
 interface
 
@@ -1084,6 +1085,7 @@ type
     GainCom : ANSIString ;
     PulseID : Integer ;
     PixelSizeNm : Cardinal ;
+    SingleImage : Boolean ;
     end ;
 
 //============================================================================
@@ -1143,8 +1145,8 @@ type
  TimgSequenceSetup = function(
                      SessionID : Integer;
                      numberBuffer : Integer;
-                     var bufferList : Array of Pointer ;
-                     skipCount : Array of Integer ;
+                     bufferList : Pointer ;
+                     skipCount : Integer ;
                      startnow : Integer ;
                      async : Integer
                      ) : Integer ; stdcall ;
@@ -1508,6 +1510,23 @@ function IMAQ_StartCapture(
          NumBytesPerFrame : Integer ;
          NumPixelShiftFrames : Integer // Extended resolution mode
          ) : Boolean ;
+
+function IMAQ_SnapImage(
+         var Session : TIMAQSession ;
+         var ExposureTime : Double ;
+         AmpGain : Integer ;
+         ExternalTrigger : Integer ;
+         FrameLeft : Integer ;
+         FrameTop : Integer ;
+         FrameWidth : Integer ;
+         FrameHeight : Integer ;
+         BinFactor : Integer ;
+         PFrameBuffer : Pointer ;
+         NumFramesInBuffer : Integer ;
+         NumBytesPerFrame : Integer ;
+         NumPixelShiftFrames : Integer // Extended resolution mode
+         ) : Boolean ;
+
 
 procedure IMAQ_StopCapture(
           var Session : TIMAQSession              // Camera session #
@@ -2329,11 +2348,212 @@ begin
 
     Result := True ;
     Session.AcquisitionInProgress := True ;
+    Session.SingleImage := False ;
 
     // Apply internal trigger pulse to start VA-29MC-5M pixel shift camera
 //    if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then IMAQ_TriggerPulse( Session ) ;
 
     end;
+
+
+function IMAQ_SnapImage(
+         var Session : TIMAQSession ;          // Camera session #
+         var ExposureTime : Double ;      // Frame exposure time
+         AmpGain : Integer ;              // Camera amplifier gain index
+         ExternalTrigger : Integer ;      // Trigger mode
+         FrameLeft : Integer ;            // Left pixel in CCD readout area
+         FrameTop : Integer ;             // Top pixel in CCD eadout area
+         FrameWidth : Integer ;           // Width of CCD readout area
+         FrameHeight : Integer ;          // Width of CCD readout area
+         BinFactor : Integer ;             // Binning factor (1,2,4,8,16)
+         PFrameBuffer : Pointer ;         // Pointer to start of ring buffer
+         NumFramesInBuffer : Integer ;    // No. of frames in ring buffer
+         NumBytesPerFrame : Integer ;      // No. of bytes/frame
+         NumPixelShiftFrames : Integer // Extended resolution mode
+         ) : Boolean ;
+// ----------------------
+// Acquire a single image
+// ----------------------
+var
+    i,iGain : Integer ;
+    s : ANSIString ;
+    BufSize,Err,AOIVStart,AOIVEnd : Integer ;
+    ExpTimeMicroSecs : Integer ;
+    Buf : Array[0..255] of ANSIChar ;
+begin
+
+    // Stop any acquisition which is in progress
+    if Session.AcquisitionInProgress then
+       begin
+       IMAQ_CheckError(imgSessionStopAcquisition(Session.SessionID)) ;
+       Session.AcquisitionInProgress := false ;
+       end ;
+
+    // Create buffer list
+    for i := 0 to High(Session.BufferList) do
+        begin
+        Session.BufferList[i] := Nil ;
+        Session.BufferFilled[i] := False ;
+        end ;
+
+    if (Session.GainMin <> Session.GainMax) and (Session.GainCom <> '') then
+       begin
+       iGain := Session.GainMin + Round((Session.GainMax-Session.GainMin)*(AmpGain*0.01)) ;
+       IMAQ_SetCameraAttributeNumeric( Session.SessionID,PANSIChar(Session.GainCom),iGain) ;
+       end ;
+
+    if not Session.AnalogVideoBoard then
+       begin
+
+       // Cameralink interface cameras
+       // ----------------------------
+
+       // Set camera binning
+       IMAQ_SetBinning( Session, BinFactor ) ;
+
+       // Extended resolution mode
+       if Session.CCDShiftSupported then
+          begin
+          case NumPixelShiftFrames of
+             4 : s := '4 Shot Mono' ;
+             9 : s := '9 Shot Mono' ;
+             else s := 'None' ;
+             end;
+
+          if ExternalTrigger = CamFreeRun then s := 'None' ;
+          s := 'None' ;
+          IMAQ_SetCameraAttributeString( Session.SessionID,'Sequence Mode',s) ;
+          IMAQ_SetCameraAttributeString( Session.SessionID,'Multishot Mode','Disable') ;
+
+          // Turn fan off for pixel shift modes
+          if NumPixelShiftFrames > 0 then
+             begin
+//             IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOff) ;
+             IMAQ_VA29MC5M_FanOn(Session,False) ;
+             end
+          else
+             begin
+//             IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOn) ;
+            IMAQ_VA29MC5M_FanOn(Session,TRue) ;
+             end;
+          end;
+
+       // Set exposure time
+    //   IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,Session.ExposureModeVal) ;
+       // Exposure limited to 10 microsecond steps (for VA29MC camera)
+       ExpTimeMicroSecs := Max(Round(ExposureTime*Session.ExposureTimeScale),10) ;
+       ExpTimeMicroSecs := (ExpTimeMicroSecs div 10)*10 ;
+       IMAQ_SetCameraAttributeNumeric( Session.SessionID,Session.ExposureTimeCom,ExpTimeMicroSecs) ;
+       Session.ExposureTime := ExpTimeMicroSecs*1e-6 ;
+
+       // Internal/external triggering of frame capture
+       if ExternalTrigger = CamFreeRun then
+          begin
+          // Free run mode
+          // -------------
+          IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,Session.ExposureModeVal) ;
+          IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValFreeRun) ;
+          end
+       else
+          begin
+          // External Trigger
+          // ----------------
+          if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
+             begin
+             IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,'Pulse Width') ;
+             end;
+          IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValExtTrig) ;
+//          IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,'Standard') ;
+          IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerSourceCom,Session.TriggerSourceVal) ;
+          IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerPolarityCom,Session.TriggerPolarityVal) ;
+          end ;
+      end
+    else
+      begin
+      // Analog video cameras
+      // --------------------
+      if ExternalTrigger = CamFreeRun then
+         begin
+         // Free run mode
+         IMAQ_CheckError(imgSessionTriggerConfigure2( Session.SessionID,
+                                                      IMG_SIGNAL_EXTERNAL,
+                                                     0,
+                                                     IMG_TRIG_POLAR_ACTIVEH,
+                                                     1000000,
+                                                     IMG_TRIG_ACTION_NONE)) ;
+         // Output a pulse on trigger line at end of frame
+         IMAQ_CheckError(imgSessionTriggerDrive2( Session.SessionID,
+                                                 IMG_SIGNAL_EXTERNAL,
+                                                 0,
+                                                 IMG_TRIG_POLAR_ACTIVEH,
+                                                 IMG_TRIG_DRIVE_FRAME_DONE)) ;
+         end
+     else
+        begin
+        // External trigger mode (Disable trigger output)
+        IMAQ_CheckError(imgSessionTriggerDrive2( Session.SessionID,
+                                                 IMG_SIGNAL_EXTERNAL,
+                                                 0,
+                                                 IMG_TRIG_POLAR_ACTIVEH,
+                                                 IMG_TRIG_DRIVE_DISABLED)) ;
+        // Trigger frame capture
+        IMAQ_CheckError(imgSessionTriggerConfigure2( Session.SessionID,
+                                                     IMG_SIGNAL_EXTERNAL,
+                                                     0,
+                                                     IMG_TRIG_POLAR_ACTIVEH,
+                                                     100000,
+                                                     IMG_TRIG_ACTION_BUFFER)) ;
+        end ;
+     end ;
+
+     // Special processing to speed up VA-29MC-5M camera.
+     // Select camera AOI mode and only read selected lines.
+     if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') and (BinFactor = 1) then
+        begin
+        AOIVStart := Min(FrameTop,Session.FrameHeightMax-501) ;
+        AOIVend := AOIVStart + Max(FrameHeight-1,500)  ;
+        s := format('sva %d %d',[AOIVStart,AOIVend]) + #13 + #10;
+        BufSize := Length(s) ;
+        Err := imgSessionSerialFlush(Session.SessionID);
+        Err := imgSessionSerialWrite(Session.SessionID,PANSIChar(s),BufSize,1000);
+        Err := imgSessionSerialRead(Session.SessionID,@Buf,BufSize,1000);
+        Err := imgSessionSerialRead(Session.SessionID,@Buf,BufSize,1000);
+        //outputdebugstring(pchar(format('%s %d %d %d',[s,length(s),BufSize,Err])));
+        end
+     else AOIVStart := 0 ;
+
+    // Set CCD readout region
+    IMAQ_CheckError( imgSessionConfigureROI( Session.SessionID,
+                                            (FrameTop div BinFactor) - AOIVStart,
+                                             FrameLeft div BinFactor,
+                                             FrameHeight div BinFactor,
+                                             FrameWidth div BinFactor )) ;
+
+    // Set up sequence for asynchronous start of image acquisition
+    Err := imgSequenceSetup(Session.SessionID,NumFramesInBuffer,@Session.BufferList, 0,0,1);
+
+    outputdebugstring(pchar(format('ringsetup err=%d',[Err])));
+    if Err <> 0 then IMAQ_Wait(3.0) ;
+
+    Session.NumFrameBuffers := NumFramesInBuffer ;
+    Session.FrameBufPointer := PFrameBuffer ;
+    Session.NumBytesPerFrame := NumBytesPerFrame ;
+    Session.BufferIndex := 0 ;
+    Session.FrameCounter := 0 ;
+
+
+    // Start acquisition
+    IMAQ_CheckError(imgSessionStartAcquisition(Session.SessionID)) ;
+
+    Result := True ;
+    Session.AcquisitionInProgress := True ;
+    Session.SingleImage := True ;
+
+    // Apply internal trigger pulse to start VA-29MC-5M pixel shift camera
+//    if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then IMAQ_TriggerPulse( Session ) ;
+
+    end;
+
 
 
 procedure IMAQ_SetBinning(
@@ -2604,6 +2824,8 @@ var
 begin
 
     if not Session.AcquisitionInProgress then Exit ;
+
+    if Session.SingleImage and (Session.FrameCounter >= 1) then Exit ;
 
     // Get status
     imgGetAttribute( Session.SessionID, IMG_ATTR_FRAME_COUNT, NewFrameCounter ) ;
