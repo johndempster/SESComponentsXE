@@ -3590,7 +3590,7 @@ begin
     case FCameraType of
       IMAQ :
         begin
-        FCCDYShift := Value ;
+        FCCDXShift := Value ;
         IMAQ_SetCCDXShift( IMAQSession,Value)
       end;
     end;

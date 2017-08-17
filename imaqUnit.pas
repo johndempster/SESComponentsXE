@@ -1146,7 +1146,7 @@ type
                      SessionID : Integer;
                      numberBuffer : Integer;
                      bufferList : Pointer ;
-                     skipCount : Integer ;
+                     skipCount : Pointer ;
                      startnow : Integer ;
                      async : Integer
                      ) : Integer ; stdcall ;
@@ -2220,7 +2220,7 @@ begin
              else s := 'None' ;
              end;
 
-          if ExternalTrigger = CamFreeRun then s := 'None' ;
+          //if ExternalTrigger = CamFreeRun then s := 'None' ;
           s := 'None' ;
           IMAQ_SetCameraAttributeString( Session.SessionID,'Sequence Mode',s) ;
           IMAQ_SetCameraAttributeString( Session.SessionID,'Multishot Mode','Disable') ;
@@ -2331,7 +2331,7 @@ begin
 
     // Set up ring buffer
     Err := imgRingSetup( Session.SessionID,NumFramesInBuffer,@Session.BufferList,0,0 );
-    outputdebugstring(pchar(format('ringsetup err=%d',[Err])));
+//    outputdebugstring(pchar(format('ringsetup err=%d',[Err])));
     if Err <> 0 then IMAQ_Wait(3.0) ;
 
     Session.NumFrameBuffers := NumFramesInBuffer ;
@@ -2380,6 +2380,7 @@ var
     BufSize,Err,AOIVStart,AOIVEnd : Integer ;
     ExpTimeMicroSecs : Integer ;
     Buf : Array[0..255] of ANSIChar ;
+    SkipCount : Array[0..1000] of Cardinal ;
 begin
 
     // Stop any acquisition which is in progress
@@ -2451,8 +2452,21 @@ begin
           begin
           // Free run mode
           // -------------
-          IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,Session.ExposureModeVal) ;
-          IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValFreeRun) ;
+
+          if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
+             begin
+             // Special trigger mode for VA-29MC-5M camera. Determine exposure time using pulse on CC1
+             IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,'Pulse Width') ;
+             IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValExtTrig) ;
+             IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,'Overlap') ;
+             IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerSourceCom,'CC1') ;
+             IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerPolarityCom,Session.TriggerPolarityVal) ;
+             end
+           else
+             begin
+             IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,Session.ExposureModeVal) ;
+             IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValFreeRun) ;
+             end ;
           end
        else
           begin
@@ -2530,9 +2544,14 @@ begin
                                              FrameWidth div BinFactor )) ;
 
     // Set up sequence for asynchronous start of image acquisition
-    Err := imgSequenceSetup(Session.SessionID,NumFramesInBuffer,@Session.BufferList, 0,0,1);
 
-    outputdebugstring(pchar(format('ringsetup err=%d',[Err])));
+    for i := 0 to High(SkipCount) do SkipCount[i] := 0 ;
+
+    Err := imgSequenceSetup(Session.SessionID,NumFramesInBuffer,@Session.BufferList, @SkipCount,0,1);
+
+    //Err := imgRingSetup( Session.SessionID,NumFramesInBuffer,@Session.BufferList,0,0 );
+
+//    outputdebugstring(pchar(format('ringsetup err=%d',[Err])));
     if Err <> 0 then IMAQ_Wait(3.0) ;
 
     Session.NumFrameBuffers := NumFramesInBuffer ;
@@ -2550,7 +2569,7 @@ begin
     Session.SingleImage := True ;
 
     // Apply internal trigger pulse to start VA-29MC-5M pixel shift camera
-//    if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then IMAQ_TriggerPulse( Session ) ;
+    if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then IMAQ_TriggerPulse( Session ) ;
 
     end;
 
@@ -2608,7 +2627,7 @@ begin
         // Turn fan on, reset trigger pulse and reset stage for Vieworks VA-29MC-5M camera
         if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
            begin
-           IMAQ_VA29MC5M_FanOn(Session,True) ;
+ //          IMAQ_VA29MC5M_FanOn(Session,True) ;
   //         IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOn) ;
            if Session.PulseID <> 0 then IMAQ_CheckError(imgPulseStop(Session.PulseID));
  //          IMAQ_VA29MC5M_ResetStage(Session) ;
@@ -2695,24 +2714,11 @@ procedure IMAQ_SetCCDXShift(
 // -------------------------
 var
     iPosNm : Cardinal ;
-    Err,BufSize : Integer ;
-    Buf : Array[0..255] of ANSIChar ;
-    s : ANSIString ;
 begin
 
     if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
        begin
-//IMAQ_CheckError(imgSessionStopAcquisition(Session.SessionID)) ;
-
-       iPosNm := Round(Value*Session.PixelSizeNm) ;
        IMAQ_SetCameraAttributeNumeric( Session.SessionID,'Stage Shift X',Value*Session.PixelSizeNm) ;
-{       s := format('snp x %d',[iPosNm]) ;
-       BufSize := Length(s) ;
-       Err := imgSessionSerialFlush(Session.SessionID);
-       Err := imgSessionSerialWrite(Session.SessionID,PANSIChar(s),BufSize,1000);
-       Err := imgSessionSerialRead(Session.SessionID,@Buf,BufSize,1000);
-       Err := imgSessionSerialRead(Session.SessionID,@Buf,BufSize,1000);}
-//IMAQ_CheckError(imgSessionStartAcquisition(Session.SessionID)) ;
        end;
     end;
 
@@ -2725,24 +2731,10 @@ procedure IMAQ_SetCCDYShift(
 // -------------------------
 var
     iPosNm : Cardinal ;
-    Err,BufSize : Integer ;
-    Buf : Array[0..255] of ANSIChar ;
-    s : ANSIString ;
 begin
-
     if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
        begin
-
-//IMAQ_CheckError(imgSessionStopAcquisition(Session.SessionID)) ;
-       iPosNm := Round(Value*Session.PixelSizeNm) ;
-       s := format('snp y %d',[iPosNm]) ;
        IMAQ_SetCameraAttributeNumeric( Session.SessionID,'Stage Shift Y',Value*Session.PixelSizeNm) ;
-{       BufSize := Length(s) ;
-       Err := imgSessionSerialFlush(Session.SessionID);
-       Err := imgSessionSerialWrite(Session.SessionID,PANSIChar(s),BufSize,1000);
-       Err := imgSessionSerialRead(Session.SessionID,@Buf,BufSize,1000);
-       Err := imgSessionSerialRead(Session.SessionID,@Buf,BufSize,1000);}
-//IMAQ_CheckError(imgSessionStartAcquisition(Session.SessionID)) ;
        end;
     end;
 
@@ -2758,7 +2750,7 @@ begin
 
      if not Session.AcquisitionInProgress then Exit ;
 
-     outputdebugstring(pchar('Trigger'));
+//     outputdebugstring(pchar('Trigger'));
 
      ClockTicks := Round(Session.ExposureTime*5E7) ;
   //   ClockTicks := 50000 ;
@@ -2825,7 +2817,11 @@ begin
 
     if not Session.AcquisitionInProgress then Exit ;
 
-    if Session.SingleImage and (Session.FrameCounter >= 1) then Exit ;
+    if Session.SingleImage and (Session.FrameCounter >= 1) then
+       begin
+       if Session.AcquisitionInProgress then IMAQ_StopCapture(Session) ;
+       Exit ;
+       end;
 
     // Get status
     imgGetAttribute( Session.SessionID, IMG_ATTR_FRAME_COUNT, NewFrameCounter ) ;
