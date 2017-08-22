@@ -1550,7 +1550,7 @@ begin
             Increment := DInc ;
             end;
          end ;
-     outputdebugstring(pchar(format('%s %.6g, %.6g, %.6g',[Session.Attributes[iAttr].Name,Min,Max,Increment])));
+//     outputdebugstring(pchar(format('%s %.6g, %.6g, %.6g',[Session.Attributes[iAttr].Name,Min,Max,Increment])));
      end;
 
 
@@ -1627,7 +1627,7 @@ begin
             Increment := Round(DInc) ;
             end;
          end ;
-     outputdebugstring(pchar(format('%s %d, %d',[Session.Attributes[iAttr].Name,Min,Max])));
+//     outputdebugstring(pchar(format('%s %d, %d',[Session.Attributes[iAttr].Name,Min,Max])));
      end;
 
 
@@ -1704,7 +1704,7 @@ begin
             Increment := ROund(DInc) ;
             end;
          end ;
-     outputdebugstring(pchar(format('%s %d, %d',[Session.Attributes[iAttr].Name,Min,Max])));
+//     outputdebugstring(pchar(format('%s %d, %d',[Session.Attributes[iAttr].Name,Min,Max])));
      end;
 
 
@@ -2428,8 +2428,8 @@ var
     i64Value,Inc64,Max64,Min64 : Int64 ;
     i32Value : Integer ;
 begin
-      outputdebugstring(pchar(format('Int64 %d %s,%d',
-      [Attribute,ansistring(Session.Attributes[Attribute].name),Value])));
+//      outputdebugstring(pchar(format('Int64 %d %s,%d',
+//      [Attribute,ansistring(Session.Attributes[Attribute].name),Value])));
 
       Result := Value ;
       if Attribute < 0 then Exit ;
@@ -2481,8 +2481,8 @@ var
     i64Value : Int64 ;
     i32Value,Inc32,Max32,Min32 : Integer ;
 begin
-      outputdebugstring(pchar(format('Int32 %d %s,%d',
-      [Attribute,ansistring(Session.Attributes[Attribute].name),Value])));
+//      outputdebugstring(pchar(format('Int32 %d %s,%d',
+//      [Attribute,ansistring(Session.Attributes[Attribute].name),Value])));
 
       Result := Value ;
       if Attribute < 0 then Exit ;
@@ -2534,8 +2534,8 @@ var
     i64Value : Int64 ;
     i32Value : Integer ;
 begin
-      outputdebugstring(pchar(format('double %d %s,%.3g',
-      [Attribute,ansistring(Session.Attributes[Attribute].name),Value])));
+//      outputdebugstring(pchar(format('double %d %s,%.3g',
+//      [Attribute,ansistring(Session.Attributes[Attribute].name),Value])));
 
       Result := Value ;
       if Attribute < 0 then Exit ;
@@ -2586,8 +2586,8 @@ var
     List : Array[0..100] of TIMAQdxEnumItem ;
     i,nList : Cardinal ;
 begin
-      outputdebugstring(pchar(format('Int64 %d %s,%s',
-      [Attribute,ansistring(Session.Attributes[Attribute].name),Value])));
+//      outputdebugstring(pchar(format('Int64 %d %s,%s',
+//      [Attribute,ansistring(Session.Attributes[Attribute].name),Value])));
 
       Result := Value ;
       if Attribute < 0 then Exit ;
@@ -2631,8 +2631,8 @@ begin
       if Attribute < 0 then Exit ;
       if not Session.Attributes[Attribute].Writable then Exit ;
 
-      outputdebugstring(pchar(format('bool %d %s,%d',
-      [Attribute,ansistring(Session.Attributes[Attribute].name),Integer(Value)])));
+//      outputdebugstring(pchar(format('bool %d %s,%d',
+//      [Attribute,ansistring(Session.Attributes[Attribute].name),Integer(Value)])));
 
       case Session.Attributes[Attribute].iType of
           IMAQdxAttributeTypeBool : begin
