@@ -30,6 +30,8 @@ unit imaqUnit;
 // 12.07.17 VA-29MC-5M Fan on/off now handled by call again
 // 02.08.17 IMAQ_SetCCDXShift() and IMAQ_SetCCDYShift() added allowing control of VNP-29MC camera stage
 // 15.08.17 IMAQ_SnapImage added (acquires a single image)
+// 23.08.17 IMAQ_SnapImage Coooling turned on for VA-29MC-5M, Single image sequence to avoid deay in IMAQ_Stopcapture
+//
 
 interface
 
@@ -2224,17 +2226,20 @@ begin
           s := 'None' ;
           IMAQ_SetCameraAttributeString( Session.SessionID,'Sequence Mode',s) ;
           IMAQ_SetCameraAttributeString( Session.SessionID,'Multishot Mode','Disable') ;
-
+          // Turn cooling and fan on and set temperature to min.
+          IMAQ_SetCameraAttributeString( Session.SessionID,'Cooling','On');
+          IMAQ_SetCameraAttributeString( Session.SessionID,'Fan','On');
+          IMAQ_SetCameraAttributeNumeric( Session.SessionID,'Temperature',-10);
           // Turn fan off for pixel shift modes
           if NumPixelShiftFrames > 0 then
              begin
 //             IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOff) ;
-             IMAQ_VA29MC5M_FanOn(Session,False) ;
+//             IMAQ_VA29MC5M_FanOn(Session,False) ;
              end
           else
              begin
 //             IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOn) ;
-            IMAQ_VA29MC5M_FanOn(Session,TRue) ;
+//            IMAQ_VA29MC5M_FanOn(Session,TRue) ;
              end;
           end;
 
@@ -2332,16 +2337,13 @@ begin
     // Set up ring buffer
     Err := imgRingSetup( Session.SessionID,NumFramesInBuffer,@Session.BufferList,0,0 );
 //    outputdebugstring(pchar(format('ringsetup err=%d',[Err])));
-    if Err <> 0 then IMAQ_Wait(3.0) ;
+//    if Err <> 0 then IMAQ_Wait(3.0) ;
 
     Session.NumFrameBuffers := NumFramesInBuffer ;
     Session.FrameBufPointer := PFrameBuffer ;
     Session.NumBytesPerFrame := NumBytesPerFrame ;
     Session.BufferIndex := 0 ;
     Session.FrameCounter := 0 ;
-
-//    IMAQ_SetCCDXShift( Session, 0.6 ) ;
-//    IMAQ_SetCCDYShift( Session, 0.0 ) ;
 
     // Start acquisition
     IMAQ_CheckError(imgSessionStartAcquisition(Session.SessionID)) ;
@@ -2425,17 +2427,21 @@ begin
           s := 'None' ;
           IMAQ_SetCameraAttributeString( Session.SessionID,'Sequence Mode',s) ;
           IMAQ_SetCameraAttributeString( Session.SessionID,'Multishot Mode','Disable') ;
+          // Turn cooling and fan on and set temperature to min.
+          IMAQ_SetCameraAttributeString( Session.SessionID,'Cooling','On');
+          IMAQ_SetCameraAttributeString( Session.SessionID,'Fan','On');
+          IMAQ_SetCameraAttributeNumeric( Session.SessionID,'Temperature',-10);
 
           // Turn fan off for pixel shift modes
           if NumPixelShiftFrames > 0 then
              begin
 //             IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOff) ;
-             IMAQ_VA29MC5M_FanOn(Session,False) ;
+//             IMAQ_VA29MC5M_FanOn(Session,False) ;
              end
           else
              begin
 //             IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOn) ;
-            IMAQ_VA29MC5M_FanOn(Session,TRue) ;
+//            IMAQ_VA29MC5M_FanOn(Session,TRue) ;
              end;
           end;
 
@@ -2457,7 +2463,7 @@ begin
              begin
              // Special trigger mode for VA-29MC-5M camera. Determine exposure time using pulse on CC1
              IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,'Pulse Width') ;
-             IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValExtTrig) ;
+//             IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,Session.ExposureModeVal) ;
              IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,'Overlap') ;
              IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerSourceCom,'CC1') ;
              IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerPolarityCom,Session.TriggerPolarityVal) ;
@@ -2547,19 +2553,18 @@ begin
 
     for i := 0 to High(SkipCount) do SkipCount[i] := 0 ;
 
-    Err := imgSequenceSetup(Session.SessionID,NumFramesInBuffer,@Session.BufferList, @SkipCount,0,1);
+    Err := imgSequenceSetup(Session.SessionID,1{NumFramesInBuffer},@Session.BufferList, @SkipCount,0,1);
 
     //Err := imgRingSetup( Session.SessionID,NumFramesInBuffer,@Session.BufferList,0,0 );
 
 //    outputdebugstring(pchar(format('ringsetup err=%d',[Err])));
-    if Err <> 0 then IMAQ_Wait(3.0) ;
+//    if Err <> 0 then IMAQ_Wait(3.0) ;
 
     Session.NumFrameBuffers := NumFramesInBuffer ;
     Session.FrameBufPointer := PFrameBuffer ;
     Session.NumBytesPerFrame := NumBytesPerFrame ;
     Session.BufferIndex := 0 ;
     Session.FrameCounter := 0 ;
-
 
     // Start acquisition
     IMAQ_CheckError(imgSessionStartAcquisition(Session.SessionID)) ;
@@ -2631,7 +2636,7 @@ begin
   //         IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOn) ;
            if Session.PulseID <> 0 then IMAQ_CheckError(imgPulseStop(Session.PulseID));
  //          IMAQ_VA29MC5M_ResetStage(Session) ;
-           IMAQ_CheckError(imgSessionSerialFlush(Session.SessionID));
+//           IMAQ_CheckError(imgSessionSerialFlush(Session.SessionID));
            end ;
 
         end ;
@@ -2712,8 +2717,6 @@ procedure IMAQ_SetCCDXShift(
 // -------------------------
 // Set CCD stage X position
 // -------------------------
-var
-    iPosNm : Cardinal ;
 begin
 
     if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
