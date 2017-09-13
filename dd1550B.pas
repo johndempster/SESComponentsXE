@@ -25,7 +25,7 @@ unit dd1550B;
 //          only WDAPI1140.dll)
 // 09.09.16 Digidata 1550B module created
 // 20.09.16 Digidata 1550B module updated and now loads correctly. Not tested with actual DD1550B interface yet.
-
+// 04.09.17 .. Max. no. of DAC channels limited to 4
 interface
 
   uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math ;
@@ -630,7 +630,7 @@ begin
      FDACVoltageRangeMax := 10.0 ;
      DACMinUpdateInterval := 4E-6 ;
      FDACMinUpdateInterval := DACMinUpdateInterval ;
-     DACMaxChannels := DIGD1550B_MAX_AO_CHANNELS ;
+     DACMaxChannels := Min(DIGD1550B_MAX_AO_CHANNELS,4) ;
 
      Result := DeviceInitialised ;
 

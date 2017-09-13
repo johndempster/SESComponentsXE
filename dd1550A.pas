@@ -23,7 +23,7 @@ unit dd1550A;
 //          axdd?????.dll now loaded from program folder of latest version of PCLAMP or AxoScope installed
 //          Whatever version number of wdapi????.dll available in folder is now loaded (instead of
 //          only WDAPI1140.dll)
-
+// 04.09.17 .. Max. no. of DAC channels limited to 4
 interface
 
   uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math ;
@@ -628,7 +628,7 @@ begin
      FDACVoltageRangeMax := 10.0 ;
      DACMinUpdateInterval := 4E-6 ;
      FDACMinUpdateInterval := DACMinUpdateInterval ;
-     DACMaxChannels := DIGD1550A_MAX_AO_CHANNELS ;
+     DACMaxChannels := 4;//DIGD1550A_MAX_AO_CHANNELS ;
 
      Result := DeviceInitialised ;
 

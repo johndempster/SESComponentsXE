@@ -33,6 +33,9 @@ unit NIMAQDXUnit;
 //          misreported as too short immediately after switching from free run mode with GrassHopper 3.
 // 03-05-17 IMAQDX_CheckFrameInterval() Divide by zero avoided when no camera available
 // 15-08-17 IMAQDX_SnapImage() added
+// 05.09.17 IMAQDX_CheckFrameInterval() FP error when frame rate attribute does not exist
+//          fixed. returns fixed rate of 30 Hz
+//          IMAQDX_OpenCamera() Only one set of attributes now written to CameraInfo list
 
 interface
 
@@ -1167,6 +1170,7 @@ var
 begin
 
      Result := False ;
+     CameraInfo.Clear ;
 
      // Load DLL libray
      if not LibraryLoaded then IMAQDX_LoadLibrary  ;
@@ -1400,7 +1404,7 @@ begin
      IMAQdx_SetAttribute( Session, Session.AttrAcquisitionFrameRateAuto, 'Off' ) ;
 
      // List camera attributes
-     CameraInfo.Add('Camera Attributes:') ;
+     if NumCameraInits = 1 then CameraInfo.Add('Camera Attributes:') ;
      for i := 0 to Session.NumAttributes-1 do begin
          s := IMAQDX_CharArrayToString( Session.Attributes[i].Name) ;
          if Session.Attributes[i].Readable then s := s + ' R' ;
@@ -1452,7 +1456,7 @@ begin
              IMAQdxAttributeTypeCommand : s := s + ' COM' ;
              else s := s + '??' ;
              end;
-         if s <> '' then CameraInfo.Add( s ) ;
+         if (s <> '') and (NumCameraInits = 1) then CameraInfo.Add( s ) ;
          end ;
 
      IMAQdx_SetAttribute( Session,Session.AttrPacketSize, 8000 ) ;
@@ -3091,6 +3095,15 @@ var
     RateMin,RateMax,RateInc : Double ;
     IntervalMin,IntervalMax : Double ;
 begin
+
+     // Exit if attribute does not exists
+     if Session.AttrAcquisitionFrameRate < 0 then
+        begin
+        FrameInterval := 1.0/30.0 ;
+        Result := 0 ;
+        exit ;
+        end;
+
      // Get frame interval (this is a read-only value)
      IMAQdx_GetAttrRange( Session, Session.AttrAcquisitionFrameRate,RateMin,RateMax,RateInc ) ;
      if (RateMax > 0.0) and (RateMin > 0.0) then
