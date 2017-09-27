@@ -30,6 +30,8 @@ unit HekaUnit;
 //          Heka_SetCurrentGain() Now correctly maps gain list to gain excluding skipped index numbers.
 // 13.07.16 Heka_SetOutputchannelMappings() added. Correct output channels now set by Heka_WriteDACS()
 //          fixing bug which caused holding voltage to be set to zero.
+// 21.09.17 EPC-9 USB option now initialised with IAmplifier := EPC9_Epc9Amp1, pLIH_Options^.UseUSB := 1 rather than IAmplifier := EPC9_Epc10USB
+//          to try to get it to work with the EPC-9 with a USB interface
 
 interface
 
@@ -1239,12 +1241,17 @@ begin
      pLIH_Options := AllocMem(SizeOf(TLIH_OptionsType)) ;
      pLIH_Options^.DacScaling := @DACScaleFactors ;
      pLIH_Options^.AdcScaling := @ADCScaleFactors ;
+     pLIH_Options^.UseUSB := 0 ;
 
      case InterfaceType of
        HekaEPC9 : IAmplifier := EPC9_Epc9Ampl ;
+       HekaEPC9USB : begin
+          IAmplifier := EPC9_Epc9Ampl ;
+          pLIH_Options^.UseUSB := 1 ;
+          end;
        HekaEPC10 : IAmplifier := EPC9_Epc10Ampl ;
        HekaEPC10plus : IAmplifier := EPC9_Epc10PlusAmpl ;
-       HekaEPC10USB,HekaEPC9USB : IAmplifier := EPC9_Epc10USB ;
+       HekaEPC10USB : IAmplifier := EPC9_Epc10USB ;
        else IAmplifier := EPC9_Epc7Ampl ;
        end ;
 
