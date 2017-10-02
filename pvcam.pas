@@ -43,6 +43,7 @@ unit pvcam;
 // 22-7-14 OpenCamera now returns no. of cameras available
 //         Camera can be selected when more than one available
 // 10.10.14 OptiMOS minimum frame interval now 1.4 x readout time (not 2X)
+// 02.10.17 Cameras with shutter control now set to open shutter presequence
 
 {OPTIMIZATION OFF}
 {$DEFINE USECONT}
@@ -1067,11 +1068,20 @@ begin
            CameraInfo.Add( 'PARAM_LOGIC_OUTPUT=OUTPUT_SHUTTER not set!' ) ;
         end ;
 
+     // Set shutter mode to open pre sequence to open a shutter before a sequence and close afterwards.
+     pl_get_param( Session.Handle, PARAM_SHTR_OPEN_MODE, ATTR_AVAIL, @Available ) ;
+     if Available <> 0 then begin
+        LongValue := Cardinal(OPEN_PRE_SEQUENCE) ;
+        pl_set_param( Session.Handle, PARAM_SHTR_OPEN_MODE, @LongValue ) ;
+        CameraInfo.Add( 'PARAM_SHTR_OPEN_MODE=OPEN_PRE_SEQUENCE.' ) ;
+        end ;
+
      // Set CCD clear mode to clear pre-sequence to ensure that frame transfer mode will work
      pl_get_param( Session.Handle, PARAM_CLEAR_MODE, ATTR_AVAIL, @Available ) ;
      if Available <> 0 then begin
         LongValue := Cardinal(CLEAR_PRE_sequence) ;
         pl_set_param( Session.Handle, PARAM_CLEAR_MODE, @LongValue ) ;
+        CameraInfo.Add( 'PARAM_CLEAR_MODE=CLEAR_PRE_SEQUENCE.' ) ;
         end ;
 
      // Set camera into frame transfer mode (if available)
