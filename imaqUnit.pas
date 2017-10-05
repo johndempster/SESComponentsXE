@@ -31,6 +31,8 @@ unit imaqUnit;
 // 02.08.17 IMAQ_SetCCDXShift() and IMAQ_SetCCDYShift() added allowing control of VNP-29MC camera stage
 // 15.08.17 IMAQ_SnapImage added (acquires a single image)
 // 23.08.17 IMAQ_SnapImage Coooling turned on for VA-29MC-5M, Single image sequence to avoid deay in IMAQ_Stopcapture
+// 05.10.17 imgPulseCreate2 now called with Cardinal instead of integer arguments to allow pulse durations up to 7s
+//          Fixes error with VA-29MC-5M exposure time >5s. Some but not all img calls updated to Cardinal arguments
 //
 
 interface
@@ -1112,45 +1114,45 @@ type
  TimgSnapArea = function(
                 SessionID : Integer;
                 var bufAddr : Pointer ;
-                top : Integer ;
-                left : Integer ;
-                height : Integer ;
-                width : Integer ;
-                rowBytes : Integer
+                top : Cardinal ;
+                left : Cardinal ;
+                height : Cardinal ;
+                width : Cardinal ;
+                rowBytes : Cardinal
                 ) : Integer ; stdcall ;
  TimgGrabSetup = function(
                  SessionID : Integer;
-                 startNow : Integer
+                 startNow : Cardinal
                  ) : Integer ; stdcall ;
  TimgGrab = function(
             SessionID : Integer;
            var bufAddr : Pointer ;
-            syncOnVB : Integer
+            syncOnVB : Cardinal
             ) : Integer ; stdcall ;
  TimgGrabArea = function(
                 SessionID : Integer;
                 var bufAddr : Pointer ;
                 syncOnVB : Integer ;
-                top : Integer ;
-                left : Integer ;
-                height : Integer ;
-                width : Integer ;
-                rowBytes : Integer
+                top : Cardinal ;
+                left : Cardinal ;
+                height : Cardinal ;
+                width : Cardinal ;
+                rowBytes : Cardinal
                 ) : Integer ; stdcall ;
  TimgRingSetup = function(
                  SessionID : Integer;
-                 numberBuffer : Integer ;
+                 numberBuffer : Cardinal ;
                  bufferList : Pointer ;
-                 skipCount : Integer ;
-                 startnow : Integer
+                 skipCount : Cardinal ;
+                 startnow : Cardinal
                  ) : Integer ; stdcall ;
  TimgSequenceSetup = function(
                      SessionID : Integer;
-                     numberBuffer : Integer;
+                     numberBuffer : Cardinal ;
                      bufferList : Pointer ;
                      skipCount : Pointer ;
-                     startnow : Integer ;
-                     async : Integer
+                     startnow : Cardinal ;
+                     async : Cardinal
                      ) : Integer ; stdcall ;
  TimgSessionStartAcquisition = function(
                                SessionID : Integer
@@ -1165,43 +1167,43 @@ type
                      ) : Integer ; stdcall ;
  TimgSessionConfigureROI = function(
                            SessionID : Integer;
-                           top : Integer ;
-                           left : Integer ;
-                           height : Integer ;
-                           width : Integer
+                           top : Cardinal ;
+                           left : Cardinal ;
+                           height : Cardinal ;
+                           width : Cardinal
                            ) : Integer ; stdcall ;
  TimgSessionGetROI = function(
                      SessionID : Integer;
-                     var top : Integer ;
-                     var left : Integer ;
-                     var height : Integer ;
-                     var width : Integer
+                     var top : Cardinal ;
+                     var left : Cardinal ;
+                     var height : Cardinal ;
+                     var width : Cardinal
                      ) : Integer ; stdcall ;
  TimgSessionGetBufferSize = function(
                             SessionID : Integer;
-                            var sizeNeeded : Integer
+                            var sizeNeeded : Cardinal
                             ) : Integer ; stdcall ;
  TimgGetAttribute = function(
                     ID : Integer ;
-                    Attribtype : Integer ;
+                    Attribtype : Cardinal ;
                     var Value : Integer
                     ) : Integer ; stdcall ;
  TimgSetAttribute = function(
                     ID : Integer ;
-                    Attribtype : Integer ;
+                    Attribtype : Cardinal ;
                     value : Integer
                     ) : Integer ; stdcall ;
  TimgCreateBuffer = function(
                     SessionID : Integer;
                     where : Integer ;
-                    bufferSize : Integer ;
+                    bufferSize : Cardinal ;
                     var bufAddr : Pointer
                     ) : Integer ; stdcall ;
  TimgDisposeBuffer = function(
                      bufAddr : Pointer
                      ) : Integer ; stdcall ;
  TimgCreateBufList = function(
-                     numElements : Integer ;
+                     numElements : Cardinal ;
                      var BUFLIST_ID : Integer
                      ) : Integer ; stdcall ;
  TimgDisposeBufList = function(
@@ -1250,13 +1252,13 @@ type
  TimgSessionCopyArea = function(
                        SessionID : Integer;
                        buf_num : Integer ;
-                       top : Integer ;
-                       left : Integer ;
-                       height : Integer ;
-                       width : Integer ;
+                       top : Cardinal ;
+                       left : Cardinal ;
+                       height : Cardinal ;
+                       width : Cardinal ;
                        Buffer : Pointer ;
-                       rowbytes : Integer ;
-                       vsync : Integer
+                       rowbytes : Cardinal ;
+                       vsync : Cardinal
                        ) : Integer ; stdcall ;
  TimgSessionCopyBuffer = function(
                          SessionID : Integer;
@@ -1322,16 +1324,16 @@ type
                           SessionID : Integer
                           ) : Integer ; stdcall ;
  TimgPulseCreate2 = function(
-                    timeBase : Integer ;
-                    delay : Integer ;
-                    width : Integer ;
-                    signalType : Integer ;
-                    signalIdentifier : Integer ;
-                    signalPolarity : Integer ;
-                    IoutputType : Integer ;
-                    outputNumber : Integer ;
-                    outputPolarity : Integer ;
-                    pulseMode : Integer ;
+                    timeBase : LongWord ;
+                    delay : Cardinal ;
+                    width : Cardinal ;
+                    signalType : Cardinal ;
+                    signalIdentifier : Cardinal ;
+                    signalPolarity : Cardinal ;
+                    IoutputType : Cardinal ;
+                    outputNumber : Cardinal ;
+                    outputPolarity : Cardinal ;
+                    pulseMode : Cardinal ;
                     var PULSE_ID : Integer
                     ) : Integer ; stdcall ;
  TimgPulseDispose = function(
@@ -1340,9 +1342,9 @@ type
  TimgPulseRate = function(
                  delaytime : Double ;
                  widthtime : Double ;
-                 var delay : Integer ;
-                 var width : Integer ;
-                 var timebase : Integer
+                 var delay : Cardinal ;
+                 var width : Cardinal ;
+                 var timebase : Cardinal
                  ) : Integer ; stdcall ;
  TimgPulseStart = function(
                   PULSE_ID : Integer ;
