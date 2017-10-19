@@ -33,7 +33,9 @@ unit imaqUnit;
 // 23.08.17 IMAQ_SnapImage Coooling turned on for VA-29MC-5M, Single image sequence to avoid deay in IMAQ_Stopcapture
 // 05.10.17 imgPulseCreate2 now called with Cardinal instead of integer arguments to allow pulse durations up to 7s
 //          Fixes error with VA-29MC-5M exposure time >5s. Some but not all img calls updated to Cardinal arguments
-//
+// 19.10.17 IMAQ_SnapImage: Trigger mode not used with VA-29MC-5M since it intermittently failed to trigger camera when
+//          camera previously in free run mode
+
 
 interface
 
@@ -2461,20 +2463,21 @@ begin
           // Free run mode
           // -------------
 
-          if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
-             begin
-             // Special trigger mode for VA-29MC-5M camera. Determine exposure time using pulse on CC1
-             IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,'Pulse Width') ;
-//             IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,Session.ExposureModeVal) ;
-             IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,'Overlap') ;
-             IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerSourceCom,'CC1') ;
-             IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerPolarityCom,Session.TriggerPolarityVal) ;
-             end
-           else
-             begin
-             IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,Session.ExposureModeVal) ;
-             IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValFreeRun) ;
-             end ;
+//        19.10.17 Trigger mode not used with VA-29MC-5M since it intermiottently failed to trigger camera when
+//        camera previously in free run mode
+//          if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
+//             begin
+//             // Special trigger mode for VA-29MC-5M camera. Determine exposure time using pulse on CC1
+//            IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,'Pulse Width') ;
+//             IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,'Overlap') ;
+//             IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerSourceCom,'CC1') ;
+//             IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerPolarityCom,Session.TriggerPolarityVal) ;
+//             end
+//           else
+//             begin
+          IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,Session.ExposureModeVal) ;
+          IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValFreeRun) ;
+//             end ;
           end
        else
           begin
@@ -2576,7 +2579,8 @@ begin
     Session.SingleImage := True ;
 
     // Apply internal trigger pulse to start VA-29MC-5M pixel shift camera
-    if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then IMAQ_TriggerPulse( Session ) ;
+    // Disabled 19.10.17
+//    if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then IMAQ_TriggerPulse( Session ) ;
 
     end;
 
@@ -2755,7 +2759,7 @@ begin
 
      if not Session.AcquisitionInProgress then Exit ;
 
-//     outputdebugstring(pchar('Trigger'));
+     outputdebugstring(pchar('Camera Trigger Pulse'));
 
      ClockTicks := Round(Session.ExposureTime*5E7) ;
   //   ClockTicks := 50000 ;
@@ -2774,6 +2778,8 @@ begin
                      Session.PulseID))
      else IMAQ_CheckError(imgPulseStop(Session.PulseID));
      IMAQ_CheckError(imgPulseStart(Session.PulseID, Session.SessionID));
+
+
 
 end;
 
