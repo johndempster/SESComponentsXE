@@ -73,6 +73,7 @@ unit SESCam;
  31.07.17 JD  .SpotNoiseReduction support removed
  03.08.17 JD  .CCDXShift and .CCDYShift added setting of CCD X,Y stage position for VNP-29MC camera
  15.08.17 JD  .SnapImage added (acquires a single image)
+ 06.11.17 JD  .CCDTapOffsetLT etc. CCD tap black offset adjustment properties added
 
   ================================================================================ }
 {$OPTIMIZATION OFF}
@@ -218,6 +219,11 @@ type
     FADCGain : Integer ;            // A/D gain index value
     FCCDVerticalShiftSpeed : Integer ; // Vertical CCD line shift speed index
     FNumPixelShiftFrames : Integer ; // No. of pixel shifted frames
+
+    FCCDTapOffsetLT : Cardinal ;    // Top-left tap DC offset
+    FCCDTapOffsetRT : Cardinal ;    // Top-right tap DC offset
+    FCCDTapOffsetLB : Cardinal ;    // Bottom-left tap DC offset
+    FCCDTapOffsetRB : Cardinal ;    // Bottom-right tap DC offset
 
     ImageAreaChanged : Boolean ;   // TRUE = image area has been changed
 
@@ -410,6 +416,11 @@ type
     Property MonochromeImage : Boolean read FMonochromeImage write SetMonochromeImage ;
     Property CCDXShift : Double read FCCDXShift write SetCCDXShift ;
     Property CCDYShift : Double read FCCDYShift write SetCCDYShift ;
+    Property CCDTapOffsetLT : Cardinal read FCCDTapOffsetLT write FCCDTapOffsetLT ;
+    Property CCDTapOffsetRT : Cardinal read FCCDTapOffsetRT write FCCDTapOffsetRT ;
+    Property CCDTapOffsetLB : Cardinal read FCCDTapOffsetLB write FCCDTapOffsetLB ;
+    Property CCDTapOffsetRB : Cardinal read FCCDTapOffsetRB write FCCDTapOffsetRB
+     ;
   end;
 
 procedure Register;
@@ -486,6 +497,12 @@ begin
      FDisableEMCCD := False ;
      FCameraRestartRequired := False ;
      FDisableExposureIntervalLimit := False ;
+
+     // CCD tap black level offsets
+     FCCDTapOffsetLT := 0 ;
+     FCCDTapOffsetRT := 0 ;
+     FCCDTapOffsetLB := 0 ;
+     FCCDTapOffsetRB := 0 ;
 
      // Initialise ITEX control record
      ITEX.ConfigFileName := '' ;
@@ -1225,6 +1242,13 @@ begin
              //FBinFactorMax := 1 ;
              FFrameWidth := FFrameWidthMax ;
              FFrameHeight := FFrameHeightMax ;
+
+             // Set tap DC offset adjustment
+             IMAQSession.CCDTapOffsetLT := FCCDTapOffsetLT ;
+             IMAQSession.CCDTapOffsetRT := FCCDTapOffsetRT ;
+             IMAQSession.CCDTapOffsetLB := FCCDTapOffsetLB ;
+             IMAQSession.CCDTapOffsetRB := FCCDTapOffsetRB ;
+
              FNumCameras := 1 ;
              end ;
           end ;
@@ -2007,6 +2031,11 @@ begin
           end ;
 
        IMAQ : begin
+          // Set tap DC offset adjustment
+          IMAQSession.CCDTapOffsetLT := FCCDTapOffsetLT ;
+          IMAQSession.CCDTapOffsetRT := FCCDTapOffsetRT ;
+          IMAQSession.CCDTapOffsetLB := FCCDTapOffsetLB ;
+          IMAQSession.CCDTapOffsetRB := FCCDTapOffsetRB ;
           FCameraActive := IMAQ_StartCapture(
                            IMAQSession,
                            FFrameInterval,
@@ -2026,6 +2055,11 @@ begin
           end ;
 
        IMAQDX : begin
+          // Set tap DC offset adjustment
+          IMAQSession.CCDTapOffsetLT := FCCDTapOffsetLT ;
+          IMAQSession.CCDTapOffsetRT := FCCDTapOffsetRT ;
+          IMAQSession.CCDTapOffsetLB := FCCDTapOffsetLB ;
+          IMAQSession.CCDTapOffsetRB := FCCDTapOffsetRB ;
           FCameraActive := IMAQDX_StartCapture(
                            IMAQDXSession,
                            FFrameInterval,

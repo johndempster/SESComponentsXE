@@ -35,6 +35,8 @@ unit imaqUnit;
 //          Fixes error with VA-29MC-5M exposure time >5s. Some but not all img calls updated to Cardinal arguments
 // 19.10.17 IMAQ_SnapImage: Trigger mode not used with VA-29MC-5M since it intermittently failed to trigger camera when
 //          camera previously in free run mode
+// 06.11.17 CCDTapOffsetLT etc. CCD tap black offset adjustment properties added. DC offset differences between VA-29MC-5M
+//          camera taps can now be corrected
 
 
 interface
@@ -1092,6 +1094,10 @@ type
     PulseID : Integer ;
     PixelSizeNm : Cardinal ;
     SingleImage : Boolean ;
+    CCDTapOffsetLT : Cardinal ;    // Top-left tap DC offset
+    CCDTapOffsetRT : Cardinal ;    // Top-right tap DC offset
+    CCDTapOffsetLB : Cardinal ;    // Bottom-left tap DC offset
+    CCDTapOffsetRB : Cardinal ;    // Bottom-right tap DC offset
     end ;
 
 //============================================================================
@@ -2207,7 +2213,6 @@ begin
        IMAQ_SetCameraAttributeNumeric( Session.SessionID,PANSIChar(Session.GainCom),iGain) ;
        end ;
 
-
     if not Session.AnalogVideoBoard then
        begin
 
@@ -2234,18 +2239,12 @@ begin
           IMAQ_SetCameraAttributeString( Session.SessionID,'Cooling','On');
           IMAQ_SetCameraAttributeString( Session.SessionID,'Fan','On');
           IMAQ_SetCameraAttributeNumeric( Session.SessionID,'Temperature',-10);
-          // Turn fan off for pixel shift modes
-          if NumPixelShiftFrames > 0 then
-             begin
-//             IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOff) ;
-//             IMAQ_VA29MC5M_FanOn(Session,False) ;
-             end
-          else
-             begin
-//             IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOn) ;
-//            IMAQ_VA29MC5M_FanOn(Session,TRue) ;
-             end;
-          end;
+          // Set CCD tap DC offset adjustments
+          IMAQ_SetCameraAttributeNumeric( Session.SessionID,'CCDTapOffsetLT',Session.CCDTapOffsetLT);
+          IMAQ_SetCameraAttributeNumeric( Session.SessionID,'CCDTapOffsetRT',Session.CCDTapOffsetRT);
+          IMAQ_SetCameraAttributeNumeric( Session.SessionID,'CCDTapOffsetLB',Session.CCDTapOffsetLB);
+          IMAQ_SetCameraAttributeNumeric( Session.SessionID,'CCDTapOffsetRB',Session.CCDTapOffsetRB);
+          end ;
 
        // Set exposure time
     //   IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,Session.ExposureModeVal) ;
