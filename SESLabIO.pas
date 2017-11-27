@@ -141,6 +141,7 @@ unit SESLabIO;
            LoadFromXMLFile1() now checks if XML file contains settings and avoids access violation.
   09.09.16 Digidata 1550B support added.
   20.07.17 .ADCStart Analog input channels checked for duplicates and acquisition aborted.
+  13.11.17 Support for Measurement Computing Corp devices added.
   ================================================================================ }
 
 interface
@@ -197,8 +198,9 @@ const
      Digidata1550A = 27 ;
      HekaEPC9USB = 28 ;
      Digidata1550B = 29 ;
+     MCC = 30 ;
 
-     NumLabInterfaceTypes = 30;
+     NumLabInterfaceTypes = 31 ;
      StimulusExtTriggerFlag = -1 ;  // Stimulus program started by external trig pulse.
 
 type
@@ -940,7 +942,7 @@ implementation
 
 uses NatInst, CED1401, dd1200, dd1200win98, dd1320,
      itcmm, itclib, vp500Unit, nidaqmxunit, dd1440, tritonunit,wirelesseegunit,ActiveX,
-     dd1550,dd1550A,dd1550B;
+     dd1550,dd1550A,dd1550B,mccunit;
 
 const
      EmptyFlag = 32767 ;
@@ -1126,6 +1128,7 @@ begin
        Digidata1550 : Result := 'Molecular Devices Digidata 1550';
        Digidata1550A : Result := 'Molecular Devices Digidata 1550A';
        Digidata1550B : Result := 'Molecular Devices Digidata 1550B';
+       MCC : Result := 'Measurement Computing Corp.' ;
        end ;
      end ;
 
@@ -1738,6 +1741,38 @@ begin
              end ;
           end ;
 
+       MCC : begin
+          FLabInterfaceName := 'Measurement Computing Corp.' ;
+          FLabInterfaceAvailable := MCC_GetLabInterfaceInfo(
+                                    FDeviceList,
+                                    DeviceNumber,
+                                    FADCInputMode,
+                                    FLabInterfaceModel,
+                                    FADCMaxChannels,
+                                    FADCMinSamplingInterval,FADCMaxSamplingInterval,
+                                    FADCMinValue, FADCMaxValue,
+                                    FDACMaxChannels,FDACMinValue, FDACMaxValue,
+                                    FADCVoltageRanges,FADCNumVoltageRanges,
+                                    FDACVoltageRange,
+                                    FDACMinUpdateInterval,
+                                    FDigMinUpdateInterval,
+                                    FDigMaxUpdateInterval,
+                                    FDIGInterval,
+                                    FADCBufferLimit ) ;
+
+          FDeviceNumber := DeviceNumber ;
+          if FLabInterfaceAvailable then begin
+             FDACBufferLimit := FADCBufferLimit ;
+             FDIGNumOutputs := 8 ; { No. of digital outputs }
+             FDACTriggerOnLevel := 0 ;
+             FDACTriggerOffLevel := IntLimit( Round((FDACMaxValue*4.99)/FDACVoltageRange),
+                                              FDACMinValue,FDACMaxValue) ;
+             FDACInitialPoints := 5 ;
+             end ;
+          end ;
+
+
+
        end ;
 
      { Set type to no interface if selected one is not available }
@@ -1853,6 +1888,9 @@ begin
           HekaEPC9,HekaEPC9USB,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,
           HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
              Heka_CloseLaboratoryInterface ;
+             end ;
+          MCC : begin
+             MCC_CloseLaboratoryInterface ;
              end ;
 
           end ;
@@ -2077,6 +2115,17 @@ begin
                               FLastDACNumChannels,
                               FLastDigValue ) ;
           end ;
+
+       MCC : begin
+          MCC_ADCToMemory( ADCBuf^, FADCNumChannels, FADCNumSamples,
+                          FADCSamplingInterval,
+                          FADCChannelVoltageRanges,
+                          FADCTriggerMode,
+                          FADCExternalTriggerActiveHigh,
+                          FADCCircularBuffer,
+                          FADCInputMode,
+                          FADCChannelInputNumber ) ;
+          end ;
        end ;
      FADCActive := True ;
      end ;
@@ -2149,6 +2198,9 @@ begin
           Heka_StopADC ;
           end ;
 
+       MCC : begin
+          MCC_StopADC ;
+          end ;
 
        end ;
      FADCActive := False ;
@@ -2311,6 +2363,15 @@ begin
                                             False,
                                             FStimulusExtTrigger,
                                             FDACRepeatedWaveform ) ;
+             end ;
+
+       MCC : begin
+             MCC_MemoryToDAC( DACBuf^,
+                               FDACNumChannels,
+                               FDACNumSamples,
+                               FDACUpdateInterval,
+                               FStimulusExtTrigger,
+                               FDACRepeatedWaveform) ;
              end ;
 
           end ;
@@ -2490,6 +2551,18 @@ begin
                                             FDACRepeatedWaveform ) ;
              end ;
 
+          MCC : begin
+             MCC_MemoryToDig ( DIGBuf^,
+                                FDACNumSamples,
+                                FDACUpdateInterval,
+                                FDACRepeatedWaveform ) ;
+             MCC_MemoryToDAC( DACBuf^,
+                               FDACNumChannels,
+                               FDACNumSamples,
+                               FDACUpdateInterval,
+                               FStimulusExtTrigger,
+                               FDACRepeatedWaveform ) ;
+             end ;
           end ;
      FDACActive := True ;
      FDIGActive := True ;
@@ -2568,6 +2641,11 @@ begin
        HekaEPC9,HekaEPC9USB,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,
        HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
           Heka_StopDAC ;
+          end ;
+
+       MCC : begin
+          MCC_StopDAC ;
+          if FDIGActive then MCC_StopDig ;
           end ;
 
        end ;
@@ -2653,6 +2731,12 @@ begin
           Result := Heka_ReadADC( FADCChannelInputNumber,Channel ) ;
           end ;
 
+       MCC : begin
+          Result := MCC_ReadADC( FADCChannelInputNumber[Channel],
+                                  FADCChannelVoltageRanges[FADCChannelInputNumber[Channel]],
+                                  FADCInputMode ) ;
+          end ;
+
        else Result := 0 ;
        end ;
      end ;
@@ -2702,6 +2786,7 @@ begin
        VP500 : begin
           VP500_WriteDACsAndDigitalPort(FLastDACVolts,FLastDACNumChannels,FLastDigValue) ;
           end ;
+
        NIDAQMX : begin
           NIMX_WriteDACs( DACVolts, NumChannels ) ;
           end ;
@@ -2731,7 +2816,11 @@ begin
           Heka_WriteDACsAndDigitalPort(FLastDACVolts,FLastDACNumChannels,FLastDigValue) ;
           end ;
 
+       MCC : begin
+          MCC_WriteDACs( DACVolts, NumChannels ) ;
+          end ;
        end ;
+
      end ;
 
 
@@ -2808,6 +2897,7 @@ begin
        VP500 : begin
           VP500_GetADCSamples( ADCBuf, FOutPointer ) ;
           end ;
+
        NIDAQMX : begin
           NIMX_GetADCSamples( ADCBuf^, FOutPointer, FADCChannelVoltageRanges ) ;
           end ;
@@ -2839,6 +2929,10 @@ begin
        HekaEPC9,HekaEPC9USB,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,
        HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
           Heka_GetADCSamples( ADCBuf^, FOutPointer ) ;
+          end ;
+
+       MCC : begin
+          MCC_GetADCSamples( ADCBuf^, FOutPointer, FADCChannelVoltageRanges ) ;
           end ;
 
        end ;
@@ -2878,6 +2972,12 @@ begin
          List.Add(' BNC-2090 (SE)' ) ;
          List.Add(' Single Ended (RSE)') ;
          end ;
+       MCC : begin
+         List.Add(' Single Ended (NRSE)' ) ;
+         List.Add(' Differential' ) ;
+         List.Add(' Single Ended (RSE)') ;
+         end ;
+
        else begin
          List.Add(' Single Ended' ) ;
          end ;
@@ -2995,7 +3095,11 @@ begin
           Heka_WriteDACsAndDigitalPort( FLastDACVolts, FLastDACNumChannels, DigByte ) ;
           end ;
 
+       MCC : begin
+          MCC_WriteToDigitalOutPutPort( DigByte ) ;
+          end ;
        end ;
+
      end ;
 
 
@@ -3094,6 +3198,12 @@ begin
        HekaEPC9,HekaEPC9USB,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16,
        HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
           Heka_GetChannelOffsets( FADCChannelOffset, FADCNumChannels ) ;
+          end ;
+
+       MCC : begin
+          MCC_GetChannelOffsets( FADCInputMode,
+                                  FADCChannelOffset,
+                                  FADCNumChannels ) ;
           end ;
 
        end ;
@@ -3227,6 +3337,12 @@ begin
           Heka_CheckSamplingInterval( FADCSamplingInterval,FADCNumChannels, FDACNumChannels ) ;
           end ;
 
+       MCC : begin
+          FADCSamplingInterval := Min( Max( FADCSamplingInterval,
+                                            FADCMinSamplingInterval*FADCNumChannels),
+                                            FADCMaxSamplingInterval*FADCNumChannels) ;
+          MCC_CheckADCSamplingInterval(FADCSamplingInterval,FADCNumChannels,FADCInputMode);
+          end ;
        end ;
 
      end ;
@@ -3609,6 +3725,12 @@ begin
                     FADCChannelInputNumber[Chan] := Max(Min((FADCMaxChannels*2)-1,Value),0)
                 else FADCChannelInputNumber[Chan] := Max(Min(FADCMaxChannels-1,Value),0) ;
                 end;
+            MCC : begin
+                if ((ADCInputMode = imDifferential)) and
+                   (FADCMaxChannels > 8 ) then
+                    FADCChannelInputNumber[Chan] := Max(Min((FADCMaxChannels*2)-1,Value),0)
+                else FADCChannelInputNumber[Chan] := Max(Min(FADCMaxChannels-1,Value),0) ;
+                end;
             else begin
                  if (Chan >= 0) and (Chan < MaxADCChannels) then begin
                     FADCChannelInputNumber[Chan] := Value ;
@@ -3629,7 +3751,7 @@ procedure TSESLabIO.SetADCInputMode( Value : Integer ) ;
 begin
 
      case FLabInterfaceType of
-        NationalInstruments,NIDAQMX : begin
+        NationalInstruments,NIDAQMX,MCC : begin
            OpenLabInterface( FLabInterfaceType,
                              FDeviceNumber,
                              Value ) ;
@@ -3730,13 +3852,16 @@ begin
           Triton_CheckSamplingInterval(FADCSamplingInterval) ;
           FDACUpdateInterval := FADCSamplingInterval ;
           end ;
-          
+
        WirelessEEG : begin
           end ;
 
        HekaEPC9,HekaEPC9USB,HekaEPC10,HekaEPC10Plus,HekaEPC10USB,HekaITC16 ,
        HekaITC18,HekaITC1600,HekaLIH88,HekaITC18USB,HekaITC16USB : begin
           FDACUpdateInterval := FADCSamplingInterval ;
+          end ;
+       MCC : begin
+          MCC_CheckDACSamplingInterval(FDACUpdateInterval, FDACNumChannels ) ;
           end ;
        end ;
      end ;
@@ -3788,7 +3913,11 @@ begin
 
        WirelessEEG : begin
           end ;
-          
+
+       MCC : begin
+          Bits := MCC_ReadDigitalInputPort ;
+          end ;
+
        end ;
      Result := Bits ;
      end ;
@@ -4018,6 +4147,10 @@ begin
           Triggered := True ;
           end ;
 
+       MCC : begin
+          Triggered := True ;
+          end ;
+
        end ;
 
      Result := Triggered ;
@@ -4148,6 +4281,10 @@ begin
           end ;
 
        WirelessEEG : begin
+          end ;
+
+       MCC : begin
+          FADCExternalTriggerActiveHigh := MCC_GetValidExternalTriggerPolarity(Value) ;
           end ;
 
        end ;
@@ -5037,6 +5174,7 @@ begin
        HekaLIH88 : Result := True ;
        HekaITC18USB : Result := True ;
        HekaITC16USB : Result := True ;
+       MCC : Result := True ;
        else Result := False ;
        end ;
      end ;

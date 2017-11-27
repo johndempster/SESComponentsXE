@@ -25,6 +25,9 @@ unit ImageFile;
 //          to get files to import into Image-J using BIOFORMATS. Not clear why this is
 //          necessary (possibly a fault in strip processing
 //          PageNumberTag now saved as longfield.
+// 27.11.17 FNumComponentsPerPixel now set before FNumBytesPerPixel := in PICCreateFile() so that
+//          first Export to PIC files no longer contains no data.
+
 interface
 
 uses
@@ -1041,9 +1044,9 @@ begin
     FFrameWidth := FrameWidth ;
     FFrameHeight := FrameHeight ;
     FPixelDepth := PixelDepth ;
+    FComponentsPerPixel := 1 ;
     FNumBytesPerPixel := (((FPixelDepth-1) div 8) + 1)*FComponentsPerPixel ;
 
-    FComponentsPerPixel := 1 ;
     FNumPixelsPerFrame := FFrameWidth*FFrameHeight ;
     FNumBytesPerFrame := FComponentsPerPixel*FNumPixelsPerFrame*FNumBytesPerPixel ;
 

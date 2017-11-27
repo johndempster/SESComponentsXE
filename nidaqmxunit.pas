@@ -61,7 +61,9 @@ unit NidaqMXUnit;
 //          instead of P0.0->PFI0+PFI1
 // 28.04.17 NIMX_CheckMaxADCChannels() now checks channels using +/-5V input range
 //          to avoid errors with boards which only support maximum of +/-5V input range
-//
+// 21.11.17 D/A update rate of NI USB-600X devices now forced to be no more than 500 Hz to avoid intermittent 5 sec delays when calling .StopADC.
+// 25.11.17 Change in special DAQmxSetAIUsbXferReqCount setting for USB06008/9 no longer reset for other devices by NIMX_ADCToMemory to avoid
+//          unsupported function error.
 
 
 interface
@@ -1915,6 +1917,28 @@ TDAQmxGetAIUsbXferReqCount = function(
                              Count : Cardinal
                               ) : Integer ; stdcall  ;
 
+TDAQmxResetAIUsbXferReqCount = function(
+                             TaskHandle : Integer ;
+                             const channel : PANSIChar
+                              ) : Integer ; stdcall  ;
+
+TDAQmxSetAOUsbXferReqCount = function(
+                             TaskHandle : Integer ;
+                             const channel : PANSIChar ;
+                             Count : Cardinal
+                              ) : Integer ; stdcall  ;
+
+TDAQmxGetAOUsbXferReqCount = function(
+                             TaskHandle : Integer ;
+                             const channel : PANSIChar ;
+                             Count : Cardinal
+                              ) : Integer ; stdcall  ;
+
+TDAQmxResetAOUsbXferReqCount = function(
+                             TaskHandle : Integer ;
+                             const channel : PANSIChar
+                              ) : Integer ; stdcall  ;
+
 
 
 const
@@ -2057,6 +2081,11 @@ var
 
     DAQmxSetAIUsbXferReqCount : TDAQmxSetAIUsbXferReqCount ;
     DAQmxGetAIUsbXferReqCount : TDAQmxGetAIUsbXferReqCount ;
+    DAQmxResetAIUsbXferReqCount : TDAQmxResetAIUsbXferReqCount ;
+
+    DAQmxSetAOUsbXferReqCount : TDAQmxSetAOUsbXferReqCount ;
+    DAQmxGetAOUsbXferReqCount : TDAQmxGetAOUsbXferReqCount ;
+    DAQmxResetAOUsbXferReqCount : TDAQmxResetAOUsbXferReqCount ;
 
     LibraryLoaded : Boolean ;
     ADCActive : Boolean ;     { A/D sampling inn progress flag }
@@ -2276,15 +2305,18 @@ begin
           FDigMinUpdateInterval := FDACMinUpdateInterval ;
           end ;
 
+       // Limitations associated with USB-600X devices
        // Determine if analog output clock can be used as a trigger signal
        if ANSIContainsText(FBoardModel,'6000') or
           ANSIContainsText(FBoardModel,'6001') or
           ANSIContainsText(FBoardModel,'6002') or
           ANSIContainsText(FBoardModel,'6003') or
           ANSIContainsText(FBoardModel,'6004') or
-          ANSIContainsText(FBoardModel,'6005') then FNoTriggerOnSampleClock := True
+          ANSIContainsText(FBoardModel,'6005') then begin
+          FNoTriggerOnSampleClock := True ;
+          FDACMinUpdateInterval := 2E-3 ;
+          end
        else FNoTriggerOnSampleClock := False ;
-
 
        end
     else begin
@@ -2657,6 +2689,10 @@ begin
         @DAQmxGetSysDevNames := NIMX_LoadProcedure( LibraryHnd, 'DAQmxGetSysDevNames' ) ;
         @DAQmxSetAIUsbXferReqCount := NIMX_LoadProcedure( LibraryHnd, 'DAQmxSetAIUsbXferReqCount' ) ;
         @DAQmxGetAIUsbXferReqCount := NIMX_LoadProcedure( LibraryHnd, 'DAQmxGetAIUsbXferReqCount' ) ;
+        @DAQmxResetAIUsbXferReqCount := NIMX_LoadProcedure( LibraryHnd, 'DAQmxResetAIUsbXferReqCount' ) ;
+        @DAQmxSetAOUsbXferReqCount := NIMX_LoadProcedure( LibraryHnd, 'DAQmxSetAOUsbXferReqCount' ) ;
+        @DAQmxGetAOUsbXferReqCount := NIMX_LoadProcedure( LibraryHnd, 'DAQmxGetAOUsbXferReqCount' ) ;
+        @DAQmxResetAOUsbXferReqCount := NIMX_LoadProcedure( LibraryHnd, 'DAQmxResetAOUsbXferReqCount' ) ;
 
         LibraryLoaded := True ;
         end
@@ -3058,7 +3094,7 @@ begin
      // Special processing for USB6008 or USB6009 devices. USB Transfer requests limited to 1
      // to avoid "Onboard device memory overflow" error when running under Windows 7
      // Workaround for known Microsoft bug in Windows 7 USB stack. NIDAQmx 9.4 or later required
-     if (ANSIContainsText(FBoardModel, '6008') or ANSIContainsText(FBoardModel, '6009')) and
+     if (ANSIContainsText(FBoardModel, '6008') or ANSIContainsText(FBoardModel, '6009') ) and
          (@DAQmxSetAIUsbXferReqCount <> Nil) then begin
         NIMX_CheckError( DAQmxSetAIUsbXferReqCount( ADCTaskHandle,PANSIChar(ChannelList),1 )) ;
         end ;
@@ -3230,6 +3266,8 @@ function NIMX_StopADC : Boolean ;
 // ----------------------------------
 // Stop a running A/D conversion task
 // ----------------------------------
+var
+    t0 : Integer ;
 begin
     Result := False ;
     if not BoardInitialised then Exit ;
@@ -3238,8 +3276,10 @@ begin
 
      NIMX_DisableFPUExceptions ;
 
-     // Stop running D/A task
+     T0 := timegettime ;
      NIMX_CheckError( DAQmxClearTask(ADCTaskHandle)) ;
+     if (timegettime - t0) > 1000 then
+        outputdebugstring(pchar(format('NIMX_StopADC: %d ms Delay in DAQmxClearTask call. ',[timegettime - t0])));
      ADCActive := False ;
 
      NIMX_EnableFPUExceptions ;
