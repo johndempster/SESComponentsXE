@@ -44,6 +44,10 @@ unit pvcam;
 //         Camera can be selected when more than one available
 // 10.10.14 OptiMOS minimum frame interval now 1.4 x readout time (not 2X)
 // 02.10.17 Cameras with shutter control now set to open shutter presequence
+// 27.12.17 Support for Prime 95 added
+// 29.12.17 PARAM_READOUT_TIME now works correctly and used by Prime to determine readout time.
+//          PVCAM_GetExposureModes() added to determine exposure trigger modes supported by camera
+//          Rounded to nearest ms using RoundToNearestMultiple()
 
 {OPTIMIZATION OFF}
 {$DEFINE USECONT}
@@ -60,12 +64,18 @@ const
         TYPE_INT16 = 1 ;        // short
         TYPE_UNS16 = 6 ;        // unsigned short
         TYPE_INT32 = 2 ;         // long
+
         TYPE_UNS32 = 7 ;        // unsigned long
+        TYPE_UNS64 = 8 ;        // unsigned 64 bit
         TYPE_FLT64 = 4 ;        // double
         TYPE_ENUM = 9 ;         // Can be treat as unsigned long
         TYPE_BOOLEAN = 11 ;     // Boolean value
         TYPE_VOID_PTR = 14 ;     // ptr to void
         TYPE_VOID_PTR_PTR = 15 ; // void ptr to a ptr.
+        TYPE_INT64 = 16 ;        // 64 bit integer
+        TYPE_SMART_STREAM_TYPE =    17 ;
+        TYPE_SMART_STREAM_TYPE_PTR =18 ;
+        TYPE_FLT32 =                19 ;
 
         CLASS0 = 0 ;      // Camera Communications
         CLASS1 = 1 ;      // Error Reporting
@@ -121,6 +131,15 @@ const
 //* CCD chip name.    */
         PARAM_CHIP_NAME = ((CLASS2 shl 16) + (TYPE_CHAR_PTR shl 24)  + 129) ;
 
+        PARAM_SYSTEM_NAME =          ((CLASS2 shl 16) + (TYPE_CHAR_PTR shl 24)  + 130);
+//** Camera vendor name. */
+        PARAM_VENDOR_NAME =          ((CLASS2 shl 16) + (TYPE_CHAR_PTR shl 24)  + 131) ;
+//** Camera product name. */
+        PARAM_PRODUCT_NAME =         ((CLASS2 shl 16) + (TYPE_CHAR_PTR shl 24)  + 132) ;
+//** Camera part number. */
+        PARAM_CAMERA_PART_NUMBER =   ((CLASS2 shl 16) + (TYPE_CHAR_PTR shl 24)  + 133) ;
+
+
         PARAM_COOLING_MODE = ((CLASS2 shl 16) + (TYPE_ENUM  shl 24)  + 214) ;
 	PARAM_PREAMP_DELAY = ((CLASS2 shl 16) + (TYPE_UNS16 shl 24)  + 502) ;
 	PARAM_PREFLASH =     ((CLASS2 shl 16) + (TYPE_UNS16 shl 24)  + 503);
@@ -151,6 +170,13 @@ const
         PARAM_CONTROLLER_ALIVE = ((CLASS2 shl 16) + (TYPE_BOOLEAN shl 24)+ 168) ;
 //* Readout time of current ROI, in ms */
         PARAM_READOUT_TIME = ((CLASS2 shl 16) + (TYPE_FLT64 shl 24)  + 179) ;
+//** Clearing time, in nano-seconds, valid after pl_exp_setup, if available. */
+        PARAM_CLEARING_TIME = ((CLASS2 shl 16) + (TYPE_INT64 shl 24) + 180) ;
+//*0* Post trigger delay, in nano-seconds, valid after pl_exp_setup, if available. */
+        PARAM_POST_TRIGGER_DELAY = ((CLASS2 shl 16) + (TYPE_INT64 shl 24) + 181) ;
+//** Pre trigger delay, in nano-seconds, valid after pl_exp_setup, if available. */
+        PARAM_PRE_TRIGGER_DELAY = ((CLASS2 shl 16) + (TYPE_INT64 shl 24)  + 182) ;
+
 
 //* CAMERA PARAMETERS (CLASS 2) */
 
@@ -207,6 +233,8 @@ const
 	PARAM_EXP_RES =       ((CLASS3 shl 16) + (TYPE_ENUM shl 24)   + 2) ;
 	PARAM_EXP_MIN_TIME =  ((CLASS3 shl 16) + (TYPE_FLT64 shl 24)  + 3) ;
 	PARAM_EXP_RES_INDEX = ((CLASS3 shl 16) + (TYPE_UNS16 shl 24)  + 4) ;
+  PARAM_EXPOSURE_TIME = ((CLASS3 shl 16) + (TYPE_UNS64 shl 24)     +   8) ;
+
 
 //* PARAMETERS FOR  BEGIN and END of FRAME Interrupts */
         PARAM_BOF_EOF_ENABLE = ((CLASS3 shl 16) + (TYPE_ENUM shl 24)    + 5) ;
@@ -236,6 +264,10 @@ const
         // Allows number of frames per interrupt to be set.
         PARAM_VIRTUALCHIP_NUMBER_FRAMES_IRQ = ((CLASS95 shl 16) + (TYPE_INT32 shl 24) + 204);
 
+    EXT_TRIG_INTERNAL = (7 + 0) shl 8 ;
+    EXT_TRIG_TRIG_FIRST = (7 + 1) shl 8 ;
+    EXT_TRIG_EDGE_RISING  = (7 + 2) shl 8 ;
+
 type
 {$MINENUMSIZE 2}
 
@@ -250,6 +282,8 @@ TPVCAMSession = record
     FrameTransferCapable : Word ;
     PostExposureReadout : Boolean ;
     ChipName : string ;
+    CameraType : string ;
+    ExposureModes : Array[0..2] of Word ;
     end ;
 
 // Class 0: Abort Exposure flags
@@ -448,15 +482,15 @@ Tpl_get_enum_param = function (
                      hcam : SmallInt ;
                      param_id : Cardinal ;
                      index : Cardinal ;
-	             value : Pointer ;
-                     var desc : PANSIChar ;
+	                   var value : Integer ;
+                     desc : PANSIChar ;
                      length : Cardinal
                      ) : Word ; stdcall ;
 
 Tpl_enum_str_length = function (
                       hcam : SmallInt ;
                       param_id : Cardinal ;
-                      index : Cardinal ;
+                      index : Integer ;
                       var length : Cardinal
                       ) : Word ; stdcall ;
 
@@ -548,7 +582,7 @@ Tpl_exp_setup_cont = function (		 // setup circular buffer
                      hcam : SmallInt ;      	 // camera handle
                      rgn_total : Word ;		 // number of regions of interest in image
                      Region : Pointer {var Region : Array of TRegion} ; // regions of interest
-                     exp_mode : TExposureMode ;      // exposure mode (TIMEDMODE, etc...)
+                     exp_mode : Word ;      // exposure mode (TIMEDMODE, etc...)
                      exposure_time : Cardinal ; 	 // exposure time in milliseconds/microseconds
                      Frame_Size : Pointer ;	 // Image size (bytes)
                      buffer_mode : TCircMode 	 // circular buffer mode(CIRC_OVERWRITE, etc...)
@@ -754,6 +788,16 @@ procedure PVCAM_GetCameraReadoutSpeedList(
           var Session : TPVCAMSession ;
           CameraReadoutSpeedList : TStringList ) ;
 
+procedure PVCAM_SetReadoutSpeed(
+          var Session : TPVCAMSession ;    // Camera session record
+          ReadoutSpeed : Integer ;         // Readout speed index
+          var PixelDepth : Integer ;       // pixel bit depth
+          var GreyLevelMax : Integer ) ;   // no. grey levels per pixel
+
+procedure PVCAM_GetCameraPortList(
+          var Session : TPVCAMSession ;    // Camera session record
+          CameraPortList : TStringList ) ;
+
 procedure PVCAM_GetCameraGainList(
           var Session : TPVCAMSession ;
           CameraGainList : TStringList ) ;
@@ -778,6 +822,10 @@ function PVCAM_StartCapture(
          PostExposureReadout : Boolean      // TRUE = readout after exposure
                                             // Ext. trig mode only
          ) : Boolean ;                      // True = captured started
+
+procedure PVCAM_GetExposureModes(
+          var Session : TPVCAMSession ;         // Camera session record
+          var Modes : String ) ;            // Return list of modes
 
 function PVCAM_StopCapture(
          var Session : TPVCAMSession
@@ -853,8 +901,7 @@ var
 
 implementation
 
-uses WinTypes,sysutils, dialogs, sescam  ;
-//uses Dialogs, SysUtils, WinProcs,mmsystem;
+uses WinTypes,sysutils, dialogs, sescam, maths  ;
 
 var
 
@@ -898,6 +945,9 @@ var
      Temperature : SmallInt ;
      Available,CircularBufferSupported,MultGainEnabled : Word ;
      siValue : SmallInt ;
+     i64 : Int64 ;
+     List : TStringList ;
+     s : string ;
 begin
 
      Result := False ;
@@ -969,6 +1019,17 @@ begin
      if pl_cam_get_diags( Session.Handle ) <> 0 then CameraInfo.Add('Camera Diagnostics OK ') ;
      PVCAM_DisplayErrorMessage( 'pl_cam_get_diags ' ) ;
 
+     // Camera product name
+     pl_get_param( Session.Handle, PARAM_PRODUCT_NAME, ATTR_AVAIL, @Available ) ;
+     PVCAM_DisplayErrorMessage( 'pl_get_param(PARAM_PRODUCT_NAME,ATTR_AVAIL) ' ) ;
+     if Available = 0 then CameraInfo.Add( 'PARAM_PRODUCT_NAME not available' )
+     else begin
+        pl_get_param( Session.Handle, PARAM_PRODUCT_NAME, ATTR_CURRENT, @TempName ) ;
+        CameraInfo.Add( 'Camera Type= ' + PVCAM_CharArrayToString(TempName)) ;
+        Session.CameraType := PVCAM_CharArrayToString(TempName) ;
+        end ;
+
+
      // CCD type
      pl_get_param( Session.Handle, PARAM_CHIP_NAME, ATTR_AVAIL, @Available ) ;
      PVCAM_DisplayErrorMessage( 'pl_get_param(PARAM_CHIP_NAME,ATTR_AVAIL) ' ) ;
@@ -980,8 +1041,9 @@ begin
         end ;
 
      // Identify cameras which only have post exposure readout
-     if ANSIContainsText(Session.ChipName,'HQ') then Session.PostExposureReadout := True
-                                                else Session.PostExposureReadout := False ;
+     if ANSIContainsText(Session.ChipName,'HQ') or
+        ANSIContainsText(Session.CameraType,'Prime') then Session.PostExposureReadout := True
+                                                     else Session.PostExposureReadout := False ;
 
      //PCI card firmware version number
      Available := 0 ;
@@ -999,6 +1061,31 @@ begin
         CameraInfo.Add( format('Camera Firmware V%.2f',[Value/100.0])) ;
         end ;
 
+     // Get list of readout ports
+     List := TStringList.Create ;
+     PVCAM_GetCameraPortList( Session, List ) ;
+     s := 'Readout Ports: ' ;
+     for i := 0 to List.Count-1 do begin
+         s := s + List.Strings[i]  ;
+         if i < (List.Count-1) then s := s + ', ';
+         end;
+     List.Free ;
+     CameraInfo.Add( s ) ;
+
+     // Get list of readout speeds
+     List := TStringList.Create ;
+     PVCAM_GetCameraReadoutSpeedList( Session, List ) ;
+     s := 'Readout speeds: ' ;
+     for i := 0 to List.Count-1 do begin
+         s := s + List.Strings[i]  ;
+         if i < (List.Count-1) then s := s + ', ';
+         end;
+     List.Free ;
+     CameraInfo.Add( s ) ;
+
+    // Set readout speed of camera and determine pixel depth & grey levels
+    PVCAM_SetReadoutSpeed( Session, ReadoutSpeedIndex, PixelDepth, GreyLevelMax ) ;
+
      //Camera temperature
      pl_get_param( Session.Handle, PARAM_TEMP, ATTR_AVAIL, @Available ) ;
      if Available <> 0 then begin
@@ -1007,14 +1094,14 @@ begin
         end ;
 
      // Get frame size
-        pl_get_param( Session.Handle, PARAM_SER_SIZE, ATTR_CURRENT, @Value ) ;
-        PVCAM_DisplayErrorMessage( 'pl_get_param(PARAM_SER_SIZE) ' ) ;
-        FrameWidth := Value ;
-        FrameWidthMax := Value ;
-        pl_get_param( Session.Handle, PARAM_PAR_SIZE, ATTR_CURRENT, @Value ) ;
-        PVCAM_DisplayErrorMessage( 'pl_get_param(PARAM_PAR_SIZE) ' ) ;
-        FrameHeight := Value ;
-        FrameHeightMax := Value ;
+     pl_get_param( Session.Handle, PARAM_SER_SIZE, ATTR_CURRENT, @Value ) ;
+     PVCAM_DisplayErrorMessage( 'pl_get_param(PARAM_SER_SIZE) ' ) ;
+     FrameWidth := Value ;
+     FrameWidthMax := Value ;
+     pl_get_param( Session.Handle, PARAM_PAR_SIZE, ATTR_CURRENT, @Value ) ;
+     PVCAM_DisplayErrorMessage( 'pl_get_param(PARAM_PAR_SIZE) ' ) ;
+     FrameHeight := Value ;
+     FrameHeightMax := Value ;
 
      // Calculate bit depth and grey scale range
      Value := 1 ;
@@ -1038,6 +1125,10 @@ begin
      // TEMP. FIX!! PVCAM returning incorrect value
      //GreyLevelMax := 4095 ;
 
+     List := TStringList.Create ;
+     PVCAM_GetExposureModes( Session, s ) ;
+     CameraInfo.Add( s ) ;
+
      // Check that continuous capture using circular buffer is supported
      pl_get_param( Session.Handle, PARAM_CIRC_BUFFER, ATTR_AVAIL, @CircularBufferSupported ) ;
      if CircularBufferSupported <> 0 then begin
@@ -1058,6 +1149,13 @@ begin
      if Available = 0 then begin
            CameraInfo.Add( 'Camera readout time estimated from pixel readout rate.' ) ;
            end ;
+
+     // Report camera semnsor clearing tiem
+     pl_get_param( Session.Handle, PARAM_CLEARING_TIME, ATTR_AVAIL, @Available ) ;
+     if Available <> 0 then begin
+        pl_get_param( Session.Handle, PARAM_CLEARING_TIME, ATTR_CURRENT, @i64 ) ;
+        CameraInfo.Add( format('CCD Clearing time = %.4g ms ',[i64*1E-6]));
+     end;
 
      // Set camera Logic Output to monitor indicate CCD exposure period (LO=HIGH)
      // (Used to gate intensifier during readout/wavelength change)
@@ -1104,7 +1202,6 @@ begin
           PMODE_ALT_MPP : CameraInfo.Add( 'CCD readout in alternate MPP mode!' ) ;
           PMODE_ALT_FT_MPP : CameraInfo.Add( 'CCD readout in alternate Frame Transfer MPP mode!' ) ;
           end ;
-
 
     // Set readout speed of camera
     if pl_set_param( Session.Handle, PARAM_SPDTAB_INDEX, @ReadoutSpeedIndex ) = 0 then begin
@@ -1179,7 +1276,7 @@ begin
         @pl_get_param :=PVCAM_GetDLLAddress(LibraryHnd,'pl_get_param');
         @pl_set_param  :=PVCAM_GetDLLAddress(LibraryHnd,'pl_set_param');
         @pl_get_enum_param :=PVCAM_GetDLLAddress(LibraryHnd,'pl_get_enum_param');
-        //@pl_enum_str_length :=PVCAM_GetDLLAddress(LibraryHnd,'pl_enum_str_length');
+        @pl_enum_str_length :=PVCAM_GetDLLAddress(LibraryHnd,'pl_enum_str_length');
         @pl_exp_init_seq :=PVCAM_GetDLLAddress(LibraryHnd,'pl_exp_init_seq');
         @pl_exp_finish_seq :=PVCAM_GetDLLAddress(LibraryHnd,'pl_exp_finish_seq');
         @pl_exp_get_driver_buffer :=PVCAM_GetDLLAddress(LibraryHnd,'pl_exp_finish_seq');
@@ -1261,6 +1358,76 @@ begin
         end ;
 
     end ;
+
+
+procedure PVCAM_SetReadoutSpeed(
+          var Session : TPVCAMSession ;    // Camera session record
+          ReadoutSpeed : Integer ;         // Readout speed index
+          var PixelDepth : Integer ;       // pixel bit depth
+          var GreyLevelMax : Integer ) ;   // no. grey levels per pixel
+// -----------------
+// Set readout speed
+// -----------------
+var
+    Value : Cardinal ;
+    i : Integer ;
+begin
+
+    // Set readout speed of camera
+    if pl_set_param( Session.Handle, PARAM_SPDTAB_INDEX, @ReadoutSpeed ) = 0 then begin
+       ShowMessage('ERROR: Unable to select readout speed. Camera may be switched off!') ;
+       Exit ;
+       end ;
+
+     // Calculate bit depth and grey scale range
+     Value := 1 ;
+     pl_get_param( Session.Handle, PARAM_BIT_DEPTH, ATTR_CURRENT, @Value ) ;
+     PixelDepth := Value ;
+     GreyLevelMax := 1 ;
+     for i := 1 to Value do GreyLevelMax := GreyLevelMax*2 ;
+         GreyLevelMax := GreyLevelMax - 1 ;
+
+end;
+
+
+procedure PVCAM_GetCameraPortList(
+          var Session : TPVCAMSession ;    // Camera session record
+          CameraPortList : TStringList ) ;
+// ------------------------------------
+// Get list of available readout ports
+// ------------------------------------
+var
+    i,ic,iValue : Integer ;
+    NumChars : Cardinal ;
+    NumPorts : Cardinal ;
+    cBuf : Array[0..511] of ANSIChar ;
+    s : string ;
+begin
+
+    if not LibraryLoaded then Exit ;
+
+    // No. of entries in speed table
+    if pl_get_param( Session.Handle, PARAM_READOUT_PORT, ATTR_COUNT, @NumPorts ) = 0 then begin
+       PVCAM_DisplayErrorMessage( 'pl_get_param(PARAM_READOUT_PORT) ' ) ;
+       Exit ;
+       end ;
+
+    for i := 0 to NumPorts-1 do begin
+
+        pl_enum_str_length( Session.Handle,PARAM_READOUT_PORT,i,NumChars) ;
+        PVCAM_DisplayErrorMessage( 'pl_get_enum_str_length(PARAM_READOUT_PORT) ' ) ;
+
+        pl_get_enum_param( Session.Handle,PARAM_READOUT_PORT,i,iValue,cBuf,NumChars) ;
+        PVCAM_DisplayErrorMessage( 'pl_get_enum_param(PARAM_READOUT_PORT) ' ) ;
+
+        s := '' ;
+        for ic := 0 to NumChars-1 do s := s + cBuf[ic] ;
+        CameraPortList.Add(s) ;
+
+        end ;
+
+    end ;
+
 
 
 procedure PVCAM_GetCameraGainList(
@@ -1397,6 +1564,10 @@ var
      Available : Word ;
      PixelReadoutTime : Word ;
      NumBytesPerFrame1 : Cardinal ;
+     MinExposureTime : Int64 ;
+     ExposureResolution : Double ;
+     FastExpRes : TFastExposure ;
+     ReadOutTimeMicroSecs : Cardinal ;
 begin
      Result := False ;
      if not LibraryLoaded then Exit ;
@@ -1421,43 +1592,78 @@ begin
      pl_exp_init_seq ;
      PVCAM_DisplayErrorMessage( 'pl_exp_init_seq ') ;
 
+     ReadoutTime := 0.0 ;
+
+     // Get readout time (if available)
+
      pl_get_param( Session.Handle, PARAM_READOUT_TIME, ATTR_AVAIL, @Available ) ;
      if Available <> 0 then begin
         NumBytesPerFrame1 := NumBytesPerFrame ;
         pl_exp_setup_cont( Session.Handle,
                            1,
                            @FrameRegion,
-                           TIMED_MODE,
+                           Session.ExposureModes[CamFreeRun],
                            1,
                            @NumBytesPerFrame1,
                            CIRC_OVERWRITE ) ;
         PVCAM_DisplayErrorMessage( 'pl_exp_setup_cont (CheckFrameInterval) ') ;
 
         // Get readout time from camera
-        ReadoutTime := 0.0 ;
-        pl_get_param( Session.Handle, PARAM_READOUT_TIME, ATTR_CURRENT, @ReadoutTime ) ;
-        ReadoutTime := ReadoutTime*0.001 ;
-        end
-     else ReadoutTime := 0.0 ;
+        ReadOutTimeMicroSecs := 0 ;
+        pl_get_param( Session.Handle, PARAM_READOUT_TIME, ATTR_CURRENT, @ReadOutTimeMicroSecs ) ;
+        ReadoutTime := ReadoutTimeMicroSecs*1E-6 ;
+        end ;
+
+     // Get min. esxposure time (if available)
+
+     if ReadoutTime <= 0.0 then begin
+        pl_get_param( Session.Handle, PARAM_EXPOSURE_TIME, ATTR_AVAIL, @Available ) ;
+        if Available = 1 then begin ;
+           NumBytesPerFrame1 := NumBytesPerFrame ;
+           pl_exp_setup_cont( Session.Handle,
+                              1,
+                              @FrameRegion,
+                              Session.ExposureModes[CamFreeRun],
+                              1,
+                              @NumBytesPerFrame1,
+                              CIRC_OVERWRITE ) ;
+           PVCAM_DisplayErrorMessage( 'pl_exp_setup_cont (CheckFrameInterval) ') ;
+
+           // Get readout time from camera
+           MinExposureTime := 0 ;
+           pl_get_param( Session.Handle, PARAM_EXPOSURE_TIME, ATTR_MIN, @MinExposureTime ) ;
+           pl_get_param( Session.Handle, PARAM_EXP_RES, ATTR_CURRENT, @FastExpRes ) ;
+           case FastExpRes of
+                EXP_RES_ONE_MICROSEC : ReadoutTime := MinExposureTime*1E-6 ;
+                EXP_RES_ONE_MILLISEC : ReadoutTime := MinExposureTime*1E-3 ;
+                else ReadoutTime := MinExposureTime ;
+                end;
+           end ;
+        end ;
 
      // Estimate readout time from pixel read time
-     if ReadoutTime <= 0.0 then begin
+     if (ReadoutTime <= 0.0) then begin
         pl_get_param( Session.Handle, PARAM_PIX_TIME, ATTR_AVAIL, @Available ) ;
-        if Available <> 0 then begin
-              pl_get_param( Session.Handle, PARAM_PIX_TIME, ATTR_CURRENT, @PixelReadoutTime ) ;
-              if ANSIContainsText(Session.ChipName,'optimos') then begin
-                 ReadoutTime := (FrameBottom - FrameTop+1)*10E-6 ;
-                 if ExternalTrigger = camExtTrigger then ReadoutTime := ReadoutTime*1.4 ;
+        if Available = 1 then begin
+           pl_get_param( Session.Handle, PARAM_PIX_TIME, ATTR_CURRENT, @PixelReadoutTime ) ;
+           if ANSIContainsText(Session.ChipName,'optimos') then begin
+              ReadoutTime := (FrameBottom - FrameTop+1)*10E-6 ;
+              if ExternalTrigger = camExtTrigger then ReadoutTime := ReadoutTime*1.4 ;
+              end
+            else if ANSIContainsText(Session.CameraType,'Prime') then begin
+                 // Prime type cameras
+                 ReadoutTime := (FrameBottom - FrameTop+1)*(0.013/1020.0) + 0.001;
+                 //if ExternalTrigger = camExtTrigger then ReadoutTime := ReadoutTime*1.4 ;
                  end
-              else begin
-                // Corrections to readout for binning and sub-region derived from
-                // Coolsnap HQ2 (not known whether they apply to other cameras
-                ReadoutTime := 1E-9*PixelReadoutTime*FrameWidthMax*FrameHeightMax ;
-                ReadoutTime := ReadoutTime*(1.142/BinFactor + 0.13);
-                ReadoutTime := ReadoutTime*sqrt((FrameBottom - FrameTop+1)/FrameHeightMax) ;
+            else begin
+                 // Corrections to readout for binning and sub-region derived from
+                 // Coolsnap HQ2 (not known whether they apply to other cameras
+                 ReadoutTime := 1E-9*PixelReadoutTime*FrameWidthMax*FrameHeightMax ;
+                 ReadoutTime := ReadoutTime*(1.142/BinFactor + 0.13);
+                 ReadoutTime := ReadoutTime*sqrt((FrameBottom - FrameTop+1)/FrameHeightMax) ;
                 end;
-           end;
-        end ;
+            end;
+        end;
 
      // Add 1ms for frame transfers
      ReadoutTime := ReadoutTime + 0.001 ;
@@ -1471,7 +1677,7 @@ begin
      if FrameInterval < (ReadoutTime ) then FrameInterval := ReadoutTime  ;
 
      ExposureResolution := 0.001 ; // 1 ms exposure resolution
-     FrameInterval := Round(FrameInterval/ExposureResolution)*ExposureResolution ;
+     FrameInterval := RoundToNearestMultiple( FrameInterval,ExposureResolution ) ;
 
      Result := True ;
 
@@ -1506,6 +1712,8 @@ var
     NumFrames,NumBytesPerFrame1 : Cardinal ;
     Available : Word ;
     LongValue : DWord ;
+    ClearMode : DWord ;
+    ClearingTime : Int64 ;
     ReadoutTime : Double ;
     Gain,MaxGain : Word ;
     ScaleFactor : Single ;
@@ -1587,12 +1795,17 @@ begin
        end ;
 
      // Set CCD clear mode to clear pre-sequence or clear pre-exposure JD 7.09.10
-     // if camera is in ext. trigger mode
+     // if camera is in ext. trigger mode.
+     // If camera is a Prime, disable clear pre-sequence because clear takes too long leading
+     // to the second frame trogger being missed 22.12.17
+
      pl_get_param( Session.Handle, PARAM_CLEAR_MODE, ATTR_AVAIL, @Available ) ;
      if Available <> 0 then begin
-        if ClearCCDPreExposure and ( TriggerMode <> CamFreeRun) then LongValue := Cardinal(CLEAR_PRE_EXPosure)
-                                                                else LongValue := Cardinal(CLEAR_PRE_Sequence) ;
-        pl_set_param( Session.Handle, PARAM_CLEAR_MODE, @LongValue ) ;
+        ClearMode := Cardinal(CLEAR_PRE_SEQUENCE) ;
+        if ANSIContainsText(Session.CameraType,'Prime') then ClearMode := Cardinal(CLEAR_NEVER)
+                                                        else ClearMode := Cardinal(CLEAR_PRE_SEQUENCE) ;
+       if ClearCCDPreExposure and ( TriggerMode <> CamFreeRun) then ClearMode := Cardinal(CLEAR_PRE_EXPosure) ;
+        pl_set_param( Session.Handle, PARAM_CLEAR_MODE, @ClearMode ) ;
         PVCAM_DisplayErrorMessage( 'pl_set_param(PARAM_CLEAR_MODE) ' ) ;
         end ;
 
@@ -1617,11 +1830,11 @@ begin
        Err := pl_exp_setup_cont( Session.Handle,
                                    1,
                                    @FrameRegion,
-                                   TIMED_MODE,
+                                   Session.ExposureModes[CamFreeRun],
                                    Round(FrameInterval/ExposureResolution),
                                    @NumBytesPerFrame1,
                                    CIRC_OVERWRITE ) ;
-       PVCAM_DisplayErrorMessage( 'pl_exp_setup_cont (TIMED_MODE)' ) ;
+       PVCAM_DisplayErrorMessage( 'pl_exp_setup_cont (Free Run)' ) ;
        end
     else begin
        // Triggered & bulb mode
@@ -1630,22 +1843,21 @@ begin
                        - AdditionalReadoutTime ; { Additional user defined readout time}
        // If post-exposure readout shorten exposure to account for readout
        // otherwise allow 1 ms for frame readout
+       PostExposureReadout := PostExposureReadout or Session.PostExposureReadout ;
        if PostExposureReadout then ExposureTime := ExposureTime - ReadoutTime
                               else ExposureTime := ExposureTime - 0.001 ;
        // No shorter than 1ms exposure
        ExposureTime := Max(ExposureTime,0.001) ;
 
-       if TriggerMode = CamBulbMode then ExposureMode := BULB_MODE
-                                    else ExposureMode := STROBED_MODE ;
        NumBytesPerFrame1 := NumBytesPerFrame ;
        Err := pl_exp_setup_cont( Session.Handle,
                                    1,
                                    @FrameRegion,
-                                   ExposureMode,
+                                   Session.ExposureModes[TriggerMode],
                                    Round(ExposureTime/ExposureResolution),
                                    @NumBytesPerFrame1,
                                    CIRC_OVERWRITE ) ;
-       PVCAM_DisplayErrorMessage( 'pl_exp_setup_cont (STROBED_MODE)' ) ;
+       PVCAM_DisplayErrorMessage( 'pl_exp_setup_cont (Trigger mode)' ) ;
        end ;
 
     // Begin acquisition
@@ -1657,6 +1869,59 @@ begin
     If Err <> 0 then Result := True ;
     end ;
 
+
+procedure PVCAM_GetExposureModes(
+          var Session : TPVCAMSession ;         // Camera session record
+          var Modes : String ) ;            // Return list of modes
+// -------------------------------------------------
+// Return list of exposure modes supported by camera
+// and updates session.exposuremodes array
+// -------------------------------------------------
+var
+    i,ic,iValue : Integer ;
+    NumChars : Cardinal ;
+    NumModes : Cardinal ;
+    cBuf : Array[0..511] of ANSIChar ;
+    Available : Word ;
+begin
+
+    Modes := 'Trigger Modes: ' ;
+    // Standard settings (all camera pre Optimos/Prime)
+    Session.ExposureModes[CamFreeRun] := Word(TIMED_MODE) ;
+    Session.ExposureModes[CamExtTrigger] := Word(STROBED_MODE) ;
+    Session.ExposureModes[CamBulbMode] := Word(BULB_MODE) ;
+
+    if not LibraryLoaded then Exit ;
+
+    // If PARAM_EXPOSURE_MODE parameter not supported use traditional modes
+     pl_get_param( Session.Handle, PARAM_EXPOSURE_MODE, ATTR_AVAIL, @Available ) ;
+     if Available = 0 then begin
+        // Standard modes
+        Modes := Modes + 'TIMED_MODE, STROBED_MODE, BULB_MODE' ;
+        end
+     else begin
+        // Determine no. exposure modes supported by camera
+       pl_get_param( Session.Handle, PARAM_EXPOSURE_MODE, ATTR_COUNT, @NumModes ) ;
+       // Get list of supported modes
+       for i := 0 to NumModes-1 do begin
+           // Substitute for standard modes
+           pl_enum_str_length( Session.Handle,PARAM_EXPOSURE_MODE,i,NumChars) ;
+           pl_get_enum_param( Session.Handle,PARAM_EXPOSURE_MODE,i,iValue,cBuf,NumChars) ;
+           // Substitute standard modes
+           case iValue  of
+                EXT_TRIG_INTERNAL : Session.ExposureModes[CamFreeRun] := EXT_TRIG_INTERNAL ;
+                EXT_TRIG_EDGE_RISING : Session.ExposureModes[CamExtTrigger] := EXT_TRIG_EDGE_RISING ;
+                end ;
+
+           for ic := 0 to NumChars-1 do if cBuf[ic] <> #0 then Modes := Modes + cBuf[ic] ;
+           if i < NumModes-1 then Modes := Modes + ', ';
+
+           end ;
+
+       end ;
+
+
+end ;
 
 function PVCAM_StopCapture(
          var Session : TPVCAMSession     // Camera session record

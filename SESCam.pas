@@ -2701,6 +2701,7 @@ begin
        ITEX_C4880_10,ITEX_C4880_12 : begin
           end ;
        RS_PVCAM,RS_PVCAM_PENTAMAX : begin
+          PVCAM_SetReadoutSpeed( PVCAMSession, FReadoutSpeed, FPixelDepth, FGreyLevelMax ) ;
           end ;
        Andor : begin
           AndorSession.ReadoutSpeed := FReadoutSpeed ;

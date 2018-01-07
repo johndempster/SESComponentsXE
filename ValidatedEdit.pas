@@ -234,7 +234,8 @@ procedure TValidatedEdit.ReadEditBox ;
   -----------------------------------------------}
 begin
      FValue := FValue*FScale ;
-     ExtractFloat( text, FValue ) ;     FValue := LimitTo( FValue / FScale ) ;
+     ExtractFloat( text, FValue ) ;
+     FValue := LimitTo( FValue / FScale ) ;
      end ;
 
 

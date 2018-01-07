@@ -23,6 +23,7 @@ unit Maths;
  15/4/10 EPC2EXP function added
  20/4/11 Initial guesses for gaussian fits improved (usinfg GaussianGuess function)
  9/7/14 Temporary file name now created using TPath.GetTempFileName()
+ 5/1/18 RoundToNearestMultiple() function added
  }
 
 
@@ -362,6 +363,9 @@ procedure Splint(
           X : Single ;
           Y : Single ) ;
 
+function RoundToNearestMultiple(
+         Value : Double ;
+         Factor : Double ) : Double ;
 
 implementation
 
@@ -3936,5 +3940,21 @@ begin
     Y := A + YA[KLo] + B*YA[KHi] +
          ((Power(A,3)-A)*Y2A[KLo] + (Power(B,3)-B)*Y2A[KHi])*(H*H)/6.0 ;
     end ;
+
+function RoundToNearestMultiple(
+         Value : Double ;
+         Factor : Double ) : Double ;
+// -------------------------------
+// Round value to nearest multiple
+// -------------------------------
+begin
+
+   if Factor = 0.0 then begin
+      Result := Value ;
+      Exit ;
+      end;
+   Result := int(Value/Factor)*Factor ;
+   if Frac(Value/Factor) >= 0.5 then Result := Result + Factor ;
+   end;
 
 end.
