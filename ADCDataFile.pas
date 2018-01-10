@@ -48,6 +48,7 @@ unit ADCDataFile;
 // 17/10/14 ASCII import now ignores blank lines without stopping and strips out <CR><CR><LF> line endings
 // 11.11.14 LoadADCBuffer() now returns correct number of A/D channel scans with ABF2 import
 // 10.04.15 ABF files sampling interval for multi-channel files now imported correctly was X No. Channels X too large)
+// 10.01.17 GetMem replaced by AllocMem to ensure all buffer initialized to zero.
 
 {$R 'adcdatafile.dcr'}
 interface
@@ -2263,8 +2264,8 @@ begin
          end
       else if FFileType = ftAxonABF2 then begin
          // Load data from ABF V2.X file
-         GetMem( fBuf, SizeOf(Single)*ABF2Header.ActualAcqLength) ;
-         GetMem( iBuf, SizeOf(SmallInt)*ABF2Header.ActualAcqLength) ;
+         fBuf := AllocMem( SizeOf(Single)*ABF2Header.ActualAcqLength) ;
+         iBuf := AllocMem( SizeOf(SmallInt)*ABF2Header.ActualAcqLength) ;
          for ch  := 0 to FNumChannelsPerScan-1 do begin
              pChan := ABF2Header.nADCSamplingSeq[ch] ;
              j := FChannelOffset[ch] ;
@@ -2315,7 +2316,7 @@ begin
 
         if FFloatingPointSamples then begin
            // Read A/D samples in floating point format
-           GetMem( FPBuf, NumScans*FNumBytesPerScan ) ;
+           FPBuf := AllocMem( NumScans*FNumBytesPerScan ) ;
            NumBytesRead := FileRead( FileHandle1,
                                      FPBuf^,
                                      NumScans*FNumBytesPerScan ) ;
@@ -2377,7 +2378,7 @@ begin
      FNumRecordBytes := FNumRecordDataBytes + FNumRecordAnalysisBytes ;
 
      // Allocate output buffer
-     GetMem( OutBuf, FNumRecordDataBytes ) ;
+     OutBuf := AllocMem( FNumRecordDataBytes ) ;
 
      // Update no. records in file
      FRecordNum := Max(FRecordNum,1);
@@ -3767,7 +3768,7 @@ begin
     ABF_ReadOpen( PANSIChar(s), FileHandle, Flags, @ABF2Header, ABF2MaxSamples, ABF2MaxEpisodes, Err ) ;
 
     // Allocate floating point data buffer
-    GetMem( Buf, ABF2MaxSamples*SizeOf(Single) ) ;
+    Buf := AllocMem( ABF2MaxSamples*SizeOf(Single) ) ;
 
     if ABF2Header.OperationMode = 3 then FABFAcquisitionMode := ftGapFree
                                     else FABFAcquisitionMode := ftEpisodic ;
@@ -5952,7 +5953,7 @@ var
   pBuf : Pointer ;
 begin
 
-    GetMem( pBuf, 4 ) ;
+    pBuf := AllocMem( 4 ) ;
     pByteArray(pBuf)[0] := Buf[iStart+3] ;
     pByteArray(pBuf)[1] := Buf[iStart+2] ;
     pByteArray(pBuf)[2] := Buf[iStart+1] ;
