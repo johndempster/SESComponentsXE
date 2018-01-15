@@ -1339,7 +1339,7 @@ begin
              FGreyLevelMin := 0 ;
              FCCDRegionReadoutAvailable := True ;
              // Get frame readout speed
-             DTOL_CheckFrameInterval( DTOLSession, FTriggerMode, FFrameInterval ) ;
+             DTOL_CheckFrameInterval( DTOLSession, FTriggerMode, FFrameInterval, FReadoutTime ) ;
 
              FBinFactor := 1 ;
              FBinFactorMax := 1 ;
@@ -2910,7 +2910,8 @@ begin
        DTOL : begin
           DTOL_CheckFrameInterval( DTOLSession,
                                    FTriggerMode,
-                                   FFrameInterval ) ;
+                                   FFrameInterval,
+                                   FReadoutTime ) ;
           end ;
 
        Thorlabs : begin

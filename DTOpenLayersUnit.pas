@@ -1350,7 +1350,8 @@ procedure DTOL_GetCameraVideoModeList(
 function DTOL_CheckFrameInterval(
           var Session : TDTOLSession ;
           TriggerMode : Integer ;
-          var FrameInterval : Double ) : Integer ;
+          var FrameInterval : Double ;
+          var ReadoutTime : Double ) : Integer ;
 
 procedure DTOL_LoadLibrary(
           var Session : TDTOLSession
@@ -1611,10 +1612,11 @@ function DTOL_OpenCamera(
 // Open camera for use
 // --------------------
 const
-    MaxDevices = 10 ;
+    MaxDevices = 20 ;
 var
     i,NumCameras : Integer ;
     DeviceInfo : Array[0..MaxDevices] of TOLT_IMGDEVINFO ;
+    PDI : POLT_IMGDEVINFO ;
     DeviceAlias,DeviceName : String ;
     NewVideoSource,OldVideoSource : Word ;
     SupportFeatures,DeviceType : DWord ;
@@ -1632,7 +1634,6 @@ begin
      DTOL_LoadLibrary(Session)  ;
      if not Session.LibraryLoaded then Exit ;
 
-
      DTOL_CheckError( 'DTOL_OpenCamera:OlImgGetDeviceCount',
                       OlImgGetDeviceCount(NumCameras)) ;
 
@@ -1642,9 +1643,13 @@ begin
         end ;
 
      // Get device info
+     try
      for i := 0 to MaxDevices-1 do DeviceInfo[i].StructSize := SizeOf(TOLT_IMGDEVINFO) ;
      DTOL_CheckError( 'DTOL_OpenCamera:OlImgGetDeviceInfo',
-                      OlImgGetDeviceInfo(@DeviceInfo,60{SizeOf(DeviceInfo)}));
+                      OlImgGetDeviceInfo(@DeviceInfo,SizeOf(TOLT_IMGDEVINFO)*NumCameras));
+     except
+     outputdebugstring(pchar('memory violation'));
+     end;
 
      CameraInfo.Add(format('No. of cameras available: %d',[NumCameras])) ;
     if NumCameras > 1 then begin
@@ -1657,10 +1662,13 @@ begin
        end ;
 
     // Open first available camera
+    try
     DTOL_CheckError( 'DTOL_OpenCamera:OlImgOpenDevice',
                      OlImgOpenDevice( DeviceInfo[0].Alias,
                                       Session.DeviceID));
-
+    except
+   outputdebugstring(pchar('memory violation'));
+    end;
     DeviceAlias := DeviceInfo[0].Alias ;
     DeviceName := DeviceInfo[0].DeviceName ;
     s := 'Dev0: ' + DeviceAlias + '(' + DeviceName + '): ' ;
@@ -2119,7 +2127,8 @@ begin
 function DTOL_CheckFrameInterval(
           var Session : TDTOLSession ;
           TriggerMode : Integer ;
-          var FrameInterval : Double ) : Integer ;
+          var FrameInterval : Double ;
+          var ReadoutTime : Double ) : Integer ;
 // ----------------------------------------------------------
 //
 // ----------------------------------------------------------
@@ -2129,11 +2138,13 @@ begin
 
     if TriggerMode = camFreeRun then begin
        // Fixed rate in free run mode
-       FrameInterval := 1.0/Session.CameraFrameRate ;
+       ReadoutTime := 1.0/Session.CameraFrameRate ;
+       FrameInterval := ReadoutTime ;
        end
     else begin
-       // Can be no faster than twice the fixed frame interval
-       FrameInterval := Max(FrameInterval, 2.0/Session.CameraFrameRate ) ;
+       // Can be no faster than 3X the fixed frame interval
+       ReadoutTime := 3.0/Session.CameraFrameRate ;
+       FrameInterval := Max(FrameInterval, ReadoutTime ) ;
        end ;
 
     end ;
