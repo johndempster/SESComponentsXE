@@ -5,6 +5,9 @@ unit DTOpenLayersUnit;
 // 24-7-13 JD Now compiles unders Delphi XE2/3 as well as 7. (not tested)
 // 16.05.14 JD DTOL_GetDLLAddress: Handle now defined as THandle
 //             rather than Integer (possible cause of errors with 64 bit version)
+// 15.01.18 JD Updated to work with DT3120. External trigger mode does not seem to work
+//             in pass thru mode with DT3120 so single frame acquire has to be used in
+//             external trigger mode limiting acquisition rate to longer than 150 ms. 
 
 interface
 
@@ -666,6 +669,7 @@ type
     TDTOLSession = packed record
         DeviceID : DWord ;
         JobID : DWord ;
+        JobID1 : DWord ;
         CameraOpen : Boolean ;
         LibraryLoaded : Boolean ;
         ColourSupported : Boolean ;
@@ -694,6 +698,7 @@ type
         NumFrames : Integer ;
         MaxFrames : Integer ;
         WaitingForFrame : Integer ;
+        PassThruMode : Boolean ;
         end ;
 
     TOLT_LNG_RNG = packed record
@@ -788,7 +793,7 @@ TOlImgCloseDevice= function(
 
 TOlImgGetDeviceCount= function(
                       var Count : Integer
-                      ) : Word ; stdcall ;
+                      ) : DWord ; stdcall ;
 
 TOlImgGetDeviceInfo= function(
                      pDevInfo : Pointer ;
@@ -843,7 +848,7 @@ TOlFgAcquireFrameToHost= function(
 TOlFgAsyncAcquireFrameToDevice= function(
                                 DeviceID: DWord;
                                 {OLT_FG_FRAME_ID} FrameId: DWord ;
-                      					{LPOLT_FG_ACQJOB_ID} lpJobId : DWord
+                      					{LPOLT_FG_ACQJOB_ID} lpJobId : Pointer
                                 ) : DWord ; stdcall ;
 
 TOlFgAsyncAcquireFrameToHost= function(
@@ -851,7 +856,7 @@ TOlFgAsyncAcquireFrameToHost= function(
                               {OLT_FG_FRAME_ID} FrameId: DWord ;
                               pBuffer : Pointer ;
                               BufSize : DWord;
-                    					{LPOLT_FG_ACQJOB_ID} var JobId : DWord
+                    					{LPOLT_FG_ACQJOB_ID} lpJobId : Pointer
                               ) : DWord ; stdcall ;
 
 TOlFgCancelAsyncAcquireJob= function(
@@ -937,19 +942,19 @@ TOlFgSetInputVideoSource= function(
 TOlFgSetMultipleTriggerInfo= function(
                               DeviceID: DWord;
                               {OLT_FG_TRIGGER} NewTrigger : DWord;
-                     					TriggerOnLowToHigh : WordBool ;
+                     					TriggerOnLowToHigh : LongBool ;
                               {OLT_FG_TRIGGER_MODE} NewMode : DWord;
                     					var OldTrigger : DWord;
-                              var WasTriggerOnLowToHigh : WordBool ;
+                              var WasTriggerOnLowToHigh : LongBool ;
                     					var OldMode  : DWord
                               ) : DWord ; stdcall ;
 
 TOlFgSetTriggerInfo= function(
                      DeviceID: DWord;
                      {OLT_FG_TRIGGER} NewTrigger : DWord;
-                     TriggerOnLowToHigh : WordBool ;
+                     TriggerOnLowToHigh : LongBool ;
 					           var OldTrigger : DWord;
-                     var WasTriggerOnLowToHigh : wordBool
+                     var WasTriggerOnLowToHigh : LongBool
                      ) : DWord ; stdcall ;
 
 TOlFgStartEventCounter= function(
@@ -1370,8 +1375,10 @@ procedure DTOL_CheckError(
 
 function DTOL_CharArrayToString( cBuf : Array of ANSIChar ) : String ;
 
-var
+procedure DTOL_Wait( Delay : single ) ;
 
+var
+  t0 : integer ;
   OlImgCloseDevice : TOlImgCloseDevice;
   OlImgGetDeviceCount : TOlImgGetDeviceCount;
   OlImgGetDeviceInfo : TOlImgGetDeviceInfo;
@@ -1566,8 +1573,8 @@ begin
 
 
     @DtColorSignalType := DTOL_GetDLLAddress(Session.DTCOLORSDKHnd,'DtColorSignalType') ;
+    @DtColorStorageMode := DTOL_GetDLLAddress(Session.DTCOLORSDKHnd,'DtColorStorageMode') ;
 {  DtColorSignalType : TDtColorSignalType ;
-  DtColorStorageMode :  TDtColorStorageMode ;
   DtColorImageParameters :  TDtColorImageParameters ;
   DtColorHardwareScaling :  TDtColorHardwareScaling ;
   DtColorDigitalIOControl :  TDtColorDigitalIOControl ;
@@ -1612,7 +1619,7 @@ var
     NewVideoSource,OldVideoSource : Word ;
     SupportFeatures,DeviceType : DWord ;
     FrameInfo : TOLT_FG_FRAME_INFO ;
-    vIDEOmODE , FrameID : DWord ;
+    vIDEOmODE , ImageMode, FrameID : DWord ;
     s : string ;
 begin
 
@@ -1637,7 +1644,7 @@ begin
      // Get device info
      for i := 0 to MaxDevices-1 do DeviceInfo[i].StructSize := SizeOf(TOLT_IMGDEVINFO) ;
      DTOL_CheckError( 'DTOL_OpenCamera:OlImgGetDeviceInfo',
-                      OlImgGetDeviceInfo(@DeviceInfo,SizeOf(DeviceInfo)));
+                      OlImgGetDeviceInfo(@DeviceInfo,60{SizeOf(DeviceInfo)}));
 
      CameraInfo.Add(format('No. of cameras available: %d',[NumCameras])) ;
     if NumCameras > 1 then begin
@@ -1662,13 +1669,14 @@ begin
                                           OLC_IMG_DC_OL_DEVICE_TYPE,
                                           @DeviceType,
                                           SizeOf(DeviceType))) ;
-    if DeviceType = OLC_IMG_DEV_COLOR_FRAME_GRABBER then begin
-       Session.ColourSupported := True ;
-       CameraInfo.Add(s  + 'Colour frame grabber') ;
-       end
-    else begin
+
+    if DeviceType = OLC_IMG_DEV_MONO_FRAME_GRABBER then begin
        CameraInfo.Add(s+ 'Monochrome frame grabber') ;
        Session.ColourSupported := False ;
+       end
+    else begin
+       Session.ColourSupported := True ;
+       CameraInfo.Add(s  + 'Colour frame grabber') ;
        end ;
 
     // Does the board support passthru
@@ -1690,6 +1698,8 @@ begin
                                          OLC_FG_MC_VOL_COUNT,
                                          @Session.MaxFrames,
                                          SizeOf(Session.MaxFrames))) ;
+
+    if Session.MaxFrames <= 1 then Session.MaxFrames := 18 ;
     // Can't seem to use last two buffer, so no. buffers reduced by 2
     Session.MaxFrames := Session.MaxFrames - 2 ;
     CameraInfo.Add( format('No. of frame buffers supported: %d',
@@ -1703,20 +1713,44 @@ begin
                                               OldVideoSource)) ;
 
     if Session.ColourSupported then begin
+
+       ImageMode := OLC_IMAGE_MONO ;
+       DTOL_CheckError( 'DTOL_OpenCamera:DtColorStorageMode(OLC_IMAGE_MONO)',
+       DtColorStorageMode( Session.DeviceID,NewVideoSource,OLC_WRITE_CONTROL,ImageMode));
+
        VideoMode := OLC_MONO_SIGNAL ;
-      DTOL_CheckError( 'DTOL_OpenCamera:DtColorSignalType(',
-                       DtColorSignalType( Session.DeviceID,
-                                          NewVideoSource,
-                                          OLC_WRITE_CONTROL,
-                                          VideoMode )) ;
+       DTOL_CheckError( 'DTOL_OpenCamera:DtColorSignalType(',
+                        DtColorSignalType( Session.DeviceID,
+                                           NewVideoSource,
+                                           OLC_WRITE_CONTROL,
+                                           VideoMode )) ;
+      Session.PixelDepth := Session.NumBytesPerPixel*8 ;
       end ;
 
-    // Pixel Depth
-    DTOL_CheckError( 'DTOL_OpenCamera:OlFgQueryInputCaps(OLC_FG_IC_PIXEL_DEPTH)',
+    // External trigger mode
+   DTOL_CheckError( 'DTOL_OpenCamera:OlFgQueryInputCaps(OLC_FG_IC_MULT_TRIGGER_TYPE_LIMITS)',
                      OlFgQueryInputCaps( Session.DeviceID,
-                                         OLC_FG_IC_PIXEL_DEPTH,
-                                         @Session.NumBytesPerPixel,
-                                         SizeOf(Session.NumBytesPerPixel))) ;
+                                         OLC_FG_IC_MULT_TRIGGER_TYPE_LIMITS,
+                                        @SupportFeatures,
+                                         SizeOf(SupportFeatures))) ;
+    s := 'Trigger sources available: ' ;
+    if (SupportFeatures and OLC_FG_TRIG_EXTERNAL_LINE) <> 0 then
+       s := 'Trigger Inputs: External trigger available.'
+    else s := 'Trigger Inputs: External trigger not available.';
+    CameraInfo.Add(s);
+
+    // External trigger modes
+   DTOL_CheckError( 'DTOL_OpenCamera:OlFgQueryInputCaps(OLC_FG_IC_MULT_TRIGGER_MODE_LIMITS)',
+                     OlFgQueryInputCaps( Session.DeviceID,
+                                         OLC_FG_IC_MULT_TRIGGER_MODE_LIMITS,
+                                        @SupportFeatures,
+                                         SizeOf(SupportFeatures))) ;
+    s := 'Trigger modes: ' ;
+    if (SupportFeatures and OLC_FG_MODE_START) <> 0 then s := s + 'Sequence trigger, ' ;
+    if (SupportFeatures and OLC_FG_MODE_EACH) <> 0 then s := s + 'Frame trigger. ' ;
+    CameraInfo.Add(s);
+
+    Session.NumBytesPerPixel := 1 ;
     Session.PixelDepth := Session.NumBytesPerPixel*8 ;
 
     DTOL_CheckError( 'DTOL_OpenCamera:OlFgAllocateBuiltInFrame',
@@ -1834,8 +1868,8 @@ var
     i : integer ;
     BufferID : DWord ;
     NewTriggerType,OldTriggerType : DWord ;
-    OldTriggerLowToHigh : WordBool ;
-    OldTriggerMode : Dword ;
+    OldTriggerLowToHigh : LongBool ;
+    OldTriggerMode,ActualPeriod : Dword ;
 begin
 
     // Stop image capture and clear allocated frames
@@ -1850,6 +1884,9 @@ begin
     Session.Height := FrameHeight ;
     Session.NumBytesPerFrame := FrameWidth*FrameHeight*Session.NumBytesPerPixel ;
 
+    DTOL_CheckError( 'DTOL_StartCapture:OlImgSetTimeoutPeriod',
+                  OlImgSetTimeoutPeriod( Session.DeviceID,10,ActualPeriod));
+
     // Create image capture buffers
     for i := 0 to NumFramesInBuffer-1 do begin
         // Allocate new frame
@@ -1861,7 +1898,7 @@ begin
        // Map frame into host address space
        // Pointer to buffer returned in FrameInfo[i]
        Session.FrameInfo[i].StructSize := SizeOf(TOLT_FG_FRAME_INFO) ;
-       DTOL_CheckError( 'DTOL_GetImage:OlFgMapFrame',
+       DTOL_CheckError( 'DTOL_StartCapture:OlFgMapFrame',
                         OlFgMapFrame( Session.DeviceID,
                                       BufferID,
                                       Session.FrameInfo[i] )) ;
@@ -1883,6 +1920,15 @@ begin
         NewTriggerType := OLC_FG_TRIGGER_EXTERNAL_LINE ;
         end ;
 
+     // Trigger mode for single frames
+     DTOL_CheckError( 'OlFgSetTriggerInfo',
+                      OlFgSetTriggerInfo( Session.DeviceID,
+                                          NewTriggerType,
+                                          True,
+                                          OldTriggerType,
+                                          OldTriggerLowToHigh )) ;
+
+     // Trigger mode for async pass thru
      DTOL_CheckError( 'DTOL_StartCapture:OlFgSetMultipleTriggerInfo',
                       OlFgSetMultipleTriggerInfo( Session.DeviceID,
                       NewTriggerType,
@@ -1892,26 +1938,28 @@ begin
                       OldTriggerLowToHigh,
                       OldTriggerMode )) ;
 
-{     DTOL_CheckError( 'OlFgSetTriggerInfo',
-                      OlFgSetTriggerInfo( Session.DeviceID,
-                                          NewTrigger,
-                                          True,
-                                          OldTrigger,
-                                          OldTriggerLowToHigh )) ;}
-
     // Start image capture
-    DTOL_CheckError( 'DTOL_StartCapture:OlFgStartAsyncPassthruEx',
-                     OlFgStartAsyncPassthruEx( Session.DeviceID,
-                                               0,
-                                               @Session.FrameID,
-                                               @Session.FrameCounts,
-                                               Session.NumFrames,
-                                               @Session.SyncHandle,
-                                               0, {Over-write frames when full}
-                                               @Session.JobID )) ;
+    if ExternalTrigger = CamFreeRun then begin
+       Session.PassThruMode := True ;
+       DTOL_CheckError( 'DTOL_StartCapture:OlFgStartAsyncPassthruEx',
+                        OlFgStartAsyncPassthruEx( Session.DeviceID,
+                                                  0,
+                                                  @Session.FrameID,
+                                                  @Session.FrameCounts,
+                                                  Session.NumFrames,
+                                                  @Session.SyncHandle,
+                                                  0, {Over-write frames when full}
+                                                 @Session.JobID )) ;
+       end
+    else begin
+       Session.PassThruMode := False ;
+       DTOL_CheckError( 'DTOL_StartCapture:OlFgAsyncAcquireFrameToDevice',
+       OlFgAsyncAcquireFrameToDevice( Session.DeviceID, Session.FrameID[0],@Session.JobID )) ;
+       end ;
 
     Result := True ;
     Session.AcquisitionInProgress := True ;
+    t0 := timegettime ;
 
     end ;
 
@@ -1924,17 +1972,35 @@ procedure DTOL_StopCapture(
 // -------------------
 var
     i : Integer ;
-    JobStatus : Dword ;
+    Status,JobStatus,BytesWritten : DWORD ;
+    Done : LongBool ;
 begin
 
     if not Session.CameraOpen then Exit ;
     if not Session.AcquisitionInProgress then Exit ;
 
     // Stop acquisition
-    DTOL_CheckError( 'DTOL_StopCapture:OlFgStopAsyncPassthru',
-                     OlFgStopAsyncPassthru( Session.DeviceID,
-                                            Session.JobID,
-                                            JobStatus )) ;
+    if Session.PassThruMode then begin
+       DTOL_CheckError( 'DTOL_StopCapture:OlFgStopAsyncPassthru',
+                        OlFgStopAsyncPassthru( Session.DeviceID,
+                                               Session.JobID,
+                                              JobStatus )) ;
+       end
+    else begin
+       DTOL_Wait(0.1);
+       DTOL_CheckError( 'DTOL_GetImage:TOlFgIsAsyncAcquireJobDone',
+       OlFgIsAsyncAcquireJobDone( Session.DeviceID,
+                                   Session.JobID,
+                                   Done,
+                                   JobStatus,
+                                   BytesWritten));
+       if not Done then begin
+          DTOL_CheckError( 'DTOL_StopCapture:OlFgCancelAsyncAcquireJob',
+                         OlFgCancelAsyncAcquireJob( Session.DeviceID,
+                                                    Session.JobID,
+                                                    JobStatus )) ;
+          end ;
+       end ;
 
     // Destroy existing frame
     for i := 0 to High(Session.FrameAllocated) do
@@ -1965,37 +2031,48 @@ procedure DTOL_GetImage(
 // Transfer new images from camera to host frame buffer
 // ----------------------------------------------------
 var
-    iFrame,iFrom,iTo,iLine,iPix : Integer ;
-    NumNewFrames,FirstNewFrame : Integer ;
+    iFrom,iTo,iLine,iPix,i : Integer ;
+    LatestFrameAcquired : Integer ;
     pToBuf,pFromBuf : PByteArray ;
+    Done : LongBool ;
+    Status,JobStatus,BytesWritten : DWORD ;
 begin
 
-     if not Session.CameraOpen then Exit ;
-     if not Session.AcquisitionInProgress then Exit ;
+    if not Session.CameraOpen then Exit ;
+    if not Session.AcquisitionInProgress then Exit ;
 
-     // Find new frames since last call
+    // Add up frame counts mod Session.NumFrames to determine latest frame since last call
+    if Session.PassThruMode then begin
+       LatestFrameAcquired := 0 ;
+       for i := 0 to Session.NumFrames-1 do LatestFrameAcquired := LatestFrameAcquired + Session.FrameCounts[i] ;
+       LatestFrameAcquired := LatestFrameAcquired mod Session.NumFrames ;
+       end
+    else begin
+       DTOL_CheckError( 'DTOL_GetImage:TOlFgIsAsyncAcquireJobDone',
+       OlFgIsAsyncAcquireJobDone( Session.DeviceID,
+                                   Session.JobID,
+                                   Done,
+                                   Status,
+                                   BytesWritten));
+       LatestFrameAcquired := -1 ;
 
-     iFrame := Session.WaitingForFrame ;
-     NumNewFrames := 0 ;
-     FirstNewFrame := -1 ;
-     While (Session.FrameCounts[iFrame] <> Session.FrameCountsOld[iFrame]) or
-           (NumNewFrames > (Session.NumFrames div 2)) do begin
-           if FirstNewFrame < 0 then FirstNewFrame := iFrame ;
-           Session.FrameCountsOld[iFrame] := Session.FrameCounts[iFrame] ;
-           Inc(iFrame) ;
-           if iFrame >= Session.NumFrames then iFrame := 0 ;
-           Inc(NumNewFrames) ;
-           end ;
-    Session.WaitingForFrame := iFrame ;
-     //outputdebugString(PChar(format('Frame %d %d',[Session.WaitingForFrame,FirstnewFrame]))) ;
+       DTOL_CheckError( 'DTOL_GetImage:TOlFgIsAsyncAcquireJobDone',
+       OlFgIsAsyncAcquireJobDone( Session.DeviceID,
+                                   Session.JobID1,
+                                   Done,
+                                   Status,
+                                   BytesWritten));
+       if not Done then exit ;
+       end ;
 
     // Copy frames to output buffer
-    iFrame := FirstNewFrame ;
-    while NumNewFrames > 0 do begin
+    Done := False ;
+    while (Session.WaitingForFrame <> LatestFrameAcquired) and not Done do begin
 
        // To/from buffer pointers
-       pToBuf := Pointer(Cardinal(Session.pFrameBuffer) + (Session.NumBytesPerFrame*iFrame)) ;
-       pFromBuf := Session.FrameInfo[iFrame].BaseAddress ;
+       pToBuf := Pointer(Cardinal(Session.pFrameBuffer) + (Session.NumBytesPerFrame*Session.WaitingForFrame)) ;
+       if Session.PassThruMode then pFromBuf := Session.FrameInfo[Session.WaitingForFrame].BaseAddress
+                               else pFromBuf := Session.FrameInfo[0].BaseAddress ;
 
        iTo := 0 ;
        iFrom := (Session.Top*Session.FrameWidthMax) + Session.Left ;
@@ -2007,9 +2084,15 @@ begin
               end ;
            end ;
 
-       Inc(iFrame) ;
-       if iFrame >= Session.NumFrames then iFrame := 0 ;
-       Dec(NumNewFrames)
+       Inc(Session.WaitingForFrame) ;
+       if Session.WaitingForFrame >= Session.NumFrames then Session.WaitingForFrame := 0 ;
+       if not Session.PassThruMode then Done := True ;
+       end ;
+
+    if not Session.PassThruMode then begin
+       // Request another frame
+       DTOL_CheckError( 'DTOL_GetImage:OlFgAsyncAcquireFrameToDevice',
+       OlFgAsyncAcquireFrameToDevice( Session.DeviceID, Session.FrameID[0],@Session.JobID )) ;
        end ;
 
     end ;
@@ -2194,7 +2277,17 @@ function DTOL_CharArrayToString( cBuf : Array of ANSIChar ) : String ;
 begin
     end ;
 
+procedure DTOL_Wait( Delay : single ) ;
+// -------------------
+// Wait for delay secs
+// -------------------
+var
+    t : Cardinal ;
+begin
 
+    t := TimeGetTime + Round(Delay*1000.0);
+    repeat until TimeGetTime > t ;
+    end ;
 
 end.
 
