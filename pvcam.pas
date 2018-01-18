@@ -48,6 +48,7 @@ unit pvcam;
 // 29.12.17 PARAM_READOUT_TIME now works correctly and used by Prime to determine readout time.
 //          PVCAM_GetExposureModes() added to determine exposure trigger modes supported by camera
 //          Rounded to nearest ms using RoundToNearestMultiple()
+// 18.01.18 LightSpeedMode can now be enabled for Photometrics Evolve 512 Delta
 
 {OPTIMIZATION OFF}
 {$DEFINE USECONT}
@@ -284,6 +285,7 @@ TPVCAMSession = record
     ChipName : string ;
     CameraType : string ;
     ExposureModes : Array[0..2] of Word ;
+    LightSpeedMode : Boolean ;
     end ;
 
 // Class 0: Abort Exposure flags
@@ -841,6 +843,9 @@ procedure PVCAM_VC_DisplayErrorMessage(
           Source : string ) ;
 function PVCAM_CharArrayToString( CBuf : Array of ANSIChar ) : String ;
 
+procedure PVCAM_SetLightSpeedMode(
+          var Session : TPVCAMSession ;   // Camera session record
+          Mode : Boolean ) ;     // Mode on/off
 
 var
     // PVCAM32.DLL function variables
@@ -1811,8 +1816,14 @@ begin
 
     // Set CCD to frame transfer mode
     // (15.12.10 Set to PMODE_FT again to obtain max. speed in free run)
-    if Session.FrameTransferCapable <> 0 then pl_ccd_set_pmode( Session.Handle, Word(PMODE_FT))
-                                         else pl_ccd_set_pmode( Session.Handle, Word(PMODE_NORMAL)) ;
+    if Session.FrameTransferCapable <> 0 then begin
+       if Session.LightSpeedMode then pl_ccd_set_pmode( Session.Handle, Word(PMODE_ALT_NORMAL))
+                                 else pl_ccd_set_pmode( Session.Handle, Word(PMODE_FT))
+       end
+    else begin
+       if Session.LightSpeedMode then pl_ccd_set_pmode( Session.Handle, Word(PMODE_ALT_NORMAL))
+                                 else pl_ccd_set_pmode( Session.Handle, Word(PMODE_NORMAL))
+       end;
 
     // Initialise sequence capture
     // (note pl_exp_init_seq must come after PVCAM_CheckFrameInterval)
@@ -2032,6 +2043,16 @@ begin
         end ;
     Result := s ;
     end ;
+
+procedure PVCAM_SetLightSpeedMode(
+          var Session : TPVCAMSession ;   // Camera session record
+          Mode : Boolean ) ;     // Mode on/off
+// -------------------
+// Set LightSpeed mode
+// -------------------
+begin
+    Session.LightSpeedMode := Mode ;
+    end;
 
 
 Initialization

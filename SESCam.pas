@@ -74,6 +74,7 @@ unit SESCam;
  03.08.17 JD  .CCDXShift and .CCDYShift added setting of CCD X,Y stage position for VNP-29MC camera
  15.08.17 JD  .SnapImage added (acquires a single image)
  06.11.17 JD  .CCDTapOffsetLT etc. CCD tap black offset adjustment properties added
+ 18.01.18 JD  .LIGHTSPEEDMODE added (enables lightspeed mode of Evolve Delta
 
   ================================================================================ }
 {$OPTIMIZATION OFF}
@@ -225,6 +226,8 @@ type
     FCCDTapOffsetLB : Cardinal ;    // Bottom-left tap DC offset
     FCCDTapOffsetRB : Cardinal ;    // Bottom-right tap DC offset
 
+    FLightSpeedMode : Boolean ;     // Lightspeed mode on/off flag (supported only by Evolve 512 Delta)
+
     ImageAreaChanged : Boolean ;   // TRUE = image area has been changed
 
     ITEX : TITEX ;
@@ -305,6 +308,8 @@ type
     procedure SetCCDXShift( Value : Double );
     procedure SetCCDYShift( Value : Double );
 
+    procedure SetLightSpeedMode( Value : Boolean ) ;
+
   protected
     { Protected declarations }
   public
@@ -332,6 +337,7 @@ type
     procedure GetADCGainList( List : TStrings ) ;
     procedure GetCCDVerticalShiftSpeedList( List : TStrings ) ;
     procedure GetCameraNameList( List : TStrings ) ;
+
 
     procedure GetCameraInfo( List : TStrings ) ;
     function IsLSM( iCameraType : Integer ) : Boolean ;
@@ -419,8 +425,9 @@ type
     Property CCDTapOffsetLT : Cardinal read FCCDTapOffsetLT write FCCDTapOffsetLT ;
     Property CCDTapOffsetRT : Cardinal read FCCDTapOffsetRT write FCCDTapOffsetRT ;
     Property CCDTapOffsetLB : Cardinal read FCCDTapOffsetLB write FCCDTapOffsetLB ;
-    Property CCDTapOffsetRB : Cardinal read FCCDTapOffsetRB write FCCDTapOffsetRB
-     ;
+    Property CCDTapOffsetRB : Cardinal read FCCDTapOffsetRB write FCCDTapOffsetRB ;
+    Property LightSpeedMode : Boolean read FLightSpeedMode write SetLightSpeedMode ;
+
   end;
 
 procedure Register;
@@ -543,6 +550,8 @@ begin
      FCameraFanMode  := 1 ;         // Andor Low / DCAM On settings
 
      FNumPixelShiftFrames := 1 ; // No. of pixel shift frames acquired
+
+     FLightSpeedMode := False ;  // Light speed mode off
 
      ImageAreaChanged := False ;
 
@@ -952,6 +961,8 @@ begin
              CameraReadoutSpeedList.Clear ;
              PVCAM_GetCameraReadoutSpeedList( PVCAMSession,CameraReadoutSpeedList ) ;
              FCCDRegionReadoutAvailable := True ;
+             PVCAM_SetLightSpeedMode( PVCAMSession, FLightSpeedMode) ;
+
              FFrameInterval := 0.1 ;
              // Get frame readout speed
              PVCAM_CheckFrameInterval( PVCAMSession,
@@ -3630,6 +3641,17 @@ begin
         IMAQ_SetCCDXShift( IMAQSession,Value)
       end;
     end;
+end;
+
+procedure TSESCam.SetLightSpeedMode( Value : Boolean ) ;
+// ------------------------------------------------------
+// Enable/disable LightSpeed mode for Evolve Delta camera
+// ------------------------------------------------------
+begin
+    FLightSpeedMode := Value ;
+    case FCameraType of
+      RS_PVCAM : PVCAM_SetLightSpeedMode( PVCAMSession, FLightSpeedMode ) ;
+      end;
 end;
 
 

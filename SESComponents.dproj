@@ -8,7 +8,7 @@
         <AppType>Package</AppType>
         <FrameworkType>VCL</FrameworkType>
         <ProjectVersion>17.2</ProjectVersion>
-        <Platform Condition="'$(Platform)'==''">Win32</Platform>
+        <Platform Condition="'$(Platform)'==''">Win64</Platform>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
         <Base>true</Base>
@@ -113,7 +113,7 @@
         <DCCReference Include="ImageFile.pas"/>
         <DCCReference Include="ADCDataFile.pas"/>
         <DCCReference Include="vp500Unit.pas"/>
-        <DCCReference Include="nidaqmxunit.pas"/>
+        <DCCReference Include="NidaqMXUnit.pas"/>
         <DCCReference Include="dd1200win98.pas"/>
         <DCCReference Include="dd1200.pas"/>
         <DCCReference Include="dd1320.pas"/>
