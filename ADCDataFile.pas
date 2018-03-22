@@ -49,6 +49,8 @@ unit ADCDataFile;
 // 11.11.14 LoadADCBuffer() now returns correct number of A/D channel scans with ABF2 import
 // 10.04.15 ABF files sampling interval for multi-channel files now imported correctly was X No. Channels X too large)
 // 10.01.17 GetMem replaced by AllocMem to ensure all buffer initialized to zero.
+// 22.03.18 CDRLoadHeader() Correct header tag (ADn= instead of YCn=) now read in .CHT file header to get
+//          channel A/D voltage. Channel V/units and A/D range now correct.
 
 {$R 'adcdatafile.dcr'}
 interface
@@ -6037,6 +6039,7 @@ begin
      FNumRecordAnalysisBytes := 0 ;
      FNumRecordBytes := FNumRecordDataBytes + FNumRecordAnalysisBytes ;
 
+     FADCVoltageRange := 1.0 ;
      ReadFloat( Header, 'AD=',FADCVoltageRange);
 
      ReadFloat( Header, 'DT=', FScanInterval );
@@ -6065,7 +6068,7 @@ begin
          FChannelGain[ch] := 1.0 ;
          // Channel voltage range
          FChannelADCVoltageRange[ch] := 0.0 ;
-         ReadFloat( Header, format('YC%d=',[ch]), FChannelADCVoltageRange[ch]) ;
+         ReadFloat( Header, format('AD%d=',[ch]), FChannelADCVoltageRange[ch]) ;
          if FChannelADCVoltageRange[ch] = 0.0 then FChannelADCVoltageRange[ch] := FADCVoltageRange ;
 
          // Calculate calib factor from scale factor
