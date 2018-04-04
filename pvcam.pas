@@ -49,6 +49,10 @@ unit pvcam;
 //          PVCAM_GetExposureModes() added to determine exposure trigger modes supported by camera
 //          Rounded to nearest ms using RoundToNearestMultiple()
 // 18.01.18 LightSpeedMode can now be enabled for Photometrics Evolve 512 Delta
+// 27.03.18 Camera now set into ALT_FT rather than ALT_NORMAL when LightSpeed mode selected
+//          to ensure that the camera readout is in overlap mode to maximise acheivable frame capture rate
+// 02.04.18 CheckFrameInterval() Readout time resolution now 0.1 ms and frame transfer time set to 10% of readout time or 1ms which ever is smaller
+//          StartCapture() Exposure time minimum now 0.1 ms (rather than 1 ms)
 
 {OPTIMIZATION OFF}
 {$DEFINE USECONT}
@@ -1670,8 +1674,8 @@ begin
             end;
         end;
 
-     // Add 1ms for frame transfers
-     ReadoutTime := ReadoutTime + 0.001 ;
+     // Add 10% of readout time up to a maximum of 1 ms for frame transfer time
+     ReadoutTime := ReadoutTime + Min(0.001,ReadoutTime*0.1) ;
 
      // Shut down sequence acquisition
      pl_exp_uninit_seq ;
@@ -1681,7 +1685,7 @@ begin
 
      if FrameInterval < (ReadoutTime ) then FrameInterval := ReadoutTime  ;
 
-     ExposureResolution := 0.001 ; // 1 ms exposure resolution
+     ExposureResolution := 0.0001 ; // 0.1 ms exposure resolution
      FrameInterval := RoundToNearestMultiple( FrameInterval,ExposureResolution ) ;
 
      Result := True ;
@@ -1816,8 +1820,9 @@ begin
 
     // Set CCD to frame transfer mode
     // (15.12.10 Set to PMODE_FT again to obtain max. speed in free run)
+    // (27.03.18 LightSpeed mode now uses PMODE_ALT_FT not PMODE_ALT_NORMAL)
     if Session.FrameTransferCapable <> 0 then begin
-       if Session.LightSpeedMode then pl_ccd_set_pmode( Session.Handle, Word(PMODE_ALT_NORMAL))
+       if Session.LightSpeedMode then pl_ccd_set_pmode( Session.Handle, Word(PMODE_ALT_FT))
                                  else pl_ccd_set_pmode( Session.Handle, Word(PMODE_FT))
        end
     else begin
@@ -1853,12 +1858,12 @@ begin
        ExposureTime := FrameInterval
                        - AdditionalReadoutTime ; { Additional user defined readout time}
        // If post-exposure readout shorten exposure to account for readout
-       // otherwise allow 1 ms for frame readout
+       // otherwise allow 10% of exposure to to a max of 1 ms for frame readout
        PostExposureReadout := PostExposureReadout or Session.PostExposureReadout ;
        if PostExposureReadout then ExposureTime := ExposureTime - ReadoutTime
-                              else ExposureTime := ExposureTime - 0.001 ;
-       // No shorter than 1ms exposure
-       ExposureTime := Max(ExposureTime,0.001) ;
+                              else ExposureTime := ExposureTime - Min(0.001,ExposureTime*0.1) ;
+       // No shorter than 0.1 ms exposure
+       ExposureTime := Max(ExposureTime,0.0001) ;
 
        NumBytesPerFrame1 := NumBytesPerFrame ;
        Err := pl_exp_setup_cont( Session.Handle,
