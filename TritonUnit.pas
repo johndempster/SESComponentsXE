@@ -45,6 +45,10 @@ unit TritonUnit;
 // 11.02.15 Bugs in Triton_MemoryToDACStimulus() fixed. Now works correctly with Triton+
 // 20.03.15 Manual corrections to patch clamp current gain factors can now be applied by placing list of factors in file
 //          C:\Users\Public\Documents\SESLABIO\tecella gain correction table.txt
+// 27.04.18 Holding level in current clamp mode now set correctly (no longer 10% of correct value)
+//          Junction potential correct offset now subtracted from measured potential in current-clamp mode
+// 08.05.18 FCurrentStimulusBias field and TritonSetCurrentStimulusBias() & TritonGetCurrentStimulusBias added
+//          Current added to stimulus current to compensate for stimulus bias current of Pico
 
 interface
 
@@ -947,6 +951,9 @@ procedure Triton_SetTritonICLAMPOn(
           ) ;
 function Triton_GetTritonICLAMPOn : Boolean ;
 
+procedure TritonSetCurrentStimulusBias( Value : double ) ;
+function TritonGetCurrentStimulusBias : double  ;
+
 procedure TECELLA_DisableFPUExceptions ;
 procedure TECELLA_EnableFPUExceptions ;
 
@@ -971,6 +978,7 @@ var
     FADCMaxSamplingInterval : Double ;
     FADCMaxVolts : Single ;
     FIScaleMin : Array[0..127] of Double ;
+    FIOffset : Array[0..127] of Integer ;
     FChannelGainIndex : Array[0..127] of Integer ;
     FGainCorrectionFactor : Array[0..127] of Single ; // Gain correction table
     FNumChannels : Integer ;       // No. of channels in sweep
@@ -989,6 +997,7 @@ var
     FTriggerMode : Integer ;
     FConfigInUse : Integer ;             // Config currently in use
     FICLAMPOn : Boolean ;
+    FCurrentStimulusBias : double ; // Stimulus bias current (pA)
 
     GetADCSamplesInUse : Boolean ;
     ADCActive : Boolean ;
@@ -1701,7 +1710,7 @@ var
     NumPointsInBuf : Integer ;   // No. sample points in OutBuf buffer
     EndOfBuf : Integer ;         // Index of last point in OutBuf
     iVHold : Integer ;
-
+    iOffset : Integer ;
 begin
 
      if not DeviceInitialised then Exit ;
@@ -1757,12 +1766,15 @@ begin
                                 LastSampleTimeStamp,
                                 LastSampleFlag ) ;
 
+        // Offset level (used in current-clamp mode to apply junction potential offset)
+        IOffset := FIOffset[ch-1] ;
+
         // Copy to output buffer
         if not FCircularBufferMode then begin
            // Single sweep acquisition
            j := FOutPointer + ch ;
            for i := 0 to NumSamplesRead-1 do begin
-               if j <= EndOfBuf then OutBuf[j] := iBuf^[i] ;
+               if j <= EndOfBuf then OutBuf[j] := iBuf^[i] - IOffset ;
                j := j + FNumChannels ;
                end ;
            end
@@ -1770,7 +1782,7 @@ begin
            // Continuous circular buffer acquisition
            j := FOutPointer + ch ;
            for i := 0 to NumSamplesRead-1 do begin
-               OutBuf[j] := iBuf^[i] ;
+               OutBuf[j] := iBuf^[i] - IOffset;
                j := j + FNumChannels ;
                if j > EndOfBuf then j := j - NumPointsInBuf ;
                end ;
@@ -1899,10 +1911,17 @@ var
   NumRampSteps : Integer ;
   MinCount : Integer ;
   VStart : Double ;
+  IOffset : Integer ;
 begin
 
     Result := False ;
     if not DeviceInitialised then Exit ;
+
+    VScale := FDACMaxVolts/(FADCMaxValue) ;
+
+    // Bias current correction to be added if in current-clamp mode
+    if FICLAMPOn then IOffset := Round( (FCurrentStimulusBias*1E-12) / VScale)
+                 else IOffset := 0 ;
 
     // Allocate voltage trace buffer
     if VmBuf <> Nil then FreeMem(VmBuf) ;
@@ -1920,10 +1939,6 @@ begin
         end ;
 
     // Create stimulus table from Ch.0 of DACValues waveform
-
-    VScale := FDACMaxVolts/(FADCMaxValue) ;
-    //if FCurrentClampMode then VScale := VScale*0.1 ;
-    //VScale := HardwareProps.stimulus_value_max / FADCMaxValue ;
 
     // Initialise segment table
     for i := 0 to MaxStimSegments-1 do begin
@@ -1944,7 +1959,7 @@ begin
     nLevels := 0 ;
     for i := 1 to FNumSamples-1 do begin
         if (VmBuf[i] <> VmBuf[i-1]) or (i = (FNumSamples-1)) then begin
-           Levels[nLevels].V := VmBuf[i-1]*VScale ;
+           Levels[nLevels].V := (VmBuf[i-1]+IOffset)*VScale ;
            Inc(nLevels) ;
            end ;
         Inc(Levels[nLevels].Count) ;
@@ -2130,6 +2145,7 @@ var
   iPoint : Integer ;
   StreamBuf : PSmallIntArray ;
   NumStream : Integer ;
+  IOffset : Integer ;
 begin
 
     Result := False ;
@@ -2143,6 +2159,13 @@ begin
     NumStream := ((FNumSamples*SamplingIntervalMultiplier) + NumPaddingPoints)
                   *NumStreamWordsPerPoint ;
 
+    VScale := (FDACMaxVolts/(FADCMaxValue)) ;
+
+    // Bias current correction to be added if in current-clamp mode
+    if FICLAMPOn then IOffset := Round( (FCurrentStimulusBias*1E-12) / VScale)
+                 else IOffset := 0 ;
+
+
     // Allocate stimulus trace buffer
     if VmBuf <> Nil then FreeMem(VmBuf) ;
     GetMem( VmBuf, Max(FNumSamples,nPoints)*2 ) ;
@@ -2154,17 +2177,6 @@ begin
         VmBuf[i] := DACValues[j] ;
         end ;
 
-    // BODGE!!! Divide stimulus by 10 in current clamp mode
-    // (not sure why this should be necessary ) 17.01.12
-//    if FCurrentClampMode then begin
-//       j := 0 ;
-//       for i := 0 to FNumSamples-1 do begin
-//           DACValues[j] := DACValues[j] div 10 ;
-//           j := j + nChannels ;
-//           end ;
-//       end ;
-// Not needed now in V.84
-
     // Copy to stream buffer (padding end with last sample value)
     j := 0 ;
     iPoint := 0 ;
@@ -2174,7 +2186,7 @@ begin
             if DigitalInUse then StreamBuf^[j] := DigValues[iPoint] shl 4
                             else StreamBuf^[j] := 0 ;
 
-            StreamBuf^[j+1] := -((DACValues[iDAC]) div 16) + 2048 ;
+            StreamBuf^[j+1] := -((DACValues[iDAC] + IOffset) div 16) + 2048 ;
             if nChannels > 1 then StreamBuf^[j+2] := Max((DACValues[iDAC+1] div 32),0)
                              else StreamBuf^[j+2] := 0 ;
             j := j + NumStreamWordsPerPoint ;
@@ -2182,14 +2194,11 @@ begin
         iPoint := Min(iPoint+1,nPoints-1) ;
         end ;
 
-    VScale := (FDACMaxVolts/(FADCMaxValue)) ;
-    if FCurrentClampMode then VScale := VScale*0.1 ;
-
     // Set holding voltage
     Index := 0 ;
     Triton_CheckError( 'tecella_stimulus_set_hold',
                        tecella_stimulus_set_hold( TecHandle,
-                                                  VMBuf[FNumSamples-1]*VScale,
+                                                  (VMBuf[FNumSamples-1] + IOffset)*VScale,
                                                   Index)) ;
 
     Triton_CheckError( 'tecella_stimulus_stream_write',
@@ -2206,9 +2215,6 @@ begin
                                                            NumStream)) ;
 
       // Start recording sweep
-      //ContinuousRecording := true ;
-      //start_stimuli := True ;
-      //continuous_stimuli := True ;
 
       if FTriggerMode = tmExtTrigger then start_on_trigger := True
                                     else start_on_trigger := False ;
@@ -2348,6 +2354,8 @@ procedure Triton_Channel_Calibration(
 // ----------------------------------
 // Returns channel calibration factor
 // ----------------------------------
+var
+    VJP,VJPFine,IScale : Double ;
 begin
 
     if Chan = 0 then begin
@@ -2376,6 +2384,13 @@ begin
           ChanScale := Triton_CurrentGain(Chan-1) ;
           if FIScaleMin[Chan-1] <> 0.0 then
              ChanCalFactor := 1.0/(FIScaleMin[Chan-1]*32768*1E3) ;
+
+          // Junction potential offset calculated
+          // (to be added to measured cell potential in GetADCSamples())
+          Tecella_Chan_Get( TecHandle, Tecella_reg_jp, Chan-1, VJP ) ;
+          Tecella_Chan_Get( TecHandle, Tecella_reg_jp_fine, Chan-1, VJPFine ) ;
+          FIOffset[Chan-1] := Round(((VJP + VJPFine)*1E-3) / (FIScaleMin[Chan-1] / ChanScale) ) ;
+         // outputdebugstring(pchar(format('JP=%.4g mV %d',[VJP + VJPFine,FIOffset[Chan-1]] )));
           end
        else begin
           // Voltage-clamp mode
@@ -2384,6 +2399,7 @@ begin
           ChanScale := Triton_CurrentGain(Chan-1) ;
           if FIScaleMin[Chan-1] <> 0.0 then
              ChanCalFactor := 1.0/(FIScaleMin[Chan-1]*32768*1E12) ;
+          FIOffset[Chan-1] := 0 ;
           end ;
        end ;
     end ;
@@ -2400,15 +2416,16 @@ var
 begin
      Result := 1.0 ;
      if not DeviceInitialised then Exit ;
-    if Chan < HardwareProps.nchans then begin
-       Triton_CheckError( 'tecella_acquire_i2d_scale',
-                          tecella_acquire_i2d_scale(TecHandle,Chan,IScale)) ;
+     if Chan < HardwareProps.nchans then begin
+        Triton_CheckError( 'tecella_acquire_i2d_scale',
+                           tecella_acquire_i2d_scale(TecHandle,Chan,IScale)) ;
        end
     else IScale := 1.0 ;
 
-    Result := (FIScaleMin[Chan]/IScale)*FGainCorrectionFactor[FChannelGainIndex[Chan]] ;  ;
+    Result := (FIScaleMin[Chan]/IScale)*FGainCorrectionFactor[FChannelGainIndex[Chan]] ;
 
     end ;
+
 
 function Triton_ClampMode : Integer ;
 // ------------------------------
@@ -3016,6 +3033,26 @@ begin
     end ;
 
 
+procedure TritonSetCurrentStimulusBias( Value : double ) ;
+// -------------------------
+// Set current stimulus bias
+// -------------------------
+begin
+    // Offset current added to current stimulus to correct for stimulus bias current of Pico amplifier
+    FCurrentStimulusBias := Value ;
+    end;
+
+
+function TritonGetCurrentStimulusBias : double  ;
+// -------------------------
+// Get current stimulus bias
+// -------------------------
+begin
+    Result := FCurrentStimulusBias ;
+    end;
+
+
+
 procedure Triton_Zap(
           Duration : Double ;
           Amplitude : Double ;
@@ -3119,7 +3156,7 @@ initialization
     VmBuf := Nil ;
     FDACMaxVolts := 1.0 ;
     FConfigInUse := 0 ;
-
+    FCurrentStimulusBias := 0.0 ;
 
 
 end.

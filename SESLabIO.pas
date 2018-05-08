@@ -399,6 +399,9 @@ type
     procedure SetTritonICLAMPOn( Value : Boolean ) ;
     function GetTritonNumChannels : Integer ;
 
+    procedure SetTritonCurrentStimulusBias( Value : Single ) ;
+    function GetTritonCurrentStimulusBias : Single ;
+
     procedure TimerTickOperations ;
     procedure SetADCExternalTriggerActiveHigh( Value : Boolean ) ;
 
@@ -732,6 +735,10 @@ procedure TritonAutoCompensation(
     Property TritonGain[ Chan : Integer ] : Integer
                                             Read GetTritonGain
                                             write SetTritonGain ;
+
+    Property TritonCurrentStimulusBias : Single read  GetTritonCurrentStimulusBias
+                                               write  SetTritonCurrentStimulusBias ;
+
     Property DIGHoldingLevel : Integer
                                Read GetDIGHoldingLevel
                                Write SetDIGHoldingLevel ;
@@ -4511,6 +4518,30 @@ begin
      case FLabInterfaceType of
        Triton : Result := TritonGetDACStreamingEnabled ;
        else Result := False ;
+       end ;
+     end ;
+
+
+procedure TSESLabIO.SetTritonCurrentStimulusBias(
+          Value : Single ) ;
+//  ----------------------------------------
+//  Set Triton current stimulus bias current
+// -----------------------------------------
+begin
+     case FLabInterfaceType of
+       Triton : TritonSetCurrentStimulusBias( Value ) ;
+       end ;
+     end ;
+
+
+function TSESLabIO.GetTritonCurrentStimulusBias : Single ;
+// -----------------------------------------
+//  Get Triton current stimulus bias current
+// -----------------------------------------
+begin
+     case FLabInterfaceType of
+       Triton : Result := TritonGetCurrentStimulusBias ;
+       else Result := 0.0 ;
        end ;
      end ;
 
