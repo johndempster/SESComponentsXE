@@ -37,6 +37,8 @@ unit imaqUnit;
 //          camera previously in free run mode
 // 06.11.17 CCDTapOffsetLT etc. CCD tap black offset adjustment properties added. DC offset differences between VA-29MC-5M
 //          camera taps can now be corrected
+// 17.05.18 Start_Capture() SnapImAGE(): imgSessionStartAcquisition() now tried repeatedly to overcome random failure to start
+//          VA-29MC-5M acquisition. Not clear yet why random failures occur
 
 
 interface
@@ -1581,7 +1583,7 @@ procedure IMAQ_CheckROIBoundaries( var Session : TIMAQSession ;
                                    ) ;
 
 
-procedure IMAQ_CheckError( ErrNum : Integer ) ;
+procedure IMAQ_CheckError( Command : string ; ErrNum : Integer ) ;
 
 function IMAQ_CharArrayToString( cBuf : Array of ANSIChar ) : String ;
 
@@ -1850,17 +1852,18 @@ begin
 
      // Open interface
      Err := imgInterfaceOpen( InterfaceName, Session.InterfaceID ) ;
-     IMAQ_CheckError( Err ) ;
+     IMAQ_CheckError( 'imgInterfaceOpen', Err ) ;
      if Err <> 0 then Exit ;
      Session.InterfaceOpen := True ;
 
      // Open session
      Err := imgSessionOpen( Session.InterfaceID, Session.SessionID ) ;
-     IMAQ_CheckError( Err ) ;
+     IMAQ_CheckError( 'imgSessionOpen', Err ) ;
      if Err <> 0 then Exit ;
      Session.SessionOpen := True ;
 
-     IMAQ_CheckError(imgGetAttribute( Session.SessionID, IMG_ATTR_INTERFACE_TYPE, InterfaceType )) ;
+     IMAQ_CheckError( 'imgGetAttribute(IMG_ATTR_INTERFACE_TYPE)',
+                       imgGetAttribute( Session.SessionID, IMG_ATTR_INTERFACE_TYPE, InterfaceType )) ;
      case CArdinal(InterfaceType) of
         $1408 : Session.BoardType := 'PCI-1408' ;
         $1405 : Session.BoardType := 'PCI-1405' ;
@@ -2112,7 +2115,8 @@ begin
      IMAQ_SetCameraAttributeString(Session.SessionID,Session.BinModeCom,'AOI') ;
 
      // Calculate valid set of ROI boundaries
-     IMAQ_CheckError(imgSessionFitROI( Session.SessionID,
+     IMAQ_CheckError( 'imgSessionFitROI',
+                      imgSessionFitROI( Session.SessionID,
                        IMG_ROI_FIT_SMALLER,
                        FrameTop,
                        FrameLeft,
@@ -2149,18 +2153,24 @@ begin
      if not LibraryLoaded then Exit ;
 
      // Stop any acquisition which is in progress
-     if Session.AcquisitionInProgress then begin
-       IMAQ_CheckError(imgSessionStopAcquisition(Session.SessionID)) ;
-       Session.AcquisitionInProgress := false ;
-       end ;
+     if Session.AcquisitionInProgress then
+        begin
+        IMAQ_CheckError( 'imgSessionStopAcquisition',
+                        imgSessionStopAcquisition(Session.SessionID)) ;
+        Session.AcquisitionInProgress := false ;
+        end ;
 
-     if Session.SessionOpen then begin
-        IMAQ_CheckError(imgClose( Session.SessionID, 1 )) ;
+     if Session.SessionOpen then
+        begin
+        IMAQ_CheckError( 'imgClose(SessionID)',
+                         imgClose( Session.SessionID, 1 )) ;
         Session.SessionOpen := False ;
         end ;
 
-     if Session.InterfaceOpen then begin
-        IMAQ_CheckError(imgClose( Session.InterfaceID, 1 )) ;
+     if Session.InterfaceOpen then
+        begin
+        IMAQ_CheckError( 'imgClose(InterfaceID)',
+                         imgClose( Session.InterfaceID, 1 )) ;
         Session.InterfaceOpen := False ;
         end ;
 
@@ -2186,7 +2196,7 @@ function IMAQ_StartCapture(
 // Start frame capture
 // -------------------
 var
-    i,iGain : Integer ;
+    i,iGain,nTries : Integer ;
     s : ANSIString ;
     BufSize,Err,AOIVStart,AOIVEnd : Integer ;
     ExpTimeMicroSecs : Integer ;
@@ -2196,7 +2206,8 @@ begin
     // Stop any acquisition which is in progress
     if Session.AcquisitionInProgress then
        begin
-       IMAQ_CheckError(imgSessionStopAcquisition(Session.SessionID)) ;
+       IMAQ_CheckError( 'imgSessionStopAcquisition',
+                        imgSessionStopAcquisition(Session.SessionID)) ;
        Session.AcquisitionInProgress := false ;
        end ;
 
@@ -2283,14 +2294,16 @@ begin
       if ExternalTrigger = CamFreeRun then
          begin
          // Free run mode
-         IMAQ_CheckError(imgSessionTriggerConfigure2( Session.SessionID,
+         IMAQ_CheckError( 'imgSessionTriggerConfigure2',
+                          imgSessionTriggerConfigure2( Session.SessionID,
                                                       IMG_SIGNAL_EXTERNAL,
                                                      0,
                                                      IMG_TRIG_POLAR_ACTIVEH,
                                                      1000000,
                                                      IMG_TRIG_ACTION_NONE)) ;
          // Output a pulse on trigger line at end of frame
-         IMAQ_CheckError(imgSessionTriggerDrive2( Session.SessionID,
+         IMAQ_CheckError( 'imgSessionTriggerDrive2',
+                          imgSessionTriggerDrive2( Session.SessionID,
                                                  IMG_SIGNAL_EXTERNAL,
                                                  0,
                                                  IMG_TRIG_POLAR_ACTIVEH,
@@ -2299,13 +2312,15 @@ begin
      else
         begin
         // External trigger mode (Disable trigger output)
-        IMAQ_CheckError(imgSessionTriggerDrive2( Session.SessionID,
+        IMAQ_CheckError( 'imgSessionTriggerConfigure2',
+                         imgSessionTriggerDrive2( Session.SessionID,
                                                  IMG_SIGNAL_EXTERNAL,
                                                  0,
                                                  IMG_TRIG_POLAR_ACTIVEH,
                                                  IMG_TRIG_DRIVE_DISABLED)) ;
         // Trigger frame capture
-        IMAQ_CheckError(imgSessionTriggerConfigure2( Session.SessionID,
+        IMAQ_CheckError( 'imgSessionTriggerConfigure2',
+                         imgSessionTriggerConfigure2( Session.SessionID,
                                                      IMG_SIGNAL_EXTERNAL,
                                                      0,
                                                      IMG_TRIG_POLAR_ACTIVEH,
@@ -2331,7 +2346,8 @@ begin
      else AOIVStart := 0 ;
 
     // Set CCD readout region
-    IMAQ_CheckError( imgSessionConfigureROI( Session.SessionID,
+    IMAQ_CheckError( 'imgSessionConfigureROI',
+                     imgSessionConfigureROI( Session.SessionID,
                                             (FrameTop div BinFactor) - AOIVStart,
                                              FrameLeft div BinFactor,
                                              FrameHeight div BinFactor,
@@ -2349,7 +2365,19 @@ begin
     Session.FrameCounter := 0 ;
 
     // Start acquisition
-    IMAQ_CheckError(imgSessionStartAcquisition(Session.SessionID)) ;
+    Err := imgSessionStartAcquisition(Session.SessionID) ;
+    // Retry if acquisition fails to start
+    nTries := 5 ;
+    while  (Err <> 0) and (nTries > 0) do
+       begin
+       Dec(nTries) ;
+       IMAQ_Wait(0.05);
+       outputdebugstring(pchar(format('SNAP:Start Acquisition RETRY No.%d',[5-nTries])));
+       Err := imgSessionStartAcquisition(Session.SessionID) ;
+
+       end;
+    if Err <> 0 then ShowMessage('SnapImage: Unable to start camera acquisition');
+
 
     Result := True ;
     Session.AcquisitionInProgress := True ;
@@ -2380,7 +2408,7 @@ function IMAQ_SnapImage(
 // Acquire a single image
 // ----------------------
 var
-    i,iGain : Integer ;
+    i,iGain,nTries : Integer ;
     s : ANSIString ;
     BufSize,Err,AOIVStart,AOIVEnd : Integer ;
     ExpTimeMicroSecs : Integer ;
@@ -2391,7 +2419,8 @@ begin
     // Stop any acquisition which is in progress
     if Session.AcquisitionInProgress then
        begin
-       IMAQ_CheckError(imgSessionStopAcquisition(Session.SessionID)) ;
+       IMAQ_CheckError( 'imgSessionStopAcquisition',
+                        imgSessionStopAcquisition(Session.SessionID)) ;
        Session.AcquisitionInProgress := false ;
        end ;
 
@@ -2434,6 +2463,11 @@ begin
           IMAQ_SetCameraAttributeString( Session.SessionID,'Cooling','On');
           IMAQ_SetCameraAttributeString( Session.SessionID,'Fan','On');
           IMAQ_SetCameraAttributeNumeric( Session.SessionID,'Temperature',-10);
+          // Set CCD tap DC offset adjustments
+          IMAQ_SetCameraAttributeNumeric( Session.SessionID,'CCDTapOffsetLT',Session.CCDTapOffsetLT);
+          IMAQ_SetCameraAttributeNumeric( Session.SessionID,'CCDTapOffsetRT',Session.CCDTapOffsetRT);
+          IMAQ_SetCameraAttributeNumeric( Session.SessionID,'CCDTapOffsetLB',Session.CCDTapOffsetLB);
+          IMAQ_SetCameraAttributeNumeric( Session.SessionID,'CCDTapOffsetRB',Session.CCDTapOffsetRB);
 
           // Turn fan off for pixel shift modes
           if NumPixelShiftFrames > 0 then
@@ -2499,14 +2533,16 @@ begin
       if ExternalTrigger = CamFreeRun then
          begin
          // Free run mode
-         IMAQ_CheckError(imgSessionTriggerConfigure2( Session.SessionID,
+         IMAQ_CheckError( 'imgSessionTriggerConfigure2',
+                          imgSessionTriggerConfigure2( Session.SessionID,
                                                       IMG_SIGNAL_EXTERNAL,
                                                      0,
                                                      IMG_TRIG_POLAR_ACTIVEH,
                                                      1000000,
                                                      IMG_TRIG_ACTION_NONE)) ;
          // Output a pulse on trigger line at end of frame
-         IMAQ_CheckError(imgSessionTriggerDrive2( Session.SessionID,
+         IMAQ_CheckError( 'imgSessionTriggerDrive2',
+                          imgSessionTriggerDrive2( Session.SessionID,
                                                  IMG_SIGNAL_EXTERNAL,
                                                  0,
                                                  IMG_TRIG_POLAR_ACTIVEH,
@@ -2515,13 +2551,15 @@ begin
      else
         begin
         // External trigger mode (Disable trigger output)
-        IMAQ_CheckError(imgSessionTriggerDrive2( Session.SessionID,
+        IMAQ_CheckError( 'imgSessionTriggerDrive2',
+                         imgSessionTriggerDrive2( Session.SessionID,
                                                  IMG_SIGNAL_EXTERNAL,
                                                  0,
                                                  IMG_TRIG_POLAR_ACTIVEH,
                                                  IMG_TRIG_DRIVE_DISABLED)) ;
         // Trigger frame capture
-        IMAQ_CheckError(imgSessionTriggerConfigure2( Session.SessionID,
+        IMAQ_CheckError( 'imgSessionTriggerConfigure2',
+                         imgSessionTriggerConfigure2( Session.SessionID,
                                                      IMG_SIGNAL_EXTERNAL,
                                                      0,
                                                      IMG_TRIG_POLAR_ACTIVEH,
@@ -2547,7 +2585,8 @@ begin
      else AOIVStart := 0 ;
 
     // Set CCD readout region
-    IMAQ_CheckError( imgSessionConfigureROI( Session.SessionID,
+    IMAQ_CheckError( 'imgSessionConfigureROI',
+                     imgSessionConfigureROI( Session.SessionID,
                                             (FrameTop div BinFactor) - AOIVStart,
                                              FrameLeft div BinFactor,
                                              FrameHeight div BinFactor,
@@ -2571,7 +2610,25 @@ begin
     Session.FrameCounter := 0 ;
 
     // Start acquisition
-    IMAQ_CheckError(imgSessionStartAcquisition(Session.SessionID)) ;
+//    outputdebugstring(pchar('SNAP:Start Acquistion'));
+//    IMAQ_CheckError( 'imgSessionStartAcquisition',
+//                     imgSessionStartAcquisition(Session.SessionID)) ;
+
+
+    // Start acquisition
+    Err := imgSessionStartAcquisition(Session.SessionID) ;
+    // Retry if acquisition fails to start
+    nTries := 5 ;
+    while  (Err <> 0) and (nTries > 0) do
+       begin
+       Dec(nTries) ;
+       IMAQ_Wait(0.05);
+       outputdebugstring(pchar(format('SNAP:Start Acquisition RETRY No.%d',[5-nTries])));
+       Err := imgSessionStartAcquisition(Session.SessionID) ;
+
+       end;
+    if Err <> 0 then ShowMessage('SnapImage: Unable to start camera acquisition');
+
 
     Result := True ;
     Session.AcquisitionInProgress := True ;
@@ -2626,9 +2683,11 @@ begin
      if not Session.AcquisitionInProgress then Exit ;
 
      // Stop acquisition
-     IMAQ_CheckError(imgSessionStopAcquisition(Session.SessionID)) ;
+     IMAQ_CheckError( 'imgSessionStopAcquisition',
+                      imgSessionStopAcquisition(Session.SessionID)) ;
 
-     IMAQ_CheckError(imgInterfaceReset(Session.SessionID)) ;
+     IMAQ_CheckError( 'imgInterfaceReset',
+                      imgInterfaceReset(Session.SessionID)) ;
 
      if not Session.AnalogVideoBoard then
         begin
@@ -2639,7 +2698,7 @@ begin
            begin
  //          IMAQ_VA29MC5M_FanOn(Session,True) ;
   //         IMAQ_SetCameraAttributeString( Session.SessionID,Session.FanModeCom,Session.FanOn) ;
-           if Session.PulseID <> 0 then IMAQ_CheckError(imgPulseStop(Session.PulseID));
+           if Session.PulseID <> 0 then IMAQ_CheckError('imgPulseStop', imgPulseStop(Session.PulseID));
  //          IMAQ_VA29MC5M_ResetStage(Session) ;
 //           IMAQ_CheckError(imgSessionSerialFlush(Session.SessionID));
            end ;
@@ -2659,7 +2718,8 @@ procedure IMAQ_PauseCapture(
 begin
      if not Session.AcquisitionInProgress then Exit ;
      // Stop acquisition
-     IMAQ_CheckError(imgSessionStopAcquisition(Session.SessionID)) ;
+     IMAQ_CheckError(   'imgSessionStopAcquisition',
+                      imgSessionStopAcquisition(Session.SessionID)) ;
      end;
 
 
@@ -2672,7 +2732,7 @@ procedure IMAQ_RestartCapture(
 begin
      if not Session.AcquisitionInProgress then Exit ;
      // Stop acquisition
-     IMAQ_CheckError(imgSessionStartAcquisition(Session.SessionID)) ;
+     IMAQ_CheckError('imgSessionStartAcquisition',imgSessionStartAcquisition(Session.SessionID)) ;
      end;
 
 
@@ -2764,7 +2824,8 @@ begin
   //   ClockTicks := 50000 ;
 
      if Session.PulseID = 0 then
-     IMAQ_CheckError(imgPulseCreate2(PULSE_TIMEBASE_50MHZ,
+     IMAQ_CheckError( 'imgPulseCreate2',
+                      imgPulseCreate2(PULSE_TIMEBASE_50MHZ,
                      50,
                      ClockTicks,
                      IMG_SIGNAL_STATUS,
@@ -2775,8 +2836,8 @@ begin
                      IMG_PULSE_POLAR_ACTIVEH,
                      PULSE_MODE_SINGLE_REARM,
                      Session.PulseID))
-     else IMAQ_CheckError(imgPulseStop(Session.PulseID));
-     IMAQ_CheckError(imgPulseStart(Session.PulseID, Session.SessionID));
+     else IMAQ_CheckError('imgPulseStop', imgPulseStop(Session.PulseID));
+     IMAQ_CheckError('imgPulseStart', imgPulseStart(Session.PulseID, Session.SessionID));
 
 
 
@@ -2792,7 +2853,8 @@ function IMAQ_SetCameraAttributeString(
 begin
     Result := False ;
     if (Name = '') or (Value = '') then Exit ;
-    IMAQ_CheckError( imgSetCameraAttributeString(SessionID,PANSIChar(Name),PANSIChar(Value))) ;
+    IMAQ_CheckError( 'imgSetCameraAttributeString(' + Name + ')',
+                     imgSetCameraAttributeString(SessionID,PANSIChar(Name),PANSIChar(Value))) ;
     Result := True ;
     end ;
 
@@ -2807,7 +2869,8 @@ function IMAQ_SetCameraAttributeNumeric(
 begin
     Result := False ;
     if Name = '' then Exit ;
-    IMAQ_CheckError( imgSetCameraAttributeNumeric(SessionID,PANSIChar(Name),Value)) ;
+    IMAQ_CheckError( 'imgSetCameraAttributeNumeric(' + Name + ')',
+                     imgSetCameraAttributeNumeric(SessionID,PANSIChar(Name),Value)) ;
     Result := True ;
     end ;
 
@@ -2841,7 +2904,8 @@ begin
 
     // Copy frames from IMAQ to main WinFluor buffer
 
-    for i := 0 to NewFrames-1 do begin
+    for i := 0 to NewFrames-1 do
+        begin
         PFromBuf := Session.BufferList[Session.BufferIndex] ;
         PToBuf := Pointer( (Session.BufferIndex*Session.NumBytesPerFrame)
                          + NativeUInt(PByte(Session.FrameBufPointer))) ;
@@ -2865,7 +2929,8 @@ var
     i : Integer ;
 begin
     CameraGainList.Clear ;
-    if Session.GainMin <> Session.GainMax then begin
+    if Session.GainMin <> Session.GainMax then
+       begin
        for i := 1 to 100 do CameraGainList.Add( format( '%d%',[i] )) ;
        end
     else  CameraGainList.Add( 'X1') ;
@@ -2883,7 +2948,8 @@ var
     i : Integer ;
 begin
     CameraADCList.Clear ;
-    if Session.NumPixelDepths > 1 then begin
+    if Session.NumPixelDepths > 1 then
+       begin
        for i := 0 to Session.NumPixelDepths-1 do
            CameraADCList.Add( format( '%d bit',[Session.PixelDepths[i]] )) ;
        end
@@ -2903,27 +2969,31 @@ procedure IMAQ_CheckFrameInterval(
 // Check that selected frame interval is valid
 // -------------------------------------------
 begin
-     if Session.AnalogVideoBoard then begin
+     if Session.AnalogVideoBoard then
+        begin
          // In free run mode set to  camera interval. In external trigger mode force above camera interval*2
 
-        if TriggerMode = CamFreeRun then begin
+        if TriggerMode = CamFreeRun then
+          begin
           FrameIntervalMin := Session.MinExposureTime ;
           FrameInterval := Session.MinExposureTime ;
           end
-        else begin
+        else
+          begin
           FrameIntervalMin := Session.MinExposureTime*2 ;
           FrameInterval := Max(FrameInterval,FrameIntervalMin) ;
           end;
         //FrameInterval := Max(Round(FrameInterval/Session.MinExposureTime),1)*Session.MinExposureTime ;
         end
-     else begin
+     else
+        begin
         FrameIntervalMin := Session.MinExposureTime ;
         FrameInterval := Max(Round(FrameInterval/Session.MinExposureTime),1)*Session.MinExposureTime
         end;
      end ;
 
 
-procedure IMAQ_CheckError( ErrNum : Integer ) ;
+procedure IMAQ_CheckError( Command : string ; ErrNum : Integer ) ;
 // ------------
 // Report error
 // ------------
@@ -2932,12 +3002,12 @@ var
     i : Integer ;
     s : string ;
 begin
-    if ErrNum <> 0 then begin
+    if ErrNum <> 0 then
+       begin
        for i := 0 to High(cBuf) do cBuf[i] := #0 ;
        imgShowError ( ErrNum, cBuf ) ;
        s := IMAQ_CharArrayToString(cBuf) ;
-//       for i := 0 to High(cBuf) do if cBuf[i] <> #0 then s := s + cBuf[i] ;
-       ShowMessage( 'IMAQ: ' + s ) ;
+       ShowMessage( 'IMAQ - ' + Command + ': ' + s ) ;
        end ;
     end ;
 
@@ -2953,7 +3023,8 @@ var
 begin
      i := 0 ;
      Result := '' ;
-     while (cBuf[i] <> #0) and (i <= High(cBuf)) do begin
+     while (cBuf[i] <> #0) and (i <= High(cBuf)) do
+         begin
          Result := Result + String(cBuf[i]) ;
          Inc(i) ;
          end ;
