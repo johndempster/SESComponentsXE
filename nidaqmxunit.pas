@@ -1318,7 +1318,7 @@ TDAQmxCreateCOPulseChanFreq        = function(
                                      TaskHandle : Integer ;
                                      const Counter : PANSIChar;
                                      NameToAssignToChannel : PANSIChar;
-                                     MinVal : Double ;
+                                     Units : Integer ;
                                      idleState : Integer ;
                                      initialDelay : Double ;
                                      freq : Double ;
@@ -1326,9 +1326,9 @@ TDAQmxCreateCOPulseChanFreq        = function(
 
 TDAQmxCreateCOPulseChanTime        = function(
                                      TaskHandle : Integer ;
-                                     const Counter : PANSIChar;
+                                     Counter : PANSIChar;
                                      NameToAssignToChannel : PANSIChar;
-                                     MinVal : Double ;
+                                     Units : Integer ;
                                      idleState : Integer;
                                      initialDelay : Double;
                                      lowTime : Double;
@@ -2132,6 +2132,8 @@ var
     FADCCircularBuffer : Boolean ;
     FADCNumSamplesAcquired : Integer ;
     FValidADCInputMode : Integer ;
+
+    PulseTaskHandle : Integer ;
 
     BoardInitialised : Boolean ;
 
@@ -3172,6 +3174,20 @@ begin
     // Start A/D task
     NIMX_CheckError( DAQmxStartTask(ADCTaskHandle)) ;
 
+{
+    // Pulse stream used to test A/D timing 22.07.18
+    NIMX_CheckError( DAQmxCreateTask( '', PulseTaskHandle ) ) ;
+    NIMX_CheckError( DAQmxCreateCOPulseChanFreq(
+                     PulseTaskHandle,
+                     PANSICHar('/' + DeviceName + '/freqout'),
+                     NIl,
+                     DAQmx_Val_Hz,
+                     DAQmx_Val_Low ,
+                     0.0,
+                     25000.0,
+                     0.5));
+    NIMX_CheckError( DAQmxStartTask(PulseTaskHandle)) ;
+ }
     // Restore FPU exceptions
     NIMX_EnableFPUExceptions ;
 
@@ -3282,6 +3298,9 @@ begin
         outputdebugstring(pchar(format('NIMX_StopADC: %d ms Delay in DAQmxClearTask call. ',[timegettime - t0])));
      ADCActive := False ;
 
+{    Pulse task stopped ... used to test A/D timing.
+     NIMX_CheckError( DAQmxStopTask(PulseTaskHandle)) ;
+}
      NIMX_EnableFPUExceptions ;
 
      end ;

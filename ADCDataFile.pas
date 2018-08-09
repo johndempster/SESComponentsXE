@@ -51,6 +51,9 @@ unit ADCDataFile;
 // 10.01.17 GetMem replaced by AllocMem to ensure all buffer initialized to zero.
 // 22.03.18 CDRLoadHeader() Correct header tag (ADn= instead of YCn=) now read in .CHT file header to get
 //          channel A/D voltage. Channel V/units and A/D range now correct.
+// 09.07.18 WCP file type NumScanPerRecord forced to be multiple of 256
+// 15.07.18 Pointer types in IBW wave records changed to Cardinal to work correctly when compiled in 64 bit
+//          Now exports correctly to IBW format from 64 bit programs
 
 {$R 'adcdatafile.dcr'}
 interface
@@ -1084,7 +1087,7 @@ TIGORBinHeader5 = packed Record
 
 TIGORWaveHeader2 = packed Record
 	WaveType : SmallInt ;							// See types (e.g. NT_FP64) above. Zero for text waves.
-  WavePointer : Pointer ;           // Used in memory only. Write zero. Ignore on read.
+  WavePointer : Cardinal ;           // Used in memory only. Write zero. Ignore on read.
 	bname : Array[0..MAX_WAVE_NAME2+2-1] of ANSIChar ;		// Name of wave plus trailing null.
 	whVersion : SmallInt ;						// Write 0. Ignore on read.
 	srcFldr : SmallInt ;							// Used in memory only. Write zero. Ignore on read.
@@ -1102,7 +1105,7 @@ TIGORWaveHeader2 = packed Record
   botFullScale : Double ;
 	useBits : ANSIChar ;						// Used in memory only. Write zero. Ignore on read.
 	kindBits : ANSIChar ;						// Reserved. Write zero. Ignore on read.
-	pFormula : Pointer ;	  		// Used in memory only. Write zero. Ignore on read.
+	pFormula : Cardinal ;	  		// Used in memory only. Write zero. Ignore on read.
 	depID: LongInt ;			  		// Used in memory only. Write zero. Ignore on read.
 	creationDate : Cardinal ;			// DateTime of creation. Not used in version 1 files.
 	wUnused : Array[0..1] of ANSIChar ;		// Reserved. Write zero. Ignore on read.
@@ -1113,7 +1116,7 @@ TIGORWaveHeader2 = packed Record
 
 
 TIGORWaveHeader5 = packed Record
-	WaveHeader5 : Pointer ;			// link to next wave in linked list.
+	WaveHeader5 : Cardinal ;			// link to next wave in linked list.
 	creationDate : Cardinal ;			// DateTime of creation.
 	modDate : Cardinal ;				// DateTime of last modification.
 	npnts : LongInt ;							// Total number of points (multiply dimensions up to first zero).
@@ -1123,7 +1126,7 @@ TIGORWaveHeader5 = packed Record
 	whVersion : SmallInt ;						// Write 1. Ignore on read.
 	bname : Array[0..MAX_WAVE_NAME5+1-1] of ANSIChar ;		// Name of wave plus trailing null.
 	whpad2 : LongInt ;						// Reserved. Write zero. Ignore on read.
-	pDataFolder : Pointer ;		// Used in memory only. Write zero. Ignore on read.
+	pDataFolder : Cardinal ;		// Used in memory only. Write zero. Ignore on read.
 	// Dimensioning info. [0] == rows, [1] == cols etc
 	nDim : Array[0..MAXDIMS-1] of LongInt ;					// Number of of items in a dimension -- 0 means no data.
 	sfA : Array[0..MAXDIMS-1] of Double ;				// Index value for element e of dimension d = sfA[d]*e + sfB[d].
@@ -1151,14 +1154,14 @@ TIGORWaveHeader5 = packed Record
 
 	useBits : ANSIChar ;						// Used in memory only. Write zero. Ignore on read.
 	ckindBits : ANSIChar ;								// Reserved. Write zero. Ignore on read.
-	formula : Pointer ;						// Used in memory only. Write zero. Ignore on read.
+	formula : Cardinal ;						// Used in memory only. Write zero. Ignore on read.
 	depID : LongInt ;							// Used in memory only. Write zero. Ignore on read.
 
 	whpad4 : SmallInt ;							// Reserved. Write zero. Ignore on read.
 	srcFldr : SmallInt ;							// Used in memory only. Write zero. Ignore on read.
 	fileName : LongInt ;					// Used in memory only. Write zero. Ignore on read.
 
-	sIndices : Pointer ;					// Used in memory only. Write zero. Ignore on read.
+	sIndices : Cardinal ;					// Used in memory only. Write zero. Ignore on read.
 
 	//float wData[1];						// The start of the array of data. Must be 64 bit aligned.
   end ;
@@ -6677,11 +6680,18 @@ procedure TADCDataFile.SetNumScansPerRecord( Value : Integer ) ;
 // Set no. of channels scans per record
 // ------------------------------------
 begin
-     //FNumScansPerRecord := 256*Max( Value div 256,1 ) ;
-     FNumScansPerRecord := Value ;
+     if FFileType = ftWCP then
+        begin
+        // Ensure WCP file type records are a multiple of 256
+        FNumScansPerRecord := 256*(Value div 256) ;
+        if (Value mod 256) <> 0 then FNumScansPerRecord := FNumScansPerRecord + 256 ;
+        end
+     else FNumScansPerRecord := Value ;
+
      FNumBytesPerScan := FNumChannelsPerScan*FNumBytesPerSample ;
      FNumRecordDataBytes := FNumScansPerRecord*FNumBytesPerScan ;
      FNumRecordBytes := FNumRecordDataBytes + FNumRecordAnalysisBytes ;
+
      end ;
 
 

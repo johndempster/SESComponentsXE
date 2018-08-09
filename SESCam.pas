@@ -75,6 +75,7 @@ unit SESCam;
  15.08.17 JD  .SnapImage added (acquires a single image)
  06.11.17 JD  .CCDTapOffsetLT etc. CCD tap black offset adjustment properties added
  18.01.18 JD  .LIGHTSPEEDMODE added (enables lightspeed mode of Evolve Delta
+ 30.07.18 JD  Support for PCO cameras added
 
   ================================================================================ }
 {$OPTIMIZATION OFF}
@@ -85,7 +86,7 @@ interface
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs, itex, imaq1394,
   pixelflyunit, SensiCamUnit, HamDCAMUnit, Math, AndorUnit,
-  QCAMUnit, pvcam, imaqunit, nimaqdxunit, strutils, DTOpenLayersUnit, AndorSDK3Unit, ThorlabsUnit, maths ;
+  QCAMUnit, pvcam, imaqunit, nimaqdxunit, strutils, DTOpenLayersUnit, AndorSDK3Unit, ThorlabsUnit, PCOUnit, maths ;
 
 const
      { Interface cards supported }
@@ -115,8 +116,9 @@ const
      IMAQ = 23 ;
      IMAQDX = 24 ;
      Thorlabs = 25 ;
+     PCOAPI = 26 ;
 
-     NumLabInterfaceTypes = 26 ;   // up from 22; M.Ascherl
+     NumLabInterfaceTypes = 27 ;   // up from 22; M.Ascherl
 
      // Frame capture trigger modes
      CamFreeRun = 0 ;
@@ -267,6 +269,8 @@ type
 
     // Thorlabs cameras session
     ThorlabsSession : TThorlabsSession ;
+
+    PCOAPISession : TPCOAPISession ;
 
     function AllocateFrameBuffer : Boolean ;
     procedure DeallocateFrameBuffer ;
@@ -615,6 +619,7 @@ begin
        IMAQ : Result := 'National Instruments (IMAQ)' ;
        IMAQDX : Result := 'National Instruments (IMAQ-DX)' ;
        Thorlabs : Result := 'Thorlabs DCx Cameras' ;
+       PCOAPI : Result := 'PCO Cameras' ;
 
        end ;
      end ;
@@ -1417,6 +1422,59 @@ begin
 
           end ;
 
+       PCOAPI : begin
+
+          CameraInfo.Clear ;
+          PCOAPISession.CameraMode := FCameraMode ;
+          FCameraAvailable := PCOAPI_OpenCamera(
+                              PCOAPISession,
+                              FFrameWidthMax,
+                              FFrameHeightMax,
+                              FBinFactorMax,
+                              FNumBytesPerPixel,
+                              FPixelDepth,
+                              FPixelWidth,
+                              CameraInfo ) ;
+
+         if FCameraAvailable then begin
+
+             PCOAPI_GetCameraGainList( PCOAPISession, CameraGainList ) ;
+
+             PCOAPI_GetCameraModeList( PCOAPISession,CameraModeList ) ;
+
+             PCOAPI_GetCameraADCList( PCOAPISession, CameraADCList ) ;
+
+             // List of readout speeds
+             PCOAPI_GetCameraReadoutSpeedList( PCOAPISession, CameraReadoutSpeedList ) ;
+             FReadoutSpeed := 0 ;
+             PCOAPISession.ReadoutSpeed := FReadoutSpeed ;
+
+             // Calculate grey levels from pixel depth
+             FGreyLevelMax := 1 ;
+             for i := 1 to FPixelDepth do FGreyLevelMax := FGreyLevelMax*2 ;
+             FGreyLevelMax := FGreyLevelMax - 1 ;
+             FGreyLevelMin := 0 ;
+             FCCDRegionReadoutAvailable := True ;
+
+             // Set temperature set point
+             PCOAPI_SetTemperature( PCOAPISession, FTemperatureSetPoint ) ;
+             PCOAPI_SetCooling( PCOAPISession, FCameraCoolingOn ) ;
+             PCOAPI_SetFanMode( PCOAPISession, FCameraFanMode ) ;
+             PCOAPI_SetCameraMode( PCOAPISession, FCameraMode ) ;
+             FNumCameras := 1 ;
+             end ;
+
+
+          FFrameWidth := FFrameWidthMax ;
+          FFrameHeight := FFrameHeightMax ;
+
+          FFrameIntervalMin := 1E-3 ;
+          FFrameIntervalMax := 1000.0 ;
+
+          FPixelUnits := 'um' ;
+          FTriggerType := CamExposureTrigger ;
+
+          end ;
 
        end ;
 
@@ -1516,6 +1574,11 @@ begin
               Thorlabs_GetImage( ThorlabsSession ) ;
               FFrameCount := ThorlabsSession.FrameCounter ;
               end ;
+
+            PCOAPI : begin
+              PCOAPI_GetImage( PCOAPISession ) ;
+              end ;
+
             end ;
         end ;
 
@@ -1596,6 +1659,10 @@ begin
 
             Thorlabs : begin
               Thorlabs_CloseCamera( ThorlabsSession ) ;
+              end ;
+
+            PCOAPI : begin
+              PCOAPI_CloseCamera( PCOAPISession ) ;
               end ;
 
             end ;
@@ -1773,6 +1840,21 @@ begin
                                           FReadoutTime
                                           ) ;
               end ;
+
+          PCOAPI : begin
+              PCOAPI_CheckROIBoundaries( PCOAPISession,
+                                          FFrameLeft,
+                                          FFrameRight,
+                                          FFrameTop,
+                                          FFrameBottom,
+                                          FBinFactor,
+                                          FFrameWidthMax,
+                                          FFrameHeightMax,
+                                          FFrameWidth,
+                                          FFrameHeight
+                                          ) ;
+              end ;
+
           end ;
 
      if FMonochromeImage then FNumComponentsPerPixel := 1
@@ -2110,7 +2192,6 @@ begin
           end ;
 
        Thorlabs : begin
-          // Note Andor cameras do not support additional readout time
           FCameraActive := Thorlabs_StartCapture(
                            ThorlabsSession,
                            FFrameInterval,
@@ -2128,7 +2209,27 @@ begin
                            FReadoutTime
                            ) ;
           FrameCounter := 0 ;
-          FTemperature := AndorSDK3Session.Temperature ;
+          end ;
+
+       PCOAPI : begin
+          FCameraActive := PCOAPI_StartCapture(
+                           PCOAPISession,
+                           FFrameInterval,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
+                           FAmpGain,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameTop,
+                           FFrameWidth*FBinFactor,
+                           FFrameHeight*FBinFactor,
+                           FBinFactor,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FNumBytesPerFrame,
+                           FReadoutTime
+                           ) ;
+          FrameCounter := 0 ;
+          FTemperature := PCOAPISession.Temperature ;
           end ;
 
 
@@ -2444,7 +2545,26 @@ begin
                            FReadoutTime
                            ) ;
           FrameCounter := 0 ;
-          FTemperature := AndorSDK3Session.Temperature ;
+          end ;
+
+       PCOAPI : begin
+          FCameraActive := PCOAPI_StartCapture(
+                           PCOAPISession,
+                           FFrameInterval,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
+                           FAmpGain,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameTop,
+                           FFrameWidth*FBinFactor,
+                           FFrameHeight*FBinFactor,
+                           FBinFactor,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FNumBytesPerFrame,
+                           FReadoutTime
+                           ) ;
+          FrameCounter := 0 ;
           end ;
 
 
@@ -2533,6 +2653,11 @@ begin
 
        Thorlabs : begin
           Thorlabs_StopCapture( ThorlabsSession ) ;
+          FCameraActive := False ;
+          end ;
+
+       PCOAPI : begin
+          PCOAPI_StopCapture( PCOAPISession ) ;
           FCameraActive := False ;
           end ;
 
@@ -2726,7 +2851,10 @@ begin
              ThorlabsSession.PixelClock := ThorlabsSession.DefaultPixelClock ;
              FReadoutSpeed := ThorlabsSession.PixelClock ;
              end ;
+          end ;
 
+       PCOAPI : begin
+          PCOAPISession.ReadoutSpeed := FReadoutSpeed ;
           end ;
 
        end ;
@@ -2932,6 +3060,19 @@ begin
                                        FReadoutTime ) ;
           end ;
 
+       PCOAPI : begin
+          PCOAPI_CheckFrameInterval( PCOAPISession,
+                                    FFrameLeft,
+                                    FFrameRight,
+                                    FFrameTop,
+                                    FFrameBottom,
+                                    FBinFactor,
+                                    FFrameWidthMax,
+                                    FFrameHeightMax,
+                                    FFrameInterval,
+                                    FReadoutTime,
+                                    FTRiggerMode ) ;
+          end ;
        end ;
      end ;
 
@@ -3008,6 +3149,12 @@ begin
 
         Thorlabs : begin
            Result :=  (20000000 div NumbytesPerFrame)-1 ;
+           end ;
+
+        PCOAPI : begin
+           Result :=  (20000000 div NumbytesPerFrame)-1 ;
+//           if Result > 36 then Result := 36 ;
+           Result := 32 ;
            end ;
 
         else begin
@@ -3290,6 +3437,10 @@ begin
        DTOL : begin
           end ;
 
+       PCOAPI : begin
+          PCOAPI_SetTemperature( PCOAPISession, FTemperatureSetPoint ) ;
+          end ;
+
        end ;
      end ;
 
@@ -3350,6 +3501,10 @@ begin
           end ;
 
        DTOL : begin
+          end ;
+
+       PCOAPI : begin
+  //        AndorSDK3_SetCooling( PCOAPISession, Value ) ;
           end ;
 
        end ;

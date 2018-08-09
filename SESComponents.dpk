@@ -104,6 +104,7 @@ contains
   dd1550 in 'dd1550.pas',
   dd1550A in 'dd1550A.pas',
   dd1550B in 'dd1550B.pas',
-  MCCUnit in 'MCCUnit.pas';
+  MCCUnit in 'MCCUnit.pas',
+  PCOUnit in 'PCOUnit.pas';
 
 end.
