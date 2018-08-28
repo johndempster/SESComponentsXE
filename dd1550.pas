@@ -676,7 +676,7 @@ begin
          if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
          if SourcePath <> '' then Break ;
 
-           end;
+         end;
 
      // If not available, use version from installation
      if SourcePath = '' then begin

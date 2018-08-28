@@ -3,6 +3,7 @@ unit PCOUnit;
 // PCO Camera Interface library
 // -------------------------------
 // 24.07.18
+// 24.08.18 Tested and working with PCO Edge 5.5 USB.
 
 interface
 
@@ -1417,6 +1418,13 @@ TPCO_SetTransferParameter = function(
                             iLen : Integer
                             ) : Integer ; stdcall ;
 
+TPCO_SetTransferParametersAuto = function(
+                            ph : THandle ;
+                            Buffer : Pointer ;
+                            iLen : Integer
+                            ) : Integer ; stdcall ;
+
+
 TPCO_WaitforBuffer = function(
                      ph : THandle ;
                      nr_of_buffer : Integer ;
@@ -1845,7 +1853,26 @@ TPCO_ArmCamera = function(
 TPCO_ResetLib = procedure ;
 // Resets the sc2_cam internal enumerator and unloads all loaded interface dlls.
 
+TPCO_SetTimestampMode = function(
+                        ph : THandle ;
+                        wTimeStampMode : Word
+                        ) : Integer ; stdcall ;
 
+TPCO_SetStorageMode = function(
+                     ph : THandle ;
+                        wStorageMode : Word
+                        ) : Integer ; stdcall ;
+
+TPCO_GetStorageMode= function(
+                     ph : THandle ;
+                     var wStorageMode : Word
+                        ) : Integer ; stdcall ;
+
+TPCO_SetActiveLookupTable= function(
+                     ph : THandle ;
+                     var wIdentifier : Word ;
+                     var wOffset : Word
+                     ) : Integer ; stdcall ;
 
 // Function calls
 
@@ -1858,6 +1885,11 @@ function PCOAPI_CheckDLLExists( DLLName : String ) : Boolean ;
 procedure PCOAPI_LoadLibrary(
           var Session : TPCOAPISession   // Camera session record  ;
           ) ;
+
+function  PCOAPI_CopyAndLoadLibrary(
+          DLLName : string ;
+          SourcePath : string ;
+          DestPath : string ) : Thandle ;
 
 function PCOAPI_OpenCamera(
           var Session : TPCOAPISession ;   // Camera session record
@@ -1936,7 +1968,6 @@ procedure PCOAPI_UpdateCircularBufferSize(
           BinFactor : Integer
           ) ;
 
-
 function PCOAPI_CheckFrameInterval(
           var Session : TPCOAPISession ;   // Camera session record
           FrameLeft : Integer ;   // Left edge of capture region (In)
@@ -1950,7 +1981,6 @@ function PCOAPI_CheckFrameInterval(
           Var ReadoutTime : Double ;
           TriggerMode : Integer
           ) : LongBool ;
-
 
 procedure PCOAPI_Wait( Delay : Single ) ;
 
@@ -2019,6 +2049,7 @@ var
   PCO_AddBufferEx : TPCO_AddBufferEx ;
   PCO_SetImageParameters : TPCO_SetImageParameters ;
   PCO_SetTransferParameter : TPCO_SetTransferParameter ;
+  PCO_SetTransferParametersAuto : TPCO_SetTransferParametersAuto ;
   PCO_WaitforBuffer : TPCO_WaitforBuffer ;
   PCO_GetBuffer : TPCO_GetBuffer ;
   PCO_FreeBuffer : TPCO_FreeBuffer ;
@@ -2056,6 +2087,10 @@ var
   PCO_GetCameraBusyStatus : TPCO_GetCameraBusyStatus ;
   PCO_GetExpTrigSignalStatus : TPCO_GetExpTrigSignalStatus ;
   PCO_ArmCamera : TPCO_ArmCamera ;
+  PCO_SetTimestampMode : TPCO_SetTimestampMode ;
+  PCO_SetStorageMode : TPCO_SetStorageMode ;
+  PCO_GetStorageMode : TPCO_GetStorageMode ;
+  PCO_SetActiveLookupTable : TPCO_SetActiveLookupTable ;
 
   LibraryHnd : THandle ;         // DLL library handle
   LibraryLoaded : LongBool ;      // DLL library loaded flag
@@ -2065,15 +2100,13 @@ var
   WaitBufferThread : TWaitBufferThread ;
   SessionLoc : TPCOAPISession ;
   NumFramesAcquired,MaxFramesAcquired,tBufferRead : Integer ;
+  ImageNumber,TStart : Double ;
 
 
 procedure TWaitBufferThread.Execute;
 var
-    NumBytes,Err : Integer ;
-    pRBuf : Pointer ;
-    i,iFrom,iTo,MaxFramesPerCall,t0 : Integer ;
+    i,iTo,MaxFramesPerCall,t0 : Integer ;
     pBuf : PWordArray ;
-    StatusDLL, StatusDrv : DWord  ;
     Done : Boolean ;
     PCO_Buflist : Array[0..PCOAPINumBufs-1] of TPCO_BuflistItem ;
 begin
@@ -2083,16 +2116,16 @@ begin
 
   while not Terminated do begin
 
-    PCOAPI_CheckError('PCO_WaitforBuffer',
+ //   PCOAPI_CheckError('PCO_WaitforBuffer',
                       PCO_WaitforBuffer( SessionLoc.CamHandle,
                                          PCOAPINumBufs,
                                          @PCO_Buflist,
-                                         1000));
+                                         1100);
 
     // Transfer images from camera buffer to application frame buffer
     Done := False ;
     NumFramesAcquired := 0 ;
-    MaxFramesPerCall := PCOAPINumBufs div 2 ;
+    MaxFramesPerCall := PCOAPINumBufs - 4 {div 2} ;
     t0 := timegettime ;
     repeat
 
@@ -2114,6 +2147,13 @@ begin
              Inc(iTo) ;
              end ;
 
+         ImageNumber := pBuf^[3]  ;
+   {      ImageNumber := ImageNumber*100.0 + pBuf^[11] ;
+         ImageNumber := ImageNumber*100.0 + pBuf^[12] ;
+         ImageNumber := ImageNumber*100.0 + pBuf^[13] ;}
+         if SessionLoc.NumFramesAcquired = 0 then TStart := ImageNumber ;
+
+
          // Add buffer back to queue
          PCOAPI_CheckError('PCO_AddBufferEx',
                            PCO_AddBufferEx(SessionLoc.CamHandle,0,0,
@@ -2132,13 +2172,13 @@ begin
          Inc(SessionLoc.NumFramesAcquired) ;
          Inc(NumFramesAcquired) ;
          MaxFramesAcquired := Max(MaxFramesAcquired,NumFramesAcquired);
-         if NumFramesAcquired >= MaxFramesPerCall then Done := True ;
+  //       if NumFramesAcquired >= MaxFramesPerCall then Done := True ;
          end
       else Done := True ;
       until Done ;
-
-    SessionLoc.GetImageInUse := False ;
     tBufferRead := Max(timegettime - t0,TBufferRead);
+    SessionLoc.GetImageInUse := False ;
+
 //    sleep(10) ;
     end;
 
@@ -2153,16 +2193,48 @@ procedure PCOAPI_LoadLibrary(
   Load camera interface DLL library into memory
   ---------------------------------------------}
 const
-    LibName = 'sc2_cam.dll' ;
+    LibFileName = 'sc2_cam.dll' ;
+var
+    WinDir : Array[0..255] of Char ;
+    SysDrive : String ;
+
 begin
 
      LibraryLoaded := False ;
 
-     // Look for DLL initially in Winfluor folder
-     Session.LibFileName := ExtractFilePath(ParamStr(0)) + LibName ;
+     // Get system drive
+     GetWindowsDirectory( WinDir, High(WinDir) ) ;
+     SysDrive := ExtractFileDrive(String(WinDir)) ;
 
-     // Check that DLLs are available in WinFluor program folder
-     if not PCOAPI_CheckDLLExists( 'sc2_cam.dll' ) then Exit ;
+{$IFDEF WIN32}
+     // Look for DLL initially in Winfluor folder
+     Session.LibFileName := ExtractFilePath(ParamStr(0)) + LibFileName ;
+     if not FileExists( Session.LibFileName ) then begin
+        // If not in winfluor folder, try PCO SDK folder
+        Session.LibFileName := SysDrive + '\Program Files (x86)\Digital Camera Toolbox\pco.sdk\bin\' + LibFileName ;
+        if not FileExists( Session.LibFileName ) then begin
+           // Use Windows directory
+           ShowMessage( LibFileName + ' not found! Copy 32 bit version to ' + ExtractFilePath(ParamStr(0)) );
+           exit ;
+           end ;
+        end ;
+{$ELSE}
+     // Look for DLL initially in Winfluor folder
+     Session.LibFileName := ExtractFilePath(ParamStr(0)) + LibFileName ;
+     if not FileExists( Session.LibFileName ) then begin
+        // If not in winfluor folder, try PCO SDK folder
+        Session.LibFileName := SysDrive + '\Program Files (x86)\Digital Camera Toolbox\pco.sdk\bin64\' + LibFileName ;
+        if not FileExists( Session.LibFileName ) then begin
+            // If not in PCO SDK folder try CamWare folder
+            Session.LibFileName := SysDrive + '\Program Files\Digital Camera Toolbox\Camware4\' + LibFileName ;
+            if not FileExists( Session.LibFileName ) then begin
+                // Use Windows directory
+                ShowMessage( LibFileName + ' not found! Copy 64 bit version to ' + ExtractFilePath(ParamStr(0)) );
+                exit ;
+                end ;
+            end ;
+        end ;
+{$IFEND}
 
      { Load DLL camera interface library }
      LibraryHnd := LoadLibrary( PChar(Session.LibFileName));
@@ -2183,6 +2255,7 @@ begin
      @PCO_AddBufferEx := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_AddBufferEx') ;
      @PCO_SetImageParameters := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_SetImageParameters') ;
      @PCO_SetTransferParameter := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_SetTransferParameter') ;
+     @PCO_SetTransferParametersAuto := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_SetTransferParametersAuto') ;
      @PCO_WaitforBuffer := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_WaitforBuffer') ;
      @PCO_GetBuffer := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_GetBuffer') ;
      @PCO_FreeBuffer := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_FreeBuffer') ;
@@ -2220,7 +2293,10 @@ begin
      @PCO_GetCameraBusyStatus := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_GetCameraBusyStatus') ;
      @PCO_GetExpTrigSignalStatus := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_GetExpTrigSignalStatus') ;
      @PCO_ArmCamera := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_ArmCamera') ;
-
+     @PCO_SetTimestampMode := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_SetTimestampMode') ;
+     @PCO_SetStorageMode := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_SetStorageMode') ;
+     @PCO_GetStorageMode := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_GetStorageMode') ;
+     @PCO_SetActiveLookupTable:= PCOAPI_GetDLLAddress(LibraryHnd,'PCO_SetActiveLookupTable') ;
      LibraryLoaded := True ;
 
      end ;
@@ -2267,6 +2343,23 @@ begin
      end ;
 
 
+function  PCOAPI_CopyAndLoadLibrary(
+          DLLName : string ;
+          SourcePath : string ;
+          DestPath : string ) : Thandle ;
+// ---------------------------------------------------------
+// Copy DLL library from source to destination path and load
+// ---------------------------------------------------------
+begin
+     CopyFile( PChar(SourcePath+DLLName), PChar(DestPath+DLLName), false ) ;
+     Result := LoadLibrary(PChar(DestPath+DLLName)) ;
+     if Result = 0 then ShowMessage('Unable to load ' + DestPath+DLLName );
+     end;
+
+
+
+
+
 function PCOAPI_OpenCamera(
           var Session : TPCOAPISession ;   // Camera session record
           var FrameWidthMax : Integer ;      // Returns camera frame width
@@ -2283,13 +2376,7 @@ function PCOAPI_OpenCamera(
 var
     Err : Integer ;
     i :Integer ;
-    CameraIndex : Integer ;
-    wsValue : WideString ;
-    iValue : Int64 ;
-    dValue : Double ;
-    bValue : LongBool ;
-    s,sValue : string ;
-    BadCode : Integer ;
+    s : string ;
     cBuf : Array[0..99] of ANSIChar ;
     RecordingState : Word ;
 begin
@@ -2303,10 +2390,15 @@ begin
         CameraInfo.Add('PCO: Unable to load sc2_cam.dll') ;
         Exit ;
         end ;
+     CameraInfo.Add( 'DLL: ' + Session.LibFileName ) ;
 
      // Open camera
-     PCOAPI_CheckError( 'PCO_OpenCamera',
-                        PCO_OpenCamera( Session.CamHandle,0 )) ;
+     Err := PCO_OpenCamera( Session.CamHandle,0 ) ;
+     if Err <> PCO_NOERROR then
+        begin
+        ShowMessage('PCO: Error opening camera. Check camera cables!');
+        Exit ;
+        end;
 
      // Get camera properties
       Session.PCO_Description.wSize := SizeOf( Session.PCO_Description) ;
@@ -2397,6 +2489,7 @@ begin
        end;
      CameraInfo.Add( s ) ;
 
+     if (Session.PCO_Description.dwGeneralCapsDESC1 and GENERALCAPS1_NO_TIMESTAMP) <> 0 then CameraInfo.Add('Timestamp mode not available.');
 
      // Stop camera if recording in progress
      PCOAPI_CheckError( 'PCO_GetRecordingState',
@@ -2492,8 +2585,6 @@ procedure PCOAPI_SetCooling(
 // -------------------
 // Turn cooling on/off
 // -------------------
-var
-    wsValue : WideString ;
 begin
      if not Session.CameraOpen then Exit ;
 
@@ -2540,7 +2631,6 @@ procedure PCOAPI_SetCameraADC(
 // ------------------------
 var
     i : Integer ;
-    Pixelformat : WideString ;
 begin
 
    if not Session.CameraOpen then Exit ;
@@ -2682,9 +2772,7 @@ procedure PCOAPI_CheckROIBoundaries(
 const
     MaxTries = 10 ;
 var
-    i64Value : Int64 ;
-    i,Diff,MinDiff,iNearest,NearestBinFactor,iValue : Integer ;
-    AOIWidthSteps : Integer ;
+    i,Diff,MinDiff,iNearest,NearestBinFactor : Integer ;
 begin
     if not Session.CameraOpen then Exit ;
 
@@ -2706,20 +2794,20 @@ begin
     FrameLeft := FrameLeft div BinFactor ;
     FrameTop := FrameTop div BinFactor ;
 
-    // Ensure ROI limits are valid multiples of step sizes
+    // Ensure ROI limits are valid multiples of step sizes and greater than minimum sizes
 
     FrameLeft := (FrameLeft div Session.PCO_Description.wRoiHorStepsDESC)*Session.PCO_Description.wRoiHorStepsDESC ;
     FrameTop := (FrameTop div Session.PCO_Description.wRoiVertStepsDESC)*Session.PCO_Description.wRoiVertStepsDESC ;
     FrameWidth := (FrameWidth div Session.PCO_Description.wRoiHorStepsDESC)*Session.PCO_Description.wRoiHorStepsDESC ;
+    FrameWidth := Max( FrameWidth, Session.PCO_Description.wMinSizeHorzDESC ) ;
     FrameHeight := (FrameHeight div Session.PCO_Description.wRoiVertStepsDESC)*Session.PCO_Description.wRoiVertStepsDESC ;
-
-    // Set width
+    FrameHeight := Max( FrameHeight, Session.PCO_Description.wMinSizeVertDESC ) ;
 
      // Set binning factors
      PCOAPI_CheckError( 'PCO_SetBinning',
                          PCO_SetBinning( Session.CamHandle,
                                          BinFactor,BinFactor)) ;
-
+    // Set region of interest
     PCOAPI_CheckError( 'PCO_SetROI',
                        PCO_SetROI( Session.CamHandle,
                                    FrameLeft + 1,
@@ -2757,15 +2845,16 @@ function PCOAPI_StartCapture(
 // -------------------
 // Start frame capture
 // -------------------
-const
-     TimerTickInterval = 20 ; // Timer tick resolution (ms)
-
 var
     i,iB : Integer ;
     MaxWidth,MaxHeight : Word ;
     ExposureTime_ns,ExposureTime_us : DWord ;
     FrameRateStatus : Word ;
     CCDTemp,CameraTemp,PowTemp : SmallInt ;
+    pTransferParameters : Pointer ;
+    TransferParametersSize : Integer ;
+    LUTIdentifier, LUTOffset : Word ;
+
 begin
 
      Result := False ;
@@ -2779,6 +2868,13 @@ begin
                                              CCDTemp,CameraTemp,PowTemp));
      if Word(CCDTemp) = $8000 then Session.Temperature := CameraTemp*0.1
                               else Session.Temperature := CCDTemp*0.1 ;
+
+     // Set camera storage mode to FIFO mode
+     // Note. Camera internal storage must be in FIFO mode to ensure that
+     // no frames are dropped if delays occur in camera-host data transfer
+     PCOAPI_CheckError( 'PCO_SetStorageMode',
+                         PCO_SetStorageMode( Session.CamHandle,
+                                             STORAGE_MODE_FIFO_BUFFER)) ;
 
      // Set pixel readout rate
      PCOAPI_CheckError( 'PCO_SetPixelRate',
@@ -2838,6 +2934,24 @@ begin
                         Session.AOIWidth,Session.AOIHeight,
                         IMAGEPARAMETERS_READ_WHILE_RECORDING,Nil,0));
 
+     // Set image transfer parameters automatically
+     // (only effective for Edge with CameraLink)
+     pTransferParameters := Nil ;
+     TransferParametersSize := 0 ;
+     PCOAPI_CheckError('PCO_SetTransferParametersAuto',
+                       PCO_SetTransferParametersAuto( Session.CamHandle,
+                                                      pTransferParameters,
+                                                      TransferParametersSize ));
+
+      // Set look table (only required for CameraLink cameras)
+      LUTIdentifier := 0 ;
+      LUTOffset := 0 ;
+      PCOAPI_CheckError('PCO_SetActiveLookupTable',
+                        PCO_SetActiveLookupTable( Session.CamHandle,
+                                                  LUTIdentifier,
+                                                  LUTOffset ));
+
+      // Enable settings in camera
       PCOAPI_CheckError('PCO_ArmCamera',
                           PCO_ArmCamera(Session.CamHandle));
 
@@ -3006,10 +3120,9 @@ begin
 
      ReadoutTime := (ImageTiming.FrameTime_ns)*1E-9  ;
 
-     // Limit frame interval to 2x readout time in external trigger mode
-//     if TriggerMode = CamFreeRun then FrameInterval := Max(FrameInterval,ReadoutTime)
-//                                 else FrameInterval := Max(FrameInterval,2.0*ReadoutTime + 1E-3) ;
-     FrameInterval := Max(Max(FrameInterval,ReadoutTime),1E-3) ;
+     // Limit frame interval to 1 ms more than readout time to
+     // allow some exposure time in triggered capture mode
+     FrameInterval := Max(FrameInterval,ReadoutTime + 1E-3) ;
      Result := True ;
 
      end ;
@@ -3027,13 +3140,15 @@ var
     StatusDLL, StatusDrv : DWord  ;
     Done : Boolean ;
 begin
+    if not Session.CameraOpen then Exit ;
+  //  if Session.GetImageInUse then Exit ;
+  //  Session.GetImageInUse := True ;
+
     Session.FramePointer := SessionLoc.FramePointer ;
     Session.NumFramesAcquired := SessionLoc.NumFramesAcquired ;
-    outputdebugstring(pchar(format('Max frames acq. %d %d',[MaxFramesAcquired,tBufferRead])));
+
+//    outputdebugstring(pchar(format('Max frames acq. %d %d %.0f %d',[MaxFramesAcquired,tBufferRead,(ImageNumber-TStart),Session.NumFramesAcquired])));
     exit ;
-    if not Session.CameraOpen then Exit ;
-    if Session.GetImageInUse then Exit ;
-    Session.GetImageInUse := True ;
 
     // Transfer images from camera buffer to application frame buffer
 
