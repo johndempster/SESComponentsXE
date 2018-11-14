@@ -1,12 +1,8 @@
-unit ThorLabsUnit;
+unit IDSuEYEUnit;
 // ====================
-// Thorlabs DCx Cameras
+// iDS uEYE Cameras
 // ====================
-// 5.09.14 Tested with DCC1240M (drops frames when operating above 17 MHz pixel clock)
-// 8.10.14 is_DeviceFeature() now only called to set shutter mode for CMOS cameras
-//         to avoid call unsupported error with DCU223 and similar cameras.
-// 3.05.17
-// 14.11.18 Session.ActiveFrameCounter now updated with frame count since StartCapture()
+// 31.10.18 Based upon ThorlabsUnit
 
 interface
 
@@ -901,7 +897,6 @@ const
    IS_SET_CM_Y16 =        28 ;
    IS_SET_CM_BAYER16 =    29 ;
 
-   IS_CM_MODE_MASK =        $007F ;
 
 // planar vs packed format
    IS_CM_FORMAT_PACKED =    $0000 ;
@@ -915,52 +910,46 @@ const
 
 
 // define compliant color format names
-   IS_CM_MONO8 =  IS_SET_CM_Y8 ;               // occupies 8 Bit
-   IS_CM_MONO12 = IS_SET_CM_Y12 ;              // occupies 16 Bit
-   IS_CM_MONO16 = IS_SET_CM_Y16 ;              // occupies 16 Bit
 
-   IS_CM_BAYER_RG8 =            IS_SET_CM_BAYER ;            // occupies 8 Bit
-   IS_CM_BAYER_RG12 =           IS_SET_CM_BAYER12 ;          // occupies 16 Bit
-   IS_CM_BAYER_RG16 =           IS_SET_CM_BAYER16 ;          // occupies 16 Bit
+        IS_CM_SENSOR_RAW8         =  11  ; // brief Raw sensor data, occupies 8 bits */
+        IS_CM_SENSOR_RAW10        =  33 ; // brief Raw sensor data, occupies 16 bits */
+        IS_CM_SENSOR_RAW12        =  27 ; // brief Raw sensor data, occupies 16 bits */
+        IS_CM_SENSOR_RAW16        =  29 ; //brief Raw sensor data, occupies 16 bits */
+        IS_CM_MONO8               =  6 ;  // brief Mono, occupies 8 bits */
+        IS_CM_MONO10              =  34 ;  // brief Mono, occupies 16 bits */
+        IS_CM_MONO12              =  26 ; // \brief Mono, occupies 16 bits */
+        IS_CM_MONO16              =  28 ; // \brief Mono, occupies 16 bits */
+        IS_CM_BGR5_PACKED         =  (3  or IS_CM_ORDER_BGR) ; // \brief BGR (5 5 5 1), 1 bit not used, occupies 16 bits */
+        IS_CM_BGR565_PACKED       =  (2  or IS_CM_ORDER_BGR) ; // \brief BGR (5 6 5), occupies 16 bits */
+        IS_CM_RGB8_PACKED         =  (1  or IS_CM_ORDER_RGB) ; // \brief BGR and RGB (8 8 8), occupies 24 bits */
+        IS_CM_BGR8_PACKED         =  (1  or IS_CM_ORDER_BGR) ;
+        IS_CM_RGBA8_PACKED        =  (0  or IS_CM_ORDER_RGB) ; // \brief BGRA and RGBA (8 8 8 8), alpha not used, occupies 32 bits */
+        IS_CM_BGRA8_PACKED        =  (0  or IS_CM_ORDER_BGR) ;
+        IS_CM_RGBY8_PACKED        =  (24 or IS_CM_ORDER_RGB) ; // \brief BGRY and RGBY (8 8 8 8), occupies 32 bits */
+        IS_CM_BGRY8_PACKED        =  (24 or IS_CM_ORDER_BGR) ;
+        IS_CM_RGB10_PACKED        =  (25 or IS_CM_ORDER_RGB) ; // \brief BGR and RGB (10 10 10 2), 2 bits not used, occupies 32 bits, debayering is done from 12 bit raw */
+        IS_CM_BGR10_PACKED        =  (25 or IS_CM_ORDER_BGR) ;
+        IS_CM_RGB10_UNPACKED      =  (35 or IS_CM_ORDER_RGB) ; // \brief BGR and RGB (10(16) 10(16) 10(16)), 6 MSB bits not used respectively, occupies 48 bits */
+        IS_CM_BGR10_UNPACKED      =  (35 or IS_CM_ORDER_BGR) ;
+        IS_CM_RGB12_UNPACKED      =  (30 or IS_CM_ORDER_RGB) ; // \brief BGR and RGB (12(16) 12(16) 12(16)), 4 MSB bits not used respectively, occupies 48 bits */
+        IS_CM_BGR12_UNPACKED      =  (30 or IS_CM_ORDER_BGR) ;
+        IS_CM_RGBA12_UNPACKED     =  (31 or IS_CM_ORDER_RGB) ;// \brief BGRA and RGBA (12(16) 12(16) 12(16) 16), 4 MSB bits not used respectively, alpha not used, occupies 64 bits */
+        IS_CM_BGRA12_UNPACKED     =  (31 or IS_CM_ORDER_BGR) ;
+        IS_CM_JPEG                =  32 ;
+        IS_CM_UYVY_PACKED         =  12 ; // \brief YUV422 (8 8), occupies 16 bits */
+        IS_CM_UYVY_MONO_PACKED    =  13 ;
+        IS_CM_UYVY_BAYER_PACKED   =  14 ;
+        IS_CM_CBYCRY_PACKED       =  23 ; // \brief YCbCr422 (8 8), occupies 16 bits */
 
-   IS_CM_SENSOR_RAW8 =          IS_SET_CM_BAYER ;            // occupies 8 Bit
-   IS_CM_SENSOR_RAW12 =         IS_SET_CM_BAYER12 ;          // occupies 16 Bit
-   IS_CM_SENSOR_RAW16 =         IS_SET_CM_BAYER16 ;          // occupies 16 Bit
+// \brief RGB planar (8 8 8), occupies 24 bits */
+        IS_CM_RGB8_PLANAR        =   (1 or IS_CM_ORDER_RGB or IS_CM_FORMAT_PLANAR) ;
 
-   IS_CM_BGR5_PACKED =          (IS_SET_CM_RGB15 or IS_CM_ORDER_BGR or IS_CM_FORMAT_PACKED) ;// occupies 16 Bit
-   IS_CM_BGR555_PACKED =        (IS_SET_CM_RGB15 or IS_CM_ORDER_BGR or IS_CM_FORMAT_PACKED) ;// occupies 16 Bit
-   IS_CM_BGR565_PACKED =        (IS_SET_CM_RGB16 or IS_CM_ORDER_BGR or IS_CM_FORMAT_PACKED) ;// occupies 16 Bit
+//        IS_CM_RGB12_PLANAR          //no compliant version
+//        IS_CM_RGB16_PLANAR          //no compliant version
 
-   IS_CM_RGB8_PACKED =          (IS_SET_CM_RGB24 or IS_CM_ORDER_RGB or IS_CM_FORMAT_PACKED) ;// occupies 24 Bit
-   IS_CM_BGR8_PACKED =          (IS_SET_CM_RGB24 or IS_CM_ORDER_BGR or IS_CM_FORMAT_PACKED) ;// occupies 24 Bit
-   IS_CM_RGBA8_PACKED =         (IS_SET_CM_RGB32 or IS_CM_ORDER_RGB or IS_CM_FORMAT_PACKED) ;// occupies 32 Bit
-   IS_CM_BGRA8_PACKED =         (IS_SET_CM_RGB32 or IS_CM_ORDER_BGR or IS_CM_FORMAT_PACKED) ;// occupies 32 Bit
-   IS_CM_RGBY8_PACKED =         (IS_SET_CM_RGBY  or IS_CM_ORDER_RGB or IS_CM_FORMAT_PACKED) ;// occupies 32 Bit
-   IS_CM_BGRY8_PACKED =         (IS_SET_CM_RGBY  or IS_CM_ORDER_BGR or IS_CM_FORMAT_PACKED) ;// occupies 32 Bit
-   IS_CM_RGB10V2_PACKED =       (IS_SET_CM_RGB30 or IS_CM_ORDER_RGB or IS_CM_FORMAT_PACKED) ;// occupies 32 Bit
-   IS_CM_BGR10V2_PACKED =       (IS_SET_CM_RGB30 or IS_CM_ORDER_BGR or IS_CM_FORMAT_PACKED) ;// occupies 32 Bit
+        IS_CM_ALL_POSSIBLE = $FFFF ;
+        IS_CM_MODE_MASK = $007F ;
 
-   IS_CM_RGB10_PACKED =         (25 or IS_CM_ORDER_RGB or IS_CM_FORMAT_PACKED) ;
-   IS_CM_BGR10_PACKED =         (25 or IS_CM_ORDER_BGR or IS_CM_FORMAT_PACKED) ;
-
-   IS_CM_RGB12_PACKED =         (30 or IS_CM_ORDER_RGB or IS_CM_FORMAT_PACKED) ;             // occupies 48 Bit
-   IS_CM_BGR12_PACKED =         (30 or IS_CM_ORDER_BGR or IS_CM_FORMAT_PACKED) ;             // occupies 48 Bit
-   IS_CM_RGBA12_PACKED =        (31 or IS_CM_ORDER_RGB or IS_CM_FORMAT_PACKED) ;             // occupies 64 Bit
-   IS_CM_BGRA12_PACKED =        (31 or IS_CM_ORDER_BGR or IS_CM_FORMAT_PACKED) ;             // occupies 64 Bit
-
-   //IS_CM_YUV422_PACKED =        //no compliant version
-   IS_CM_UYVY_PACKED =          (IS_SET_CM_UYVY or IS_CM_FORMAT_PACKED) ;     // occupies 16 Bit
-   IS_CM_UYVY_MONO_PACKED =     (IS_SET_CM_UYVY_MONO or IS_CM_FORMAT_PACKED) ;
-   IS_CM_UYVY_BAYER_PACKED =    (IS_SET_CM_UYVY_BAYER or IS_CM_FORMAT_PACKED) ;
-   IS_CM_CBYCRY_PACKED =        (IS_SET_CM_CBYCRY or IS_CM_FORMAT_PACKED) ;   // occupies 16 Bit
-
-   IS_CM_RGB8_PLANAR =          (1 or IS_CM_ORDER_RGB or IS_CM_FORMAT_PLANAR) ;
-//   IS_CM_RGB12_PLANAR =         //no compliant version
-//   IS_CM_RGB16_PLANAR =         //no compliant version
-
-
-   IS_CM_ALL_POSSIBLE           = $FFFF ;
-   //IS_CM_MODE_MASK              = $007F ;
 
 // ----------------------------------------------------------------------------
 // Hotpixel correction
@@ -1785,27 +1774,119 @@ const
         IS_PIXELCLOCK_CMD_GET           = 5;
         IS_PIXELCLOCK_CMD_SET           = 6;
 
-        IS_DEVICE_FEATURE_CMD_GET_SUPPORTED_FEATURES               = 1;
-        IS_DEVICE_FEATURE_CMD_SET_LINESCAN_MODE                    = 2;
-        IS_DEVICE_FEATURE_CMD_GET_LINESCAN_MODE                    = 3;
-        IS_DEVICE_FEATURE_CMD_SET_LINESCAN_NUMBER                  = 4;
-        IS_DEVICE_FEATURE_CMD_GET_LINESCAN_NUMBER                  = 5;
-        IS_DEVICE_FEATURE_CMD_SET_SHUTTER_MODE                     = 6;
-        IS_DEVICE_FEATURE_CMD_GET_SHUTTER_MODE                     = 7;
-        IS_DEVICE_FEATURE_CMD_SET_PREFER_XS_HS_MODE                = 8;
-        IS_DEVICE_FEATURE_CMD_GET_PREFER_XS_HS_MODE                = 9;
-        IS_DEVICE_FEATURE_CMD_GET_DEFAULT_PREFER_XS_HS_MODE        = 10;
-        IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_DEFAULT                 = 11;
-        IS_DEVICE_FEATURE_CMD_GET_LOG_MODE                         = 12;
-        IS_DEVICE_FEATURE_CMD_SET_LOG_MODE                         = 13;
-        IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_VALUE_DEFAULT    = 14;
-        IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_VALUE_RANGE      = 15;
-        IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_VALUE            = 16;
-        IS_DEVICE_FEATURE_CMD_SET_LOG_MODE_MANUAL_VALUE            = 17;
-        IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_GAIN_DEFAULT     = 18;
-        IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_GAIN_RANGE       = 19;
-        IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_GAIN             = 20;
-        IS_DEVICE_FEATURE_CMD_SET_LOG_MODE_MANUAL_GAIN             = 21;
+    IS_DEVICE_FEATURE_CMD_GET_SUPPORTED_FEATURES                                = 1;
+    IS_DEVICE_FEATURE_CMD_SET_LINESCAN_MODE                                     = 2;
+    IS_DEVICE_FEATURE_CMD_GET_LINESCAN_MODE                                     = 3;
+    IS_DEVICE_FEATURE_CMD_SET_LINESCAN_NUMBER                                   = 4;
+    IS_DEVICE_FEATURE_CMD_GET_LINESCAN_NUMBER                                   = 5;
+    IS_DEVICE_FEATURE_CMD_SET_SHUTTER_MODE                                      = 6;
+    IS_DEVICE_FEATURE_CMD_GET_SHUTTER_MODE                                      = 7;
+    IS_DEVICE_FEATURE_CMD_SET_PREFER_XS_HS_MODE                                 = 8;
+    IS_DEVICE_FEATURE_CMD_GET_PREFER_XS_HS_MODE                                 = 9;
+    IS_DEVICE_FEATURE_CMD_GET_DEFAULT_PREFER_XS_HS_MODE                         = 10;
+    IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_DEFAULT                                  = 11;
+    IS_DEVICE_FEATURE_CMD_GET_LOG_MODE                                          = 12;
+    IS_DEVICE_FEATURE_CMD_SET_LOG_MODE                                          = 13;
+    IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_VALUE_DEFAULT                     = 14;
+    IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_VALUE_RANGE                       = 15;
+    IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_VALUE                             = 16;
+    IS_DEVICE_FEATURE_CMD_SET_LOG_MODE_MANUAL_VALUE                             = 17;
+    IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_GAIN_DEFAULT                      = 18;
+    IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_GAIN_RANGE                        = 19;
+    IS_DEVICE_FEATURE_CMD_GET_LOG_MODE_MANUAL_GAIN                              = 20;
+    IS_DEVICE_FEATURE_CMD_SET_LOG_MODE_MANUAL_GAIN                              = 21;
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_MODE_DEFAULT                   = 22;
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_MODE                           = 23;
+    IS_DEVICE_FEATURE_CMD_SET_VERTICAL_AOI_MERGE_MODE                           = 24;
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_POSITION_DEFAULT               = 25;
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_POSITION_RANGE                 = 26;
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_POSITION                       = 27;
+    IS_DEVICE_FEATURE_CMD_SET_VERTICAL_AOI_MERGE_POSITION                       = 28;
+    IS_DEVICE_FEATURE_CMD_GET_FPN_CORRECTION_MODE_DEFAULT                       = 29;
+    IS_DEVICE_FEATURE_CMD_GET_FPN_CORRECTION_MODE                               = 30;
+    IS_DEVICE_FEATURE_CMD_SET_FPN_CORRECTION_MODE                               = 31;
+    IS_DEVICE_FEATURE_CMD_GET_SENSOR_SOURCE_GAIN_RANGE                          = 32;
+    IS_DEVICE_FEATURE_CMD_GET_SENSOR_SOURCE_GAIN_DEFAULT                        = 33;
+    IS_DEVICE_FEATURE_CMD_GET_SENSOR_SOURCE_GAIN                                = 34;
+    IS_DEVICE_FEATURE_CMD_SET_SENSOR_SOURCE_GAIN                                = 35;
+    IS_DEVICE_FEATURE_CMD_GET_BLACK_REFERENCE_MODE_DEFAULT                      = 36;
+    IS_DEVICE_FEATURE_CMD_GET_BLACK_REFERENCE_MODE                              = 37;
+    IS_DEVICE_FEATURE_CMD_SET_BLACK_REFERENCE_MODE                              = 38;
+    IS_DEVICE_FEATURE_CMD_GET_ALLOW_RAW_WITH_LUT                                = 39;
+    IS_DEVICE_FEATURE_CMD_SET_ALLOW_RAW_WITH_LUT                                = 40;
+    IS_DEVICE_FEATURE_CMD_GET_SUPPORTED_SENSOR_BIT_DEPTHS                       = 41;
+    IS_DEVICE_FEATURE_CMD_GET_SENSOR_BIT_DEPTH_DEFAULT                          = 42;
+    IS_DEVICE_FEATURE_CMD_GET_SENSOR_BIT_DEPTH                                  = 43;
+    IS_DEVICE_FEATURE_CMD_SET_SENSOR_BIT_DEPTH                                  = 44;
+    IS_DEVICE_FEATURE_CMD_GET_TEMPERATURE                                       = 45;
+    IS_DEVICE_FEATURE_CMD_GET_JPEG_COMPRESSION                                  = 46;
+    IS_DEVICE_FEATURE_CMD_SET_JPEG_COMPRESSION                                  = 47;
+    IS_DEVICE_FEATURE_CMD_GET_JPEG_COMPRESSION_DEFAULT                          = 48;
+    IS_DEVICE_FEATURE_CMD_GET_JPEG_COMPRESSION_RANGE                            = 49;
+    IS_DEVICE_FEATURE_CMD_GET_NOISE_REDUCTION_MODE                              = 50;
+    IS_DEVICE_FEATURE_CMD_SET_NOISE_REDUCTION_MODE                              = 51;
+    IS_DEVICE_FEATURE_CMD_GET_NOISE_REDUCTION_MODE_DEFAULT                      = 52;
+    IS_DEVICE_FEATURE_CMD_GET_TIMESTAMP_CONFIGURATION                           = 53;
+    IS_DEVICE_FEATURE_CMD_SET_TIMESTAMP_CONFIGURATION                           = 54;
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_HEIGHT_DEFAULT                 = 55;
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_HEIGHT_NUMBER                  = 56;
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_HEIGHT_LIST                    = 57;
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_HEIGHT                         = 58;
+    IS_DEVICE_FEATURE_CMD_SET_VERTICAL_AOI_MERGE_HEIGHT                         = 59;
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_ADDITIONAL_POSITION_DEFAULT    = 60;
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_ADDITIONAL_POSITION_RANGE      = 61;
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_ADDITIONAL_POSITION            = 62;
+    IS_DEVICE_FEATURE_CMD_SET_VERTICAL_AOI_MERGE_ADDITIONAL_POSITION            = 63;
+    IS_DEVICE_FEATURE_CMD_GET_SENSOR_TEMPERATURE_NUMERICAL_VALUE                = 64;
+    IS_DEVICE_FEATURE_CMD_SET_IMAGE_EFFECT                                      = 65;
+    IS_DEVICE_FEATURE_CMD_GET_IMAGE_EFFECT                                      = 66;
+    IS_DEVICE_FEATURE_CMD_GET_IMAGE_EFFECT_DEFAULT                              = 67;
+    IS_DEVICE_FEATURE_CMD_GET_EXTENDED_PIXELCLOCK_RANGE_ENABLE_DEFAULT          = 68;
+    IS_DEVICE_FEATURE_CMD_GET_EXTENDED_PIXELCLOCK_RANGE_ENABLE                  = 69;
+    IS_DEVICE_FEATURE_CMD_SET_EXTENDED_PIXELCLOCK_RANGE_ENABLE                  = 70;
+    IS_DEVICE_FEATURE_CMD_MULTI_INTEGRATION_GET_SCOPE                           = 71;
+    IS_DEVICE_FEATURE_CMD_MULTI_INTEGRATION_GET_PARAMS                          = 72;
+    IS_DEVICE_FEATURE_CMD_MULTI_INTEGRATION_SET_PARAMS                          = 73;
+    IS_DEVICE_FEATURE_CMD_MULTI_INTEGRATION_GET_MODE_DEFAULT                    = 74;
+    IS_DEVICE_FEATURE_CMD_MULTI_INTEGRATION_GET_MODE                            = 75;
+    IS_DEVICE_FEATURE_CMD_MULTI_INTEGRATION_SET_MODE                            = 76;
+    IS_DEVICE_FEATURE_CMD_SET_I2C_TARGET                                        = 77;
+    IS_DEVICE_FEATURE_CMD_SET_WIDE_DYNAMIC_RANGE_MODE                           = 78;
+    IS_DEVICE_FEATURE_CMD_GET_WIDE_DYNAMIC_RANGE_MODE                           = 79;
+    IS_DEVICE_FEATURE_CMD_GET_WIDE_DYNAMIC_RANGE_MODE_DEFAULT                   = 80;
+    IS_DEVICE_FEATURE_CMD_GET_SUPPORTED_BLACK_REFERENCE_MODES                   = 81;
+    IS_DEVICE_FEATURE_CMD_SET_LEVEL_CONTROLLED_TRIGGER_INPUT_MODE               = 82;
+    IS_DEVICE_FEATURE_CMD_GET_LEVEL_CONTROLLED_TRIGGER_INPUT_MODE               = 83;
+    IS_DEVICE_FEATURE_CMD_GET_LEVEL_CONTROLLED_TRIGGER_INPUT_MODE_DEFAULT       = 84;
+    IS_DEVICE_FEATURE_CMD_GET_VERTICAL_AOI_MERGE_MODE_SUPPORTED_LINE_MODES      = 85;
+    IS_DEVICE_FEATURE_CMD_SET_REPEATED_START_CONDITION_I2C                      = 86;
+    IS_DEVICE_FEATURE_CMD_GET_REPEATED_START_CONDITION_I2C                      = 87;
+    IS_DEVICE_FEATURE_CMD_GET_REPEATED_START_CONDITION_I2C_DEFAULT              = 88;
+    IS_DEVICE_FEATURE_CMD_GET_TEMPERATURE_STATUS                                = 89;
+    IS_DEVICE_FEATURE_CMD_GET_MEMORY_MODE_ENABLE                                = 90;
+    IS_DEVICE_FEATURE_CMD_SET_MEMORY_MODE_ENABLE                                = 91;
+    IS_DEVICE_FEATURE_CMD_GET_MEMORY_MODE_ENABLE_DEFAULT                        = 92;
+    IS_DEVICE_FEATURE_CMD_93                                                    = 93;
+    IS_DEVICE_FEATURE_CMD_94                                                    = 94;
+    IS_DEVICE_FEATURE_CMD_95                                                    = 95;
+    IS_DEVICE_FEATURE_CMD_96                                                    = 96;
+    IS_DEVICE_FEATURE_CMD_GET_SUPPORTED_EXTERNAL_INTERFACES                     = 97;
+    IS_DEVICE_FEATURE_CMD_GET_EXTERNAL_INTERFACE                                = 98;
+    IS_DEVICE_FEATURE_CMD_SET_EXTERNAL_INTERFACE                                = 99;
+    IS_DEVICE_FEATURE_CMD_EXTENDED_AWB_LIMITS_GET                               = 100;
+    IS_DEVICE_FEATURE_CMD_EXTENDED_AWB_LIMITS_SET                               = 101;
+    IS_DEVICE_FEATURE_CMD_GET_MEMORY_MODE_ENABLE_SUPPORTED                      = 102;
+    IS_DEVICE_FEATURE_CMD_SET_SPI_TARGET                                        = 103;
+    IS_DEVICE_FEATURE_CMD_GET_FPN_CORRECTION_IS_CALIBRATED                      = 104;
+    IS_DEVICE_FEATURE_CMD_SET_FPN_CORRECTION_DATA_LOADING                       = 105;
+    IS_DEVICE_FEATURE_CMD_GET_FPN_CORRECTION_DATA_LOADING                       = 106;
+    IS_DEVICE_FEATURE_CMD_GET_MEMORY_MODE_BUFFER_LIMIT                          = 107;
+    IS_DEVICE_FEATURE_CMD_GET_MEMORY_MODE_BUFFER_LIMIT_DEFAULT                  = 108;
+    IS_DEVICE_FEATURE_CMD_SET_MEMORY_MODE_BUFFER_LIMIT                          = 109;
+    IS_DEVICE_FEATURE_CMD_GET_FPN_CORRECTION_DATA_LOADING_DEFAULT               = 110;
+    IS_DEVICE_FEATURE_CMD_GET_BLACKLEVEL_OFFSET_CORRECTION                      = 111;
+    IS_DEVICE_FEATURE_CMD_SET_BLACKLEVEL_OFFSET_CORRECTION                      = 112;
+
 
 
 
@@ -1817,6 +1898,24 @@ const
         IS_DEVICE_FEATURE_CAP_LOG_MODE                                  = $00000020;
         IS_DEVICE_FEATURE_CAP_SHUTTER_MODE_ROLLING_GLOBAL_START         = $00000040;
         IS_DEVICE_FEATURE_CAP_SHUTTER_MODE_GLOBAL_ALTERNATIVE_TIMING    = $00000080;
+    IS_DEVICE_FEATURE_CAP_VERTICAL_AOI_MERGE                        = $00000100;
+    IS_DEVICE_FEATURE_CAP_FPN_CORRECTION                            = $00000200;
+    IS_DEVICE_FEATURE_CAP_SENSOR_SOURCE_GAIN                        = $00000400;
+    IS_DEVICE_FEATURE_CAP_BLACK_REFERENCE                           = $00000800;
+    IS_DEVICE_FEATURE_CAP_SENSOR_BIT_DEPTH                          = $00001000;
+    IS_DEVICE_FEATURE_CAP_TEMPERATURE                               = $00002000;
+    IS_DEVICE_FEATURE_CAP_JPEG_COMPRESSION                          = $00004000;
+    IS_DEVICE_FEATURE_CAP_NOISE_REDUCTION                           = $00008000;
+    IS_DEVICE_FEATURE_CAP_TIMESTAMP_CONFIGURATION                   = $00010000;
+    IS_DEVICE_FEATURE_CAP_IMAGE_EFFECT                              = $00020000;
+    IS_DEVICE_FEATURE_CAP_EXTENDED_PIXELCLOCK_RANGE                 = $00040000;
+    IS_DEVICE_FEATURE_CAP_MULTI_INTEGRATION                         = $00080000;
+    IS_DEVICE_FEATURE_CAP_WIDE_DYNAMIC_RANGE                        = $00100000;
+    IS_DEVICE_FEATURE_CAP_LEVEL_CONTROLLED_TRIGGER                  = $00200000;
+    IS_DEVICE_FEATURE_CAP_REPEATED_START_CONDITION_I2C              = $00400000;
+    IS_DEVICE_FEATURE_CAP_TEMPERATURE_STATUS                        = $00800000;
+    IS_DEVICE_FEATURE_CAP_MEMORY_MODE                               = $01000000;
+    IS_DEVICE_FEATURE_CAP_SEND_EXTERNAL_INTERFACE_DATA              = $02000000;
 
         IS_LOG_MODE_FACTORY_DEFAULT    = 0;
         IS_LOG_MODE_OFF                = 1;
@@ -1825,11 +1924,16 @@ const
         IS_CAPTURE_STATUS_INFO_CMD_RESET = 1 ;
         IS_CAPTURE_STATUS_INFO_CMD_GET   = 2 ;
 
+    // Bit depth flags
+    IS_SENSOR_BIT_DEPTH_AUTO    = $0 ;
+    IS_SENSOR_BIT_DEPTH_8_BIT   = $1 ;
+    IS_SENSOR_BIT_DEPTH_10_BIT  = $2 ;
+    IS_SENSOR_BIT_DEPTH_12_BIT  = $4 ;
 
 
 
 type
-  TThorLabsSession = record
+  TIDSSession = record
      CamHandle : DWORD ;
      LibraryLoaded : Boolean ;
      LibraryHnd : THandle ;
@@ -2472,18 +2576,18 @@ TIS_CAPTURE_STATUS_INFO = record
 //  Tis_ReadI2C            =  function(hCam : DWord ; INT nDeviceAddr, INT nRegisterAddr, BYTE* pbData, INT nLen) : Integer ; cdecl ;
 
 
-function ThorLabs_GetDLLAddress(
+function IDS_GetDLLAddress(
          Handle : THandle ;
          const ProcName : string ) : Pointer ;
 
-function ThorLabs_CheckDLLExists( DLLName : String ) : Boolean ;
+function IDS_CheckDLLExists( DLLName : String ) : Boolean ;
 
-procedure ThorLabs_LoadLibrary(
-          var Session : TThorLabsSession    // camera session record  ;
+procedure IDS_LoadLibrary(
+          var Session : TIDSSession    // camera session record  ;
           ) ;
 
-function ThorLabs_OpenCamera(
-          var Session : TThorLabsSession ;  // camera session record
+function IDS_OpenCamera(
+          var Session : TIDSSession ;  // camera session record
           var FrameWidthMax : Integer ;      // Returns camera frame width
           var FrameHeightMax : Integer ;     // Returns camera frame width
           var BinFactorMax : Integer ;       // Maximum bin factor
@@ -2493,35 +2597,35 @@ function ThorLabs_OpenCamera(
           CameraInfo : TStringList         // Returns Camera details
           ) : LongBool ;
 
-function ThorLabs_PixelDepth( ADConverterList : TStringList ;
+function IDS_PixelDepth( ADConverterList : TStringList ;
                  ADCNum : Integer ) : Integer ;
 
-procedure ThorLabs_CloseCamera(
-          var Session : TThorLabsSession // Session record
+procedure IDS_CloseCamera(
+          var Session : TIDSSession // Session record
           ) ;
 
-procedure ThorLabs_GetCameraGainList(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_GetCameraGainList(
+          var Session : TIDSSession ; // Session record
           CameraGainList : TStringList
           ) ;
 
-procedure ThorLabs_GetCameraReadoutSpeedList(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_GetCameraReadoutSpeedList(
+          var Session : TIDSSession ; // Session record
           CameraReadoutSpeedList : TStringList
           ) ;
 
-procedure ThorLabs_GetCameraModeList(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_GetCameraModeList(
+          var Session : TIDSSession ; // Session record
           List : TStringList
           ) ;
 
-procedure ThorLabs_GetCameraADCList(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_GetCameraADCList(
+          var Session : TIDSSession ; // Session record
           List : TStringList
           ) ;
 
-procedure ThorLabs_CheckROIBoundaries(
-         var Session : TThorLabsSession ;  // camera session record
+procedure IDS_CheckROIBoundaries(
+         var Session : TIDSSession ;  // camera session record
          var FrameLeft : Integer ;            // Left pixel in CCD readout area
          var FrameRight : Integer ;           // Right pixel in CCD eadout area
          var FrameTop : Integer ;             // Top of CCD readout area
@@ -2534,11 +2638,11 @@ procedure ThorLabs_CheckROIBoundaries(
          var ReadoutTime : Double
          ) ;
 
-function ThorLabs_BinFactor( BinFactorList : TStringList ;
+function IDS_BinFactor( BinFactorList : TStringList ;
                 Index : Integer ) : Integer ;
 
-function ThorLabs_StartCapture(
-         var Session : TThorLabsSession ;  // camera session record
+function IDS_StartCapture(
+         var Session : TIDSSession ;  // camera session record
          var InterFrameTimeInterval : Double ;      // Frame exposure time
          AdditionalReadoutTime : Double ; // Additional readout time (s)
          AmpGain : Integer ;               // camera amplifier gain index
@@ -2554,8 +2658,8 @@ function ThorLabs_StartCapture(
          var ReadoutTime : Double        // Return frame readout time
          ) : LongBool ;
 
-procedure ThorLabs_UpdateCircularBufferSize(
-          var Session : TThorLabsSession  ;  // camera session record
+procedure IDS_UpdateCircularBufferSize(
+          var Session : TIDSSession  ;  // camera session record
           FrameLeft : Integer ;
           FrameRight : Integer ;
           FrameTop : Integer ;
@@ -2563,55 +2667,55 @@ procedure ThorLabs_UpdateCircularBufferSize(
           BinFactor : Integer
           ) ;
 
-function ThorLabs_CheckFrameInterval(
-          var Session : TThorLabsSession ;  // camera session record
+function IDS_CheckFrameInterval(
+          var Session : TIDSSession ;  // camera session record
           TriggerMode : Integer ;
           Var FrameInterval : Double ;
           Var ReadoutTime : Double) : LongBool ;
 
 
-procedure ThorLabs_Wait( Delay : Single ) ;
+procedure IDS_Wait( Delay : Single ) ;
 
-procedure ThorLabs_SetBinning(
-          var Session : TThorLabsSession ;  // camera session record
+procedure IDS_SetBinning(
+          var Session : TIDSSession ;  // camera session record
           BinFactor : Integer
           ) ;
 
-procedure ThorLabs_GetImage(
-          var Session : TThorLabsSession   // camera session record
+procedure IDS_GetImage(
+          var Session : TIDSSession   // camera session record
           ) ;
 
-procedure ThorLabs_StopCapture(
-          var Session : TThorLabsSession   // camera session record
+procedure IDS_StopCapture(
+          var Session : TIDSSession   // camera session record
           ) ;
 
-procedure ThorLabs_SetTemperature(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_SetTemperature(
+          var Session : TIDSSession ; // Session record
           var TemperatureSetPoint : Single  // Required temperature
           ) ;
 
-procedure ThorLabs_SetCooling(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_SetCooling(
+          var Session : TIDSSession ; // Session record
           CoolingOn : LongBool  // True = Cooling is on
           ) ;
 
-procedure ThorLabs_SetFanMode(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_SetFanMode(
+          var Session : TIDSSession ; // Session record
           FanMode : Integer  // 0 = Off, 1=low, 2=high
           ) ;
 
-procedure ThorLabs_SetCameraMode(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_SetCameraMode(
+          var Session : TIDSSession ; // Session record
           Mode : Integer ) ;
 
-procedure ThorLabs_SetCameraADC(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_SetCameraADC(
+          var Session : TIDSSession ; // Session record
           ADCNum : Integer ;
           var PixelDepth : Integer ;
           var GreyLevelMin : Integer ;
           var GreyLevelMax : Integer ) ;
 
-procedure ThorLabs_CheckError(
+procedure IDS_CheckError(
           CamHandle : DWord ;
           FuncName : String ;   // Name of function called
           ErrNum : Integer      // Error # returned by function
@@ -2725,8 +2829,8 @@ var
 implementation
 
 uses SESCam ;
-procedure ThorLabs_LoadLibrary(
-          var Session : TThorLabsSession    // camera session record
+procedure IDS_LoadLibrary(
+          var Session : TIDSSession    // camera session record
           ) ;
 
 { ---------------------------------------------
@@ -2740,9 +2844,9 @@ begin
 
      { Load interface DLL library }
     {$IFDEF WIN32}
-      LibFileName := 'uc480.dll' ; // 32 bit version
+      LibFileName := 'uEye_api.dll' ; // 32 bit version
     {$ELSE}
-      LibFileName := 'uc480_64.dll' ; // 64 bit version
+      LibFileName := 'uEye_api_64.dll' ; // 64 bit version
     {$IFEND}
 
      { Load DLL camera interface library }
@@ -2752,114 +2856,114 @@ begin
         Exit ;
         end ;
 
-     @is_GetDLLVersion := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetDLLVersion') ;
-     @is_Renumerate := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_Renumerate') ;
-     @is_SetHWGainFactor := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetHWGainFactor') ;
-     @is_GetExtendedRegister := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetExtendedRegister') ;
-     @is_SetExtendedRegister := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetExtendedRegister') ;
-     @is_SetGlobalShutter := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetGlobalShutter') ;
-     @is_SetLED := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetLED') ;
-     @is_SetGainBoost := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetGainBoost') ;
-     @is_SetTriggerDelay := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetTriggerDelay') ;
-     @is_GetAutoInfo := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetAutoInfo') ;
-     @is_SetAutoParameter := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetAutoParameter') ;
-//     @is_SetAOI := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetAOI') ;
-     @is_GetCameraList := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetCameraList') ;
-     @is_SetHardwareGamma := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetHardwareGamma') ;
-     @is_SetTestImage := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetTestImage') ;
-     @is_SetBayerConversion := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetBayerConversion') ;
-     @is_SetCameraID := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetCameraID') ;
-     @is_SetImageAOI := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetImageAOI') ;
-     @is_LoadImage := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_LoadImage') ;
-     @is_SetFlashDelay := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetFlashDelay') ;
-     @is_GetGlobalFlashDelays := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetGlobalFlashDelays') ;
-     @is_SaveParameters := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SaveParameters') ;
-     @is_LoadParameters := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_LoadParameters') ;
-     @is_ResetToDefault := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_ResetToDefault') ;
-     @is_SetBinning := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetBinning') ;
-     @is_GetBusSpeed := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetBusSpeed') ;
-     @is_ForceTrigger := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_ForceTrigger') ;
-     @is_SetSubSampling := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetSubSampling') ;
-     @is_ResetMemory := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_ResetMemory') ;
-     @is_IsMemoryBoardConnected := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_IsMemoryBoardConnected') ;
-     @is_GetMemorySequenceWindow := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetMemorySequenceWindow') ;
-     @is_GetNumberOfMemoryImages := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetNumberOfMemoryImages') ;
-     @is_GetLastMemorySequence := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetLastMemorySequence') ;
-     @is_MemoryFreezeVideo := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_MemoryFreezeVideo') ;
-     @is_TransferMemorySequence := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_TransferMemorySequence') ;
-     @is_TransferImage := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_TransferImage') ;
-     @is_SetMemoryMode := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetMemoryMode') ;
-     @is_SetBadPixelCorrectionTable := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetBadPixelCorrectionTable') ;
-     @is_SaveBadPixelCorrectionTable := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SaveBadPixelCorrectionTable') ;
-     @is_LoadBadPixelCorrectionTable := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_LoadBadPixelCorrectionTable') ;
-     @is_SetBadPixelCorrection := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetBadPixelCorrection') ;
-     @is_SetBlCompensation := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetBlCompensation') ;
-     @is_SetColorCorrection := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetColorCorrection') ;
-     @is_SetEdgeEnhancement := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetEdgeEnhancement') ;
-     @is_GetWhiteBalanceMultipliers := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetWhiteBalanceMultipliers') ;
-     @is_SetWhiteBalanceMultipliers := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetWhiteBalanceMultipliers') ;
-     @is_SetWhiteBalance := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetWhiteBalance') ;
-     @is_SetRenderMode := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetRenderMode') ;
-     @is_SetHardwareGain := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetHardwareGain') ;
-     @is_EnableMessage := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_EnableMessage') ;
-     @is_EnableAutoExit := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_EnableAutoExit') ;
-     @is_GetRevisionInfo := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetRevisionInfo') ;
-     @is_GetSensorInfo := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetSensorInfo') ;
-     @is_SetIOMask := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetIOMask') ;
-     @is_GetFramesPerSecond := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetFramesPerSecond') ;
-     @is_SetExposureTime := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetExposureTime') ;
-     @is_GetExposureRange := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetExposureRange') ;
-     @is_SetFrameRate := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetFrameRate') ;
-     @is_GetFrameTimeRange := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetFrameTimeRange') ;
-     @is_GetUsedBandwidth := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetUsedBandwidth') ;
-//     @is_SetPixelClock := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetPixelClock') ;
-//     @is_GetPixelClockRange := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetPixelClockRange') ;
-     @is_GetNumberOfCameras := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetNumberOfCameras') ;
-     @is_GetCameraType := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetCameraType') ;
-     @is_CameraStatus := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_CameraStatus') ;
-     @is_GetCameraInfo := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetCameraInfo') ;
-     @is_ExitCamera := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_ExitCamera') ;
-     @is_InitCamera := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_InitCamera') ;
-     @is_SetDisplayMode := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetDisplayMode') ;
-     @is_GetError := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetError') ;
-     @is_ImageFormat := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_ImageFormat') ;
-     @is_SetColorMode := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetColorMode') ;
-     @is_AOI := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_AOI') ;
-     @is_SetExternalTrigger := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetExternalTrigger') ;
+     @is_GetDLLVersion := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetDLLVersion') ;
+     @is_Renumerate := IDS_GetDLLAddress(Session.LibraryHnd,'is_Renumerate') ;
+     @is_SetHWGainFactor := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetHWGainFactor') ;
+     @is_GetExtendedRegister := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetExtendedRegister') ;
+     @is_SetExtendedRegister := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetExtendedRegister') ;
+     @is_SetGlobalShutter := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetGlobalShutter') ;
+     @is_SetLED := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetLED') ;
+     @is_SetGainBoost := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetGainBoost') ;
+     @is_SetTriggerDelay := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetTriggerDelay') ;
+     @is_GetAutoInfo := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetAutoInfo') ;
+     @is_SetAutoParameter := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetAutoParameter') ;
+//     @is_SetAOI := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetAOI') ;
+     @is_GetCameraList := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetCameraList') ;
+     @is_SetHardwareGamma := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetHardwareGamma') ;
+     @is_SetTestImage := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetTestImage') ;
+     @is_SetBayerConversion := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetBayerConversion') ;
+     @is_SetCameraID := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetCameraID') ;
+     @is_SetImageAOI := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetImageAOI') ;
+     @is_LoadImage := IDS_GetDLLAddress(Session.LibraryHnd,'is_LoadImage') ;
+     @is_SetFlashDelay := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetFlashDelay') ;
+     @is_GetGlobalFlashDelays := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetGlobalFlashDelays') ;
+     @is_SaveParameters := IDS_GetDLLAddress(Session.LibraryHnd,'is_SaveParameters') ;
+     @is_LoadParameters := IDS_GetDLLAddress(Session.LibraryHnd,'is_LoadParameters') ;
+     @is_ResetToDefault := IDS_GetDLLAddress(Session.LibraryHnd,'is_ResetToDefault') ;
+     @is_SetBinning := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetBinning') ;
+     @is_GetBusSpeed := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetBusSpeed') ;
+     @is_ForceTrigger := IDS_GetDLLAddress(Session.LibraryHnd,'is_ForceTrigger') ;
+     @is_SetSubSampling := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetSubSampling') ;
+     @is_ResetMemory := IDS_GetDLLAddress(Session.LibraryHnd,'is_ResetMemory') ;
+     @is_IsMemoryBoardConnected := IDS_GetDLLAddress(Session.LibraryHnd,'is_IsMemoryBoardConnected') ;
+     @is_GetMemorySequenceWindow := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetMemorySequenceWindow') ;
+     @is_GetNumberOfMemoryImages := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetNumberOfMemoryImages') ;
+     @is_GetLastMemorySequence := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetLastMemorySequence') ;
+     @is_MemoryFreezeVideo := IDS_GetDLLAddress(Session.LibraryHnd,'is_MemoryFreezeVideo') ;
+     @is_TransferMemorySequence := IDS_GetDLLAddress(Session.LibraryHnd,'is_TransferMemorySequence') ;
+     @is_TransferImage := IDS_GetDLLAddress(Session.LibraryHnd,'is_TransferImage') ;
+     @is_SetMemoryMode := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetMemoryMode') ;
+     @is_SetBadPixelCorrectionTable := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetBadPixelCorrectionTable') ;
+     @is_SaveBadPixelCorrectionTable := IDS_GetDLLAddress(Session.LibraryHnd,'is_SaveBadPixelCorrectionTable') ;
+     @is_LoadBadPixelCorrectionTable := IDS_GetDLLAddress(Session.LibraryHnd,'is_LoadBadPixelCorrectionTable') ;
+     @is_SetBadPixelCorrection := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetBadPixelCorrection') ;
+     @is_SetBlCompensation := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetBlCompensation') ;
+     @is_SetColorCorrection := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetColorCorrection') ;
+     @is_SetEdgeEnhancement := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetEdgeEnhancement') ;
+     @is_GetWhiteBalanceMultipliers := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetWhiteBalanceMultipliers') ;
+     @is_SetWhiteBalanceMultipliers := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetWhiteBalanceMultipliers') ;
+     @is_SetWhiteBalance := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetWhiteBalance') ;
+     @is_SetRenderMode := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetRenderMode') ;
+     @is_SetHardwareGain := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetHardwareGain') ;
+     @is_EnableMessage := IDS_GetDLLAddress(Session.LibraryHnd,'is_EnableMessage') ;
+     @is_EnableAutoExit := IDS_GetDLLAddress(Session.LibraryHnd,'is_EnableAutoExit') ;
+     @is_GetRevisionInfo := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetRevisionInfo') ;
+     @is_GetSensorInfo := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetSensorInfo') ;
+     @is_SetIOMask := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetIOMask') ;
+     @is_GetFramesPerSecond := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetFramesPerSecond') ;
+     @is_SetExposureTime := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetExposureTime') ;
+     @is_GetExposureRange := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetExposureRange') ;
+     @is_SetFrameRate := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetFrameRate') ;
+     @is_GetFrameTimeRange := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetFrameTimeRange') ;
+     @is_GetUsedBandwidth := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetUsedBandwidth') ;
+//     @is_SetPixelClock := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetPixelClock') ;
+//     @is_GetPixelClockRange := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetPixelClockRange') ;
+     @is_GetNumberOfCameras := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetNumberOfCameras') ;
+     @is_GetCameraType := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetCameraType') ;
+     @is_CameraStatus := IDS_GetDLLAddress(Session.LibraryHnd,'is_CameraStatus') ;
+     @is_GetCameraInfo := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetCameraInfo') ;
+     @is_ExitCamera := IDS_GetDLLAddress(Session.LibraryHnd,'is_ExitCamera') ;
+     @is_InitCamera := IDS_GetDLLAddress(Session.LibraryHnd,'is_InitCamera') ;
+     @is_SetDisplayMode := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetDisplayMode') ;
+     @is_GetError := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetError') ;
+     @is_ImageFormat := IDS_GetDLLAddress(Session.LibraryHnd,'is_ImageFormat') ;
+     @is_SetColorMode := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetColorMode') ;
+     @is_AOI := IDS_GetDLLAddress(Session.LibraryHnd,'is_AOI') ;
+     @is_SetExternalTrigger := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetExternalTrigger') ;
 
-     @is_AllocImageMem := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_AllocImageMem') ;
-     @is_SetImageMem := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetImageMem') ;
-     @is_FreeImageMem := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_FreeImageMem') ;
-     @is_GetImageMem := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetImageMem') ;
-     @is_GetActiveImageMem := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetActiveImageMem') ;
-     @is_InquireImageMem := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_InquireImageMem') ;
-     @is_GetImageMemPitch := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetImageMemPitch') ;
-     @is_SetAllocatedImageMem := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetAllocatedImageMem') ;
-     @is_SaveImageMem := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SaveImageMem') ;
-     @is_CopyImageMem := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_CopyImageMem') ;
-     @is_CopyImageMemLines := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_CopyImageMemLines') ;
-     @is_AddToSequence := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_AddToSequence') ;
-     @is_ClearSequence := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_ClearSequence') ;
-     @is_GetActSeqBuf := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_GetActSeqBuf') ;
-     @is_LockSeqBuf := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_LockSeqBuf') ;
-     @is_UnlockSeqBuf := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_UnlockSeqBuf') ;
-     @is_WaitForNextImage := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_WaitForNextImage') ;
-     @is_ExitImageQueue := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_ExitImageQueue') ;
-     @is_InitImageQueue := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_InitImageQueue') ;
-     @is_CaptureVideo := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_CaptureVideo') ;
-     @is_SetSensorScaler := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetSensorScaler') ;
-     @is_Exposure := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_Exposure') ;
-     @is_PixelClock := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_PixelClock') ;
-     @is_DeviceFeature := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_DeviceFeature') ;
-     @is_CaptureStatus := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_CaptureStatus') ;
-     @is_SetErrorReport := ThorLabs_GetDLLAddress(Session.LibraryHnd,'is_SetErrorReport') ;
+     @is_AllocImageMem := IDS_GetDLLAddress(Session.LibraryHnd,'is_AllocImageMem') ;
+     @is_SetImageMem := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetImageMem') ;
+     @is_FreeImageMem := IDS_GetDLLAddress(Session.LibraryHnd,'is_FreeImageMem') ;
+     @is_GetImageMem := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetImageMem') ;
+     @is_GetActiveImageMem := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetActiveImageMem') ;
+     @is_InquireImageMem := IDS_GetDLLAddress(Session.LibraryHnd,'is_InquireImageMem') ;
+     @is_GetImageMemPitch := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetImageMemPitch') ;
+     @is_SetAllocatedImageMem := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetAllocatedImageMem') ;
+     @is_SaveImageMem := IDS_GetDLLAddress(Session.LibraryHnd,'is_SaveImageMem') ;
+     @is_CopyImageMem := IDS_GetDLLAddress(Session.LibraryHnd,'is_CopyImageMem') ;
+     @is_CopyImageMemLines := IDS_GetDLLAddress(Session.LibraryHnd,'is_CopyImageMemLines') ;
+     @is_AddToSequence := IDS_GetDLLAddress(Session.LibraryHnd,'is_AddToSequence') ;
+     @is_ClearSequence := IDS_GetDLLAddress(Session.LibraryHnd,'is_ClearSequence') ;
+     @is_GetActSeqBuf := IDS_GetDLLAddress(Session.LibraryHnd,'is_GetActSeqBuf') ;
+     @is_LockSeqBuf := IDS_GetDLLAddress(Session.LibraryHnd,'is_LockSeqBuf') ;
+     @is_UnlockSeqBuf := IDS_GetDLLAddress(Session.LibraryHnd,'is_UnlockSeqBuf') ;
+     @is_WaitForNextImage := IDS_GetDLLAddress(Session.LibraryHnd,'is_WaitForNextImage') ;
+     @is_ExitImageQueue := IDS_GetDLLAddress(Session.LibraryHnd,'is_ExitImageQueue') ;
+     @is_InitImageQueue := IDS_GetDLLAddress(Session.LibraryHnd,'is_InitImageQueue') ;
+     @is_CaptureVideo := IDS_GetDLLAddress(Session.LibraryHnd,'is_CaptureVideo') ;
+     @is_SetSensorScaler := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetSensorScaler') ;
+     @is_Exposure := IDS_GetDLLAddress(Session.LibraryHnd,'is_Exposure') ;
+     @is_PixelClock := IDS_GetDLLAddress(Session.LibraryHnd,'is_PixelClock') ;
+     @is_DeviceFeature := IDS_GetDLLAddress(Session.LibraryHnd,'is_DeviceFeature') ;
+     @is_CaptureStatus := IDS_GetDLLAddress(Session.LibraryHnd,'is_CaptureStatus') ;
+     @is_SetErrorReport := IDS_GetDLLAddress(Session.LibraryHnd,'is_SetErrorReport') ;
 
      Session.LibraryLoaded := True ;
 
      end ;
 
 
-function ThorLabs_GetDLLAddress(
+function IDS_GetDLLAddress(
          Handle : THandle ;
          const ProcName : string ) : Pointer ;
 // -----------------------------------------
@@ -2870,7 +2974,7 @@ begin
     if Result = Nil then ShowMessage('uc480_Api.dll: ' + ProcName + ' not found') ;
     end ;
 
-function ThorLabs_CheckDLLExists( DLLName : String ) : Boolean ;
+function IDS_CheckDLLExists( DLLName : String ) : Boolean ;
 // -------------------------------------------
 // Check that a DLL present in WinFluor folder
 // -------------------------------------------
@@ -2916,8 +3020,8 @@ begin
      end ;
 
 
-function ThorLabs_OpenCamera(
-          var Session : TThorLabsSession ;  // camera session record
+function IDS_OpenCamera(
+          var Session : TIDSSession ;  // camera session record
           var FrameWidthMax : Integer ;      // Returns camera frame width
           var FrameHeightMax : Integer ;     // Returns camera height width
           var BinFactorMax : Integer ;       // Maximum bin factor
@@ -2930,21 +3034,23 @@ function ThorLabs_OpenCamera(
 // Open Andor camera
 // ---------------------
 var
-    i :Integer ;
+    i,iErr :Integer ;
     s : string ;
     Ver,MinVer,MajVer,Build : DWORD ;
     CameraList : TUC480_CAMERA_LIST ;
     SensorInfo : TIS_SENSOR_INFO ;
     BinningModes,Bits : Integer ;
     DeviceFeatures :DWORD ;
+    BitDepths : DWORD ;
     DefaultPixelClockValue :DWORD ;
+    PixelClockRange : Array[0..2] of DWord ;
 begin
 
      Result := False ;
      CameraInfo.Clear ;
 
      // Load DLL libray
-     if not Session.LibraryLoaded then ThorLabs_LoadLibrary(Session)  ;
+     if not Session.LibraryLoaded then IDS_LoadLibrary(Session)  ;
      if not Session.LibraryLoaded then begin
         CameraInfo.Add('Thorlabs DCx: Unable to load uc480.dll') ;
         Exit ;
@@ -2959,6 +3065,9 @@ begin
 
     is_GetNumberOfCameras( Session.NumCameras ) ;
     CameraInfo.Add( format('No. of cameras available = %d',[Session.NumCameras]));
+
+    // Disable error reports
+    is_setErrorReport(Session.CamHandle,IS_DISABLE_ERR_REP);
 
     CameraList.NumCameras := Session.NumCameras ;
     is_GetCameraList( @CameraList ) ;
@@ -2976,7 +3085,7 @@ begin
         end ;
 
      // Enable error reports
-     is_setErrorReport(Session.CamHandle,IS_ENABLE_ERR_REP);
+     is_setErrorReport(Session.CamHandle,IS_DISABLE_ERR_REP);
 
      // Set to bitmap display mode
      is_SetDisplayMode( Session.CamHandle,IS_SET_DM_DIB ) ;
@@ -2985,26 +3094,63 @@ begin
      FrameWidthMax := SensorInfo.MaxWidth ;
      FrameHeightMax := SensorInfo.MaxHeight ;
      PixelWidth := SensorInfo.PixelSize*0.01 ;
-     s := format('CCD: %d x %d (%.3g um pixels)',[FrameWidthMax,FrameHeightMax,PixelWidth]) ;
+
+
+     // Get bit depths available and choose highest
+     iErr := is_DeviceFeature( Session.CamHandle,
+                               IS_DEVICE_FEATURE_CMD_GET_SUPPORTED_SENSOR_BIT_DEPTHS,
+                               @BitDepths,SizeOf(BitDepths));
+     if iErr = is_success then
+         begin
+       //     if (Bitdepths and IS_SENSOR_BIT_DEPTH_16_BIT) <> 0 then PixelDepth := 16
+        if (Bitdepths and IS_SENSOR_BIT_DEPTH_12_BIT) <> 0 then PixelDepth := 12
+        else if (Bitdepths and IS_SENSOR_BIT_DEPTH_10_BIT) <> 0 then PixelDepth := 10
+        else PixelDepth := 8 ;
+        // Set camera to choose bit depth from selected colour mode
+        BitDepths := IS_SENSOR_BIT_DEPTH_AUTO ;
+        is_DeviceFeature( Session.CamHandle,
+                          IS_DEVICE_FEATURE_CMD_SET_SENSOR_BIT_DEPTH,
+                          @BitDepths,SizeOf(BitDepths));
+        end
+     else PixelDepth := 8 ;
+     Session.BitsPerPixel := PixelDepth ;
+
+     // Report sensor properties
+     s := format('CCD: %d x %d (%.3g um pixels) Pixel Depth: %d',[FrameWidthMax,FrameHeightMax,PixelWidth,PixelDepth]) ;
+     CameraInfo.Add( s) ;
 
      case SensorInfo.ColorMode of
          IS_COLORMODE_MONOCHROME : begin
            // Monochrome cameras
-           is_SetColorMode(Session.CamHandle, IS_CM_MONO8);
-           s := s + ' Monochrome' ;
+           case PixelDepth of
+                12 : begin
+                    is_SetColorMode(Session.CamHandle, IS_CM_MONO12);
+                    NumBytesPerPixel := 2 ;
+                    end;
+                10 : begin
+                    is_SetColorMode(Session.CamHandle, IS_CM_MONO10);
+                    NumBytesPerPixel := 2 ;
+                    end;
+                else begin
+                    is_SetColorMode(Session.CamHandle, IS_CM_MONO8);
+                    NumBytesPerPixel := 1 ;
+                    end;
+                end ;
+
            Session.NumComponentsPerPixel := 1 ;
+           Session.NumBytesPerPixel := NumBytesPerPixel ;
            Session.UseComponent := 0 ;
            end ;
          else begin
            // Colour cameras
            is_SetColorMode(Session.CamHandle, IS_CM_UYVY_PACKED);
-           s := s + ' Colour' ;
+           NumBytesPerPixel := 1 ;
+           Session.NumBytesPerPixel := NumBytesPerPixel ;
            Session.NumComponentsPerPixel := 4 ;
            Session.UseComponent := 1 ;
+           Session.BitsPerPixel := 8 ;
            end ;
          end;
-
-     CameraInfo.Add(s) ;
 
      Session.GainAvailable := SensorInfo.MasterGain ;
 
@@ -3067,6 +3213,7 @@ begin
      CameraInfo.Add(s) ;
      BinFactorMax := Session.NumBinFactors ;
 
+     // Get pixel clock list
      is_PixelClock( Session.CamHandle,IS_PIXELCLOCK_CMD_GET_NUMBER,
                     @Session.NumPixelClocks,SizeOf(Session.NumPixelClocks));
      is_PixelClock( Session.CamHandle,IS_PIXELCLOCK_CMD_GET_LIST,
@@ -3086,7 +3233,7 @@ begin
          if Session.PixelClocks[i] = DefaultPixelClockValue then Session.DefaultPixelClock := i ;
          end;
 
-     CameraInfo.Add( format('Pixel Clock: %dMHz',[Session.DefaultPixelClock]));
+     CameraInfo.Add( format('Pixel Clock: %d MHz',[Session.PixelClocks[Session.DefaultPixelClock]]));
 
      // Get shutter modes (for CMOS cameras only)
 
@@ -3122,10 +3269,6 @@ begin
        end;
       CameraInfo.Add( s ) ;
 
-     NumBytesPerPixel := 1 ;
-     PixelDepth := 8 ;
-     Session.BitsPerPixel := PixelDepth ;
-     Session.NumBytesPerPixel := NumBytesPerPixel ;
 
      Session.CameraOpen := True ;
      Session.CapturingImages := False ;
@@ -3134,7 +3277,7 @@ begin
      end ;
 
 
-function ThorLabs_PixelDepth( ADConverterList : TStringList ;
+function IDS_PixelDepth( ADConverterList : TStringList ;
                 ADCNum : Integer ) : Integer ;
 
 // ------------------------------------------------
@@ -3144,8 +3287,8 @@ begin
     end ;
 
 
-procedure ThorLabs_SetTemperature(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_SetTemperature(
+          var Session : TIDSSession ; // Session record
           var TemperatureSetPoint : Single  // Required temperature
           ) ;
 // -------------------------------
@@ -3159,8 +3302,8 @@ begin
      end ;
 
 
-procedure ThorLabs_SetCooling(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_SetCooling(
+          var Session : TIDSSession ; // Session record
           CoolingOn : LongBool  // True = Cooling is on
           ) ;
 // -------------------
@@ -3172,8 +3315,8 @@ begin
      end ;
 
 
-procedure ThorLabs_SetBinning(
-          var Session : TThorLabsSession ;  // camera session record
+procedure IDS_SetBinning(
+          var Session : TIDSSession ;  // camera session record
           BinFactor : Integer
           ) ;
 // ----------------------
@@ -3190,8 +3333,8 @@ begin
     end;
 
 
-procedure ThorLabs_SetFanMode(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_SetFanMode(
+          var Session : TIDSSession ; // Session record
           FanMode : Integer  // 0 = Off, 1=low, 2=high
           ) ;
 // -------------------
@@ -3203,8 +3346,8 @@ begin
      end ;
 
 
-procedure ThorLabs_SetCameraMode(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_SetCameraMode(
+          var Session : TIDSSession ; // Session record
           Mode : Integer ) ;
 // --------------------
 // Set camera CCD mode
@@ -3215,8 +3358,8 @@ begin
     end ;
 
 
-procedure ThorLabs_SetCameraADC(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_SetCameraADC(
+          var Session : TIDSSession ; // Session record
           ADCNum : Integer ;
           var PixelDepth : Integer ;
           var GreyLevelMin : Integer ;
@@ -3239,8 +3382,8 @@ begin
     end ;
 
 
-procedure ThorLabs_CloseCamera(
-          var Session : TThorLabsSession // Session record
+procedure IDS_CloseCamera(
+          var Session : TIDSSession // Session record
           ) ;
 // ----------------
 // Shut down camera
@@ -3261,8 +3404,8 @@ begin
     end ;
 
 
-procedure ThorLabs_GetCameraGainList(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_GetCameraGainList(
+          var Session : TIDSSession ; // Session record
           CameraGainList : TStringList
           ) ;
 // --------------------------------------------
@@ -3280,8 +3423,8 @@ begin
 
     end ;
 
-procedure ThorLabs_GetCameraReadoutSpeedList(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_GetCameraReadoutSpeedList(
+          var Session : TIDSSession ; // Session record
           CameraReadoutSpeedList : TStringList
           ) ;
 // -------------------------------
@@ -3300,8 +3443,8 @@ begin
      end ;
 
 
-procedure ThorLabs_GetCameraModeList(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_GetCameraModeList(
+          var Session : TIDSSession ; // Session record
           List : TStringList
           ) ;
 // -----------------------------------------
@@ -3320,22 +3463,32 @@ begin
     end ;
 
 
-procedure ThorLabs_GetCameraADCList(
-          var Session : TThorLabsSession ; // Session record
+procedure IDS_GetCameraADCList(
+          var Session : TIDSSession ; // Session record
           List : TStringList
           ) ;
 // ---------------------------------
 // Get list of A/D converter options
 // ----------------------------------
+var
+    BitDepths : DWORD ;
 begin
-
-     // Get list of available ADCs
+     List.Clear ;
+     exit ;
+     // Get available bit depths
+     is_DeviceFeature( Session.CamHandle,
+                       IS_DEVICE_FEATURE_CMD_GET_SUPPORTED_SENSOR_BIT_DEPTHS,
+                       @BitDepths,SizeOf(BitDepths));
+     List.Clear ;
+     if (Bitdepths and IS_SENSOR_BIT_DEPTH_12_BIT) <> 0 then List.Add('12 bit');
+     if (Bitdepths and IS_SENSOR_BIT_DEPTH_10_BIT) <> 0 then List.Add('10 bit');
+     if (Bitdepths and IS_SENSOR_BIT_DEPTH_8_BIT) <> 0 then List.Add('8 bit');
 
     end ;
 
 
-procedure ThorLabs_CheckROIBoundaries(
-          var Session : TThorLabsSession ;  // camera session record
+procedure IDS_CheckROIBoundaries(
+          var Session : TIDSSession ;  // camera session record
           var FrameLeft : Integer ;            // Left pixel in CCD readout area
           var FrameRight : Integer ;           // Right pixel in CCD eadout area
           var FrameTop : Integer ;             // Top of CCD readout area
@@ -3356,9 +3509,10 @@ var
 begin
     if not Session.CameraOpen then Exit ;
 
-    // Must be multiple of 4 or binfactor
+    // Must be multiple of 8 x binfactor
+    // to allow for AOI step resolution which varies between 4-8 between cameras
     BinFactor := Max(BinFactor,1) ;
-    DivF := BinFactor*4 ;
+    DivF := BinFactor*8 ;
 
     FrameLeft := (FrameLeft div DivF)*DivF ;
     FrameTop := (FrameTop div DivF)*DivF ;
@@ -3368,7 +3522,7 @@ begin
     FrameBottom := FrameTop + FH - 1 ;
 
     // Set binning
-    Thorlabs_SetBinning( Session, BinFactor ) ;
+    IDS_SetBinning( Session, BinFactor ) ;
 
     // Set AOI
     AOI.s32X := FrameLeft div BinFactor ;
@@ -3381,12 +3535,12 @@ begin
     FrameHeight := (FrameBottom - FrameTop + 1) div BinFactor ;
 
     // Get new frame interval and readout time
-    ThorLabs_CheckFrameInterval( Session, TriggerMode, FrameInterval, ReadoutTime ) ;
+    IDS_CheckFrameInterval( Session, TriggerMode, FrameInterval, ReadoutTime ) ;
 
     end ;
 
 
-function ThorLabs_BinFactor( BinFactorList : TStringList ;
+function IDS_BinFactor( BinFactorList : TStringList ;
                 Index : Integer ) : Integer ;
 // ------------------------------------------------
 // Return bin factor from list of available factors
@@ -3404,8 +3558,9 @@ begin
      Result := Max(Result,1) ;
      end ;
 
-function ThorLabs_StartCapture(
-         var Session : TThorLabsSession ;  // camera session record
+
+function IDS_StartCapture(
+         var Session : TIDSSession ;  // camera session record
          var InterFrameTimeInterval : Double ;      // Frame exposure time
          AdditionalReadoutTime : Double ; // Additional readout time (s)
          AmpGain : Integer ;               // camera amplifier gain index
@@ -3442,40 +3597,37 @@ begin
                           SizeOf(Session.ShutterModeBit[Session.ShutterMode])) ;
         end;
 
-    // Set binning
-    Thorlabs_SetBinning( Session, BinFactor ) ;
+     // Set binning
+     IDS_SetBinning( Session, BinFactor ) ;
 
     // Set CCD readout area
-    AOI.s32X := FrameLeft div BinFactor ;
-    AOI.s32Y := FrameTop div BinFactor ;
-    AOI.s32Width := FrameWidth div BinFactor ;
-    AOI.s32Height := FrameHeight div BinFactor ;
+     AOI.s32X := FrameLeft div BinFactor ;
+     AOI.s32Y := FrameTop div BinFactor ;
+     AOI.s32Width := FrameWidth div BinFactor ;
+     AOI.s32Height := FrameHeight div BinFactor ;
 
-    is_aoi( Session.CamHandle, IS_AOI_IMAGE_SET_AOI, @AOI, SizeOf(AOI));
+     is_aoi( Session.CamHandle, IS_AOI_IMAGE_SET_AOI, @AOI, SizeOf(AOI));
 
-    is_SetSensorScaler( Session.CamHandle, 0, 1.0 );
+     //is_SetSensorScaler( Session.CamHandle, 0, 1.0 );
 
-    // Set gain
-   is_SetHardwareGain(Session.CamHandle, AmpGain, AmpGain, AmpGain, AmpGain)  ;
+     // Set gain
+     is_SetHardwareGain(Session.CamHandle, AmpGain, AmpGain, AmpGain, AmpGain)  ;
 
-     // Get default pixel clock
-     is_PixelClock( Session.CamHandle,is_PixelClock_CMD_GET_DEFAULT,
-                    @PixelClock,SizeOf(PixelClock));
-                    PixelClock := 20 ;
+     // Set pixel clock
      is_PixelClock( Session.CamHandle,is_PixelClock_CMD_SET,
                     @Session.PixelClocks[Session.PixelClock],SizeOf(PixelClock));
 
      // Check frame interval
      // (Also ensures Session.ReadoutTime is set)
-     ThorLabs_CheckFrameInterval( Session, TriggerMode, InterFrameTimeInterval, ReadoutTime ) ;
+     IDS_CheckFrameInterval( Session, TriggerMode, InterFrameTimeInterval, ReadoutTime ) ;
 
     // Set exposure triggering
     if TriggerMode = CamFreeRun then begin
        // Set to free run mode
-                            is_SetExternalTrigger(Session.CamHandle, IS_SET_TRIGGER_OFF) ;
-
+       is_SetExternalTrigger(Session.CamHandle, IS_SET_TRIGGER_OFF) ;
        // Set frame interval
        is_SetFrameRate(Session.CamHandle, (1.0/InterFrameTimeInterval), ActualFPS);
+       InterFrameTimeInterval := 1.0 / ActualFPS ;
         ExposureTime := 0.0;//InterFrameTimeInterval*9500.0 ;
        is_Exposure(Session.CamHandle, IS_EXPOSURE_CMD_SET_EXPOSURE,@ExposureTime,SizeOf(ExposureTime));
 
@@ -3490,10 +3642,9 @@ begin
 
        end ;
 
-     //
     // Allocate image buffers
     Session.NumFramesInBuffer := Min(NumFramesInBuffer,High(Session.pImageBuf)) ;
-                         is_ClearSequence( Session.CamHandle ) ;
+    is_ClearSequence( Session.CamHandle ) ;
     for i := 0 to Session.NumFramesInBuffer-1 do begin
         // Allocate buffer
         is_AllocImageMem( Session.CamHandle,
@@ -3534,8 +3685,8 @@ begin
     end;
 
 
-procedure ThorLabs_UpdateCircularBufferSize(
-          var Session : TThorLabsSession  ;  // camera session record
+procedure IDS_UpdateCircularBufferSize(
+          var Session : TIDSSession  ;  // camera session record
           FrameLeft : Integer ;
           FrameRight : Integer ;
           FrameTop : Integer ;
@@ -3551,7 +3702,7 @@ begin
      end ;
 
 
-procedure ThorLabs_Wait( Delay : Single ) ;
+procedure IDS_Wait( Delay : Single ) ;
 var
   T : Integer ;
   TExit : Integer ;
@@ -3564,8 +3715,8 @@ begin
     end ;
 
 
-function ThorLabs_CheckFrameInterval(
-          var Session : TThorLabsSession ;   // camera session record
+function IDS_CheckFrameInterval(
+          var Session : TIDSSession ;   // camera session record
           TriggerMode : Integer ;
           Var FrameInterval : Double ;
           Var ReadoutTime : Double ) : LongBool ;
@@ -3584,29 +3735,35 @@ begin
                     @Session.PixelClocks[Session.PixelClock],
                     SizeOf(Session.PixelClocks[Session.PixelClock]));
 
+     // Get valid frame time range
      is_GetFrameTimeRange(Session.CamHandle,TMin,TMax,TStep);
+
+     // Readout time
      Session.ReadoutTime := TMin ;
      if TriggerMode <> camFreeRun then TMin := TMin*1.5 + 5E-3 ;
      ReadoutTime := TMin ;
-     FrameInterval := Round(FrameInterval/TStep)*TStep ;
-     FrameInterval := Min(Max(FrameInterval,TMin),TMax) ;
+
+     FrameInterval := Min(Max(Round(FrameInterval/TStep)*TStep,TMin),TMax) ;
+     // NOTE. Something odd here! Without outputdebugstring line below a rounding down of
+     // FrameInterval takes place leading to a reduction in intervale by TStep
+     // Some sort of optimisation bug?
+     outputdebugstring(pchar(format('Frame interval: %.5f',[FrameInterval])));
 
      is_SetFrameRate(Session.CamHandle, (1.0/FrameInterval), ActualFPS);
      if ActualFPS > 0.0 then FrameInterval := 1.0/ActualFPS ;
 
      Result := True ;
-
      end ;
 
 
-procedure ThorLabs_GetImage(
-          var Session : TThorLabsSession  // camera session record
+procedure IDS_GetImage(
+          var Session : TIDSSession  // camera session record
           ) ;
 // ------------------------------------------------------
 // Transfer images from Andor driverbuffer to main buffer
 // ------------------------------------------------------
 var
-    i,j,jStep,y,imageID,Err : Integer ;
+    i,j,jStep,y,imageID,Err,iTo : Integer ;
     pImageBuf,pFrom,pTo,pBuf : Pointer ;
     nBytes : NativeInt ;
     Done : Boolean ;
@@ -3627,16 +3784,31 @@ begin
 
        nBytes := Session.FrameWidth*Session.NumBytesPerPixel ;
        pBuf := Pointer( NativeUInt(Pbyte(Session.pFrameBuf)) +
-                        NativeUInt(Session.NumBytesPerFrame*Session.FrameCounter) ) ;
-       for y := 0 to Session.FrameHeight-1 do begin
-           pFrom := Pointer( NativeUInt(PByte(pImageBuf)) + NativeUInt(y*Session.NumBytesPerLine) );
-           pTo := Pointer( NativeUInt(Pbyte(pBuf)) + NativeUInt(y*nBytes));
-           j := Session.UseComponent ;
-           jStep := Session.NumBytesPerPixel*Session.NumComponentsPerPixel ;
-           //Move( pFrom, pTo, nBytes ) ;
-           for i := 0 to nBytes-1 do begin
-              PByteArray(pTo)^[i] := PByteArray(pFrom)^[j] ;
-              j := j + jStep ;
+                           NativeUInt(Session.NumBytesPerFrame*Session.FrameCounter) ) ;
+       if Session.NumBytesPerPixel = 1 then
+          begin
+          iTo := 0 ;
+          for y := 0 to Session.FrameHeight-1 do begin
+              pFrom := Pointer( NativeUInt(PByte(pImageBuf)) + NativeUInt(y*Session.NumBytesPerLine) );
+              j := Session.UseComponent ;
+              for i := 0 to Session.FrameWidth-1 do begin
+                 PByteArray(pBuf)^[iTo] := PByteArray(pFrom)^[j] ;
+                 j := j + Session.NumComponentsPerPixel ;
+                 Inc(iTo) ;
+                 end;
+              end;
+          end
+       else
+          begin
+          iTo := 0 ;
+          for y := 0 to Session.FrameHeight-1 do begin
+              pFrom := Pointer( NativeUInt(PByte(pImageBuf)) + NativeUInt(y*Session.NumBytesPerLine) );
+              j := Session.UseComponent ;
+              for i := 0 to Session.FrameWidth-1 do begin
+                 PWordArray(pBuf)^[iTo] := PWordArray(pFrom)^[j] ;
+                 j := j + Session.NumComponentsPerPixel ;
+                 Inc(iTo) ;
+                 end;
               end;
           end;
 
@@ -3656,8 +3828,8 @@ begin
     end ;
 
 
-procedure ThorLabs_StopCapture(
-          var Session : TThorLabsSession   // camera session record
+procedure IDS_StopCapture(
+          var Session : TIDSSession   // camera session record
           ) ;
 // ------------------
 // Stop frame capture
@@ -3687,7 +3859,7 @@ begin
      end;
 
 
-procedure ThorLabs_CheckError(
+procedure IDS_CheckError(
           CamHandle : DWord ;
           FuncName : String ;   // Name of function called
           ErrNum : Integer      // Error # returned by function
@@ -3708,7 +3880,6 @@ begin
         end;
 
     end ;
-
 
 
 

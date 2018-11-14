@@ -76,6 +76,8 @@ unit SESCam;
  06.11.17 JD  .CCDTapOffsetLT etc. CCD tap black offset adjustment properties added
  18.01.18 JD  .LIGHTSPEEDMODE added (enables lightspeed mode of Evolve Delta
  30.07.18 JD  Support for PCO cameras added
+ 31.10.18 JD  Support iDS uEYE cameras (based on ThorlabsUnit.pas added
+ 14.11.18 JD  IDSuEYE and Thorlabs now updates FFrameCounter with frame count since StartCapture()
 
   ================================================================================ }
 {$OPTIMIZATION OFF}
@@ -86,7 +88,7 @@ interface
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs, itex, imaq1394,
   pixelflyunit, SensiCamUnit, HamDCAMUnit, Math, AndorUnit,
-  QCAMUnit, pvcam, imaqunit, nimaqdxunit, strutils, DTOpenLayersUnit, AndorSDK3Unit, ThorlabsUnit, PCOUnit, maths ;
+  QCAMUnit, pvcam, imaqunit, nimaqdxunit, strutils, DTOpenLayersUnit, AndorSDK3Unit, ThorlabsUnit, PCOUnit, IDSuEYEUnit, maths ;
 
 const
      { Interface cards supported }
@@ -117,8 +119,9 @@ const
      IMAQDX = 24 ;
      Thorlabs = 25 ;
      PCOAPI = 26 ;
+     IDSuEYE = 27 ;
 
-     NumLabInterfaceTypes = 27 ;   // up from 22; M.Ascherl
+     NumLabInterfaceTypes = 28 ;   // up from 22; M.Ascherl
 
      // Frame capture trigger modes
      CamFreeRun = 0 ;
@@ -271,6 +274,8 @@ type
     ThorlabsSession : TThorlabsSession ;
 
     PCOAPISession : TPCOAPISession ;
+
+    IDSSession : TIDSSession ;
 
     function AllocateFrameBuffer : Boolean ;
     procedure DeallocateFrameBuffer ;
@@ -620,6 +625,7 @@ begin
        IMAQDX : Result := 'National Instruments (IMAQ-DX)' ;
        Thorlabs : Result := 'Thorlabs DCx Cameras' ;
        PCOAPI : Result := 'PCO Cameras' ;
+       IDSuEYE : Result := 'IDS uEYE Cameras' ;
 
        end ;
      end ;
@@ -1422,6 +1428,55 @@ begin
 
           end ;
 
+       IDSuEYE : begin
+
+          CameraInfo.Clear ;
+          IDSSession.ShutterMode := FCameraMode ;
+          FCameraAvailable := IDS_OpenCamera(
+                              IDSSession,
+                              FFrameWidthMax,
+                              FFrameHeightMax,
+                              FBinFactorMax,
+                              FNumBytesPerPixel,
+                              FPixelDepth,
+                              FPixelWidth,
+                              CameraInfo ) ;
+
+         if FCameraAvailable then begin
+
+             IDS_GetCameraGainList( IDSSession, CameraGainList ) ;
+
+             IDS_GetCameraModeList( IDSSession,CameraModeList ) ;
+
+             IDS_GetCameraADCList( IDSSession, CameraADCList ) ;
+
+             // List of readout speeds
+             IDS_GetCameraReadoutSpeedList( IDSSession, CameraReadoutSpeedList ) ;
+             FReadoutSpeed := Max(Min(FReadoutSpeed,CameraReadoutSpeedList.Count-1),0) ;
+             IDSSession.PixelClock := FReadoutSpeed ;
+
+             // Calculate grey levels from pixel depth
+             FGreyLevelMax := 1 ;
+             for i := 1 to FPixelDepth do FGreyLevelMax := FGreyLevelMax*2 ;
+             FGreyLevelMax := FGreyLevelMax - 1 ;
+             FGreyLevelMin := 0 ;
+             FCCDRegionReadoutAvailable := True ;
+
+             FNumCameras := 1 ;
+             end ;
+
+
+          FFrameWidth := FFrameWidthMax ;
+          FFrameHeight := FFrameHeightMax ;
+
+          FFrameIntervalMin := 1E-3 ;
+          FFrameIntervalMax := 1000.0 ;
+
+          FPixelUnits := 'um' ;
+          FTriggerType := CamExposureTrigger ;
+
+          end ;
+
        PCOAPI : begin
 
           CameraInfo.Clear ;
@@ -1572,7 +1627,12 @@ begin
 
             Thorlabs : begin
               Thorlabs_GetImage( ThorlabsSession ) ;
-              FFrameCount := ThorlabsSession.FrameCounter ;
+              FFrameCount := ThorlabsSession.ActiveFrameCounter ;
+              end ;
+
+            IDSuEYE : begin
+              IDS_GetImage( IDSSession ) ;
+              FFrameCount := IDSSession.ActiveFrameCounter ;
               end ;
 
             PCOAPI : begin
@@ -1659,6 +1719,10 @@ begin
 
             Thorlabs : begin
               Thorlabs_CloseCamera( ThorlabsSession ) ;
+              end ;
+
+            IDSuEYE : begin
+              IDS_CloseCamera( IDSSession ) ;
               end ;
 
             PCOAPI : begin
@@ -1828,6 +1892,21 @@ begin
 
           Thorlabs : begin
               Thorlabs_CheckROIBoundaries( ThorlabsSession,
+                                          FFrameLeft,
+                                          FFrameRight,
+                                          FFrameTop,
+                                          FFrameBottom,
+                                          FBinFactor,
+                                          FFrameWidth,
+                                          FFrameHeight,
+                                          FFrameInterval,
+                                          FTriggerMode,
+                                          FReadoutTime
+                                          ) ;
+              end ;
+
+          IDSuEYE : begin
+              IDS_CheckROIBoundaries( IDSSession,
                                           FFrameLeft,
                                           FFrameRight,
                                           FFrameTop,
@@ -2211,6 +2290,26 @@ begin
           FrameCounter := 0 ;
           end ;
 
+       IDSuEYE : begin
+          FCameraActive := IDS_StartCapture(
+                           IDSSession,
+                           FFrameInterval,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
+                           FAmpGain,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameTop,
+                           FFrameWidth*FBinFactor,
+                           FFrameHeight*FBinFactor,
+                           FBinFactor,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FNumBytesPerFrame,
+                           FReadoutTime
+                           ) ;
+          FrameCounter := 0 ;
+          end ;
+
        PCOAPI : begin
           FCameraActive := PCOAPI_StartCapture(
                            PCOAPISession,
@@ -2527,9 +2626,28 @@ begin
           end ;
 
        Thorlabs : begin
-          // Note Andor cameras do not support additional readout time
           FCameraActive := Thorlabs_StartCapture(
                            ThorlabsSession,
+                           FFrameInterval,
+                           Max(FAdditionalReadoutTime,FShortenExposureBy),
+                           FAmpGain,
+                           FTriggerMode,
+                           FFrameLeft,
+                           FFrameTop,
+                           FFrameWidth*FBinFactor,
+                           FFrameHeight*FBinFactor,
+                           FBinFactor,
+                           PFrameBuffer,
+                           FNumFramesInBuffer,
+                           FNumBytesPerFrame,
+                           FReadoutTime
+                           ) ;
+          FrameCounter := 0 ;
+          end ;
+
+       IDSuEYE : begin
+          FCameraActive := IDS_StartCapture(
+                           IDSSession,
                            FFrameInterval,
                            Max(FAdditionalReadoutTime,FShortenExposureBy),
                            FAmpGain,
@@ -2653,6 +2771,11 @@ begin
 
        Thorlabs : begin
           Thorlabs_StopCapture( ThorlabsSession ) ;
+          FCameraActive := False ;
+          end ;
+
+       IDSuEYE : begin
+          IDS_StopCapture( IDSSession ) ;
           FCameraActive := False ;
           end ;
 
@@ -2845,11 +2968,20 @@ begin
        AndorSDK3 : begin
           AndorSDK3Session.ReadoutSpeed := FReadoutSpeed ;
           end ;
+
        Thorlabs : begin
           ThorlabsSession.PixelClock := FReadoutSpeed ;
-          if ThorlabsSession.PixelClock >= (ThorlabsSession.NumPixelClocks-1) then begin
+          if ThorlabsSession.PixelClock >= ThorlabsSession.NumPixelClocks then begin
              ThorlabsSession.PixelClock := ThorlabsSession.DefaultPixelClock ;
              FReadoutSpeed := ThorlabsSession.PixelClock ;
+             end ;
+          end ;
+
+       IDSuEYE : begin
+          IDSSession.PixelClock := FReadoutSpeed ;
+          if IDSSession.PixelClock >= IDSSession.NumPixelClocks then begin
+             IDSSession.PixelClock := IDSSession.DefaultPixelClock ;
+             FReadoutSpeed := IDSSession.PixelClock ;
              end ;
           end ;
 
@@ -2886,6 +3018,7 @@ var
 begin
     case FCameraType of
         Thorlabs : Result := ThorLabsSession.DefaultPixelClock ;
+        IDSuEYE : Result := IDSSession.DefaultPixelClock ;
         else begin
            // All other cameras use maximum rate
            MaxSpeed := 0.0 ;
@@ -3060,6 +3193,13 @@ begin
                                        FReadoutTime ) ;
           end ;
 
+       IDSuEYE : begin
+          IDS_CheckFrameInterval( IDSSession,
+                                  FTriggerMode,
+                                  FFrameInterval,
+                                  FReadoutTime ) ;
+          end ;
+
        PCOAPI : begin
           PCOAPI_CheckFrameInterval( PCOAPISession,
                                     FFrameLeft,
@@ -3148,6 +3288,10 @@ begin
            end ;
 
         Thorlabs : begin
+           Result :=  (20000000 div NumbytesPerFrame)-1 ;
+           end ;
+
+        IDSuEYE : begin
            Result :=  (20000000 div NumbytesPerFrame)-1 ;
            end ;
 
