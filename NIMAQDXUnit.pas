@@ -567,7 +567,7 @@ Type
          SessionID : Integer ;
          const Name : PANSIChar ;
          ValueType : Cardinal ;
-         Value : Double ) : Integer ; cdecl ; //
+         Value : Double ) : Integer ; cdecl ;
 
      TIMAQdxSetAttributeEnum= function(
          SessionID : Integer ;
@@ -2484,6 +2484,7 @@ var
     DValue : Double ;
     i64Value : Int64 ;
     i32Value,Inc32,Max32,Min32 : Integer ;
+
 begin
 //      outputdebugstring(pchar(format('Int32 %d %s,%d',
 //      [Attribute,ansistring(Session.Attributes[Attribute].name),Value])));
@@ -2534,10 +2535,12 @@ function IMAQDX_SetAttribute(
 // Set attribute (from double)
 // -------------
 var
-    DValue, DMin,DMax,DInc : Double ;
+    DValue, DMin,DMax,DInc,SetDValue : Double ;
     i64Value : Int64 ;
-    i32Value : Integer ;
-begin
+    i32Value,Err : Integer ;
+    Msg : Array[0..255] of ANSIChar ;
+    s : string ;
+    begin
 //      outputdebugstring(pchar(format('double %d %s,%.3g',
 //      [Attribute,ansistring(Session.Attributes[Attribute].name),Value])));
 
@@ -2561,10 +2564,22 @@ begin
              end ;
           IMAQdxValueTypeF64 : begin
              DValue := Value ;
-             IMAQdxSetAttributeF64( Session.id,
+             Err := IMAQdxSetAttributeF64( Session.id,
                                     Session.Attributes[Attribute].Name,
                                     Session.Attributes[Attribute].iType,
                                     DValue) ;
+             IMAQdxGetAttribute( Session.id,
+                                    Session.Attributes[Attribute].Name,
+                                    Session.Attributes[Attribute].iType,
+                                    @SetDValue) ;
+
+             if Err <> 0 then begin
+                IMAQdxGetErrorString( Err, Msg, High(Msg));
+                s := ANSISTRING(msg) ;
+//             outputdebugstring(pchar(format('Double %s,%.3f,%.3f %s',
+//                [ansistring(Session.Attributes[Attribute].name),DValue,SetDValue,s])));
+
+             end;
              end ;
           else begin
              i32Value := Round(Value) ;

@@ -5,6 +5,9 @@ unit PCOUnit;
 // 24.07.18
 // 24.08.18 Tested and working with PCO Edge 5.5 USB.
 // 17.02.19 Updated to work with PCO Edge 5.5 Camera Link
+// 18.02.19 Tested and working with Edge 5.5 Cameralink
+//          Note EDGE. 5.5 Cameralink using hardware ROI steps size (160,1) even
+//          thought SoftROI is enabled.
 
 interface
 
@@ -2099,9 +2102,6 @@ uses SESCam ;
 const
    EmptyFlag = $FFFF ;
 
-
-
-
 var
 
   PCO_OpenCamera : TPCO_OpenCamera ;
@@ -2344,12 +2344,6 @@ begin
 
 
 {$IFEND}
-     { Load DLL camera interface library }
-//     CameraLinkHnd := LoadLibrary( PChar(ExtractFilePath(ParamStr(0)) + 'sc2_cl_me4.dll' ));
-//     if CameraLinkHnd = 0 then begin
-//        ShowMessage( 'PCO: Unable to open sc2_cl_me4.dll'  ) ;
-//        Exit ;
-//        end ;
 
      { Load DLL camera interface library }
      LibraryHnd := LoadLibrary( PChar(Session.LibFileName));
@@ -2473,6 +2467,7 @@ begin
      if Result = 0 then ShowMessage('Unable to load ' + DestPath+DLLName );
      end;
 
+
 function PCOAPI_OpenCamera(
           var Session : TPCOAPISession ;   // Camera session record
           var FrameWidthMax : Integer ;      // Returns camera frame width
@@ -2504,22 +2499,29 @@ begin
         CameraInfo.Add('PCO: Unable to load sc2_cam.dll') ;
         Exit ;
         end ;
+
+     // Display Cameralink DLL if loaded
      CameraInfo.Add( 'DLL: ' + Session.LibFileName ) ;
      if Session.CLFilePath <> '' then
         CameraInfo.Add( 'Camera Link DLL: ' + Session.CLFilePath ) ;
 
 
-     // Open camera
-     Session.CamHandle := 0 ;
+     // Disable FPU exceptions because an unhandleddivide by zero exception is
+     // being raised in the Cameralink DLL
      PCO_DisableFPUExceptions ;
 
+     // Open camera
+     Session.CamHandle := 0 ;
      Err := PCO_OpenCamera( Session.CamHandle,0 ) ;
      if Err <> PCO_NOERROR then
         begin
         ShowMessage('PCO: Error opening camera. Check camera cables!');
         Exit ;
         end;
+
+     // Re-enable FPU exceptions
      PCO_EnableFPUExceptions ;
+
      // Get camera properties
       Session.PCO_Description.wSize := SizeOf( Session.PCO_Description) ;
      PCOAPI_CheckError( 'PCO_GetCameraDescription',
@@ -2550,9 +2552,9 @@ begin
          else CameraInfo.Add('Interface: Unknown') ;
          end ;
 
+     // Enable software ROI feature for camera link cameras
      if CameraType.InterfaceType = INTERFACE_CAMERALINK then
         begin
-        // Enable software ROI feature for camera link cameras
         PCOAPI_CheckError( 'PCO_EnableSoftROI',
                            PCO_EnableSoftROI(Session.CamHandle,1,nil,0));
         Session.SoftROIEnabled := True ;
@@ -2969,10 +2971,14 @@ begin
        YStep := Session.PCO_Description.wRoiVertStepsDESC ;
        end;
 
-       XStep := Session.PCO_Description.wRoiHorStepsDESC ;
-       YStep := Session.PCO_Description.wRoiVertStepsDESC ;
+    // --------------------------------------------------
+    // BUG FIX! ROI step sizes are forced to hardware step sizes even if Soft ROI
+    // enabled because PCO_Description.wSoftRoiHorStepsDESC and PCO_Description.wSoftRoiVertStepsDESC
+    // are being returned as zeros. Not clear what is wrong here
+    XStep := Session.PCO_Description.wRoiHorStepsDESC ;
+    YStep := Session.PCO_Description.wRoiVertStepsDESC ;
+    // ------------------------------------------------
 
-//    showmessage(format('%d %d',[XStep,YStep])) ;
     FrameLeft := (FrameLeft div XStep)*XStep ;
     FrameTop := (FrameTop div YStep)*YStep ;
     FrameWidth := (FrameWidth div XStep)*XStep ;
@@ -2980,18 +2986,11 @@ begin
     FrameHeight := (FrameHeight div YStep)*YStep ;
     FrameHeight := Max( FrameHeight, Session.PCO_Description.wMinSizeVertDESC ) ;
 
-//    showmessage(format('%d %d %d %d',
-//                       [ Session.PCO_Description.wRoiHorStepsDESC,Session.PCO_Description.wMinSizeHorzDESC,
-//                         Session.PCO_Description.wRoiVertStepsDESC,Session.PCO_Description.wMinSizeVertDESC]));
-
      // Set binning factors
      PCOAPI_CheckError( 'PCO_SetBinning',
                          PCO_SetBinning( Session.CamHandle,
                                          BinFactor,BinFactor)) ;
 
-    // Set region of interest
-//    showmessage(format('%d %d %d %d',
-//                       [FrameLeft + 1,FrameTop + 1,FrameLeft + FrameWidth,FrameTop + FrameHeight]));
     PCOAPI_CheckError( 'PCO_SetROI',
                        PCO_SetROI( Session.CamHandle,
                                    FrameLeft + 1,
