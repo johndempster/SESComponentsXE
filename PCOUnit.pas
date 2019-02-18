@@ -4,14 +4,19 @@ unit PCOUnit;
 // -------------------------------
 // 24.07.18
 // 24.08.18 Tested and working with PCO Edge 5.5 USB.
+// 17.02.19 Updated to work with PCO Edge 5.5 Camera Link
 
 interface
 
-uses WinTypes,sysutils, classes, dialogs, mmsystem, messages, controls, math, strutils ;
+uses WinTypes,sysutils, classes, dialogs, mmsystem, messages, controls, math, strutils, winprocs ;
+//uses WinTypes,Dialogs, SysUtils, WinProcs, math, mmsystem, strutils, classes ;
 const
     PCOAPIMaxBufs = 10240 ;
     PCOAPINumBufs = 16 ;
     PCOAPIAOIHeightSteps = 2 ;
+
+    PCO_MAXVERSIONHW = 10 ;
+    PCO_MAXVERSIONFW = 10 ;
 
 // ------------------------------------------------------------------------ //
 // -- Defines for Get Camera Type Command: -------------------------------- //
@@ -37,7 +42,6 @@ const
 // pco.usb.pixelfly
       CAMERATYPE_PCO_USBPIXELFLY        = $0900 ;
 
-
 // pco.dimax types
       CAMERATYPE_PCO_DIMAX_STD           = $1000 ;
       CAMERATYPE_PCO_DIMAX_TV            = $1010 ;
@@ -60,13 +64,10 @@ const
       CAMERASUBTYPE_PCO_DIMAX_CS_3       = $437F ;
       CAMERASUBTYPE_PCO_DIMAX_CS_4       = $447F ;
 
-
 // pco.sensicam types                   // tbd., all names are internal ids
       CAMERATYPE_SC3_SONYQE    = $1200 ;// SC3 based - Sony 285
       CAMERATYPE_SC3_EMTI      = $1210 ;// SC3 based - TI 285SPD
       CAMERATYPE_SC3_KODAK4800 = $1220 ;// SC3 based - Kodak KAI-16000
-
-
 
 // pco.edge types
       CAMERATYPE_PCO_EDGE                  = $1300 ;// pco.edge 5.5 (Sensor CIS2521) Interface: CameraLink , rolling shutter
@@ -75,7 +76,6 @@ const
       CAMERATYPE_PCO_EDGE_USB3             = $1320 ;// pco.edge     (all sensors   ) Interface: USB 3.0    ,(all shutter modes)
       CAMERATYPE_PCO_EDGE_HS               = $1340 ;// pco.edge     (all sensors   ) Interface: high speed ,(all shutter modes)
       CAMERATYPE_PCO_EDGE_MT               = $1304 ;// pco.edge MT2 (all sensors   ) Interface: CameraLink Base, rolling shutter
-
 
       CAMERASUBTYPE_PCO_EDGE_SPRINGFIELD   = $0006 ;
       CAMERASUBTYPE_PCO_EDGE_31            = $0031 ;
@@ -88,7 +88,6 @@ const
       CAMERASUBTYPE_PCO_EDGE_DUAL_CLOCK    = $000D ;
       CAMERASUBTYPE_PCO_EDGE_DICAM         = $DC00 ;
       CAMERASUBTYPE_PCO_EDGE_42_LT         = $8042 ;
-
 
 // pco.flim types
       CAMERATYPE_PCO_FLIM      = $1400 ;// pco.flim
@@ -114,7 +113,6 @@ const
       INTERFACE_CAMERALINKHS   = $0007 ;
       INTERFACE_COAXPRESS      = $0008 ;
 
-
 // ------------------------------------------------------------------------ //
 // -- Defines for Get Camera Health Status Command: ----------------------- //
 // ------------------------------------------------------------------------ //
@@ -129,7 +127,6 @@ const
       WARNING_OFFSET_REGULATION_RANGE = $00000020 ;
 
       WARNING_CAMERARAM               = $00020000 ;
-
 
       ERROR_POWERSUPPLYVOLTAGERANGE   = $00000001 ;
       ERROR_POWERSUPPLYTEMPERATURE    = $00000002 ;
@@ -157,7 +154,6 @@ const
       STATUS_POWERSAVE_LEFT           = $00000200  ;
       STATUS_LOCKED_TO_IRIG           = $00000400  ;
       STATUS_IS_IN_BOOTLOADER         = $80000000  ;
-
 
 // ------------------------------------------------------------------------ //
 // -- Defines for Get Camera Description Command: ------------------------- //
@@ -235,9 +231,6 @@ const
 
       SENSOR_GPIXEL_X2_BW       = $5000 ;// GPixel 2k
       SENSOR_GPIXEL_X2_COL      = $5001 ;// GPixel 2k
-
-
-
 
   // these are defines for interpreting the dwGeneralCaps1 member of the
   // Camera Description structure.
@@ -389,8 +382,6 @@ const
       BATTERY_STATUS_CONNECTED                            = $0002 ;
       BATTERY_STATUS_CHARGING                             = $0004 ;
 
-
-
 // ------------------------------------------------------------------------ //
 // -- Defines for Get/Set Powersave Mode: --------------------------------- //
 // ------------------------------------------------------------------------ //
@@ -399,14 +390,12 @@ const
       POWERSAVE_MODE_ON                                   = $0001 ;
       POWERSAVE_MODE_DO_NOT_USE_BATTERY                   = $0002 ;
 
-
 // ------------------------------------------------------------------------ //
 // -- Defines for Get/Set Binning Command: -------------------------------- //
 // ------------------------------------------------------------------------ //
 
       BINNING_STEPPING_BINARY = 0 ;
       BINNING_STEPPING_LINEAR = 1 ;
-
 
 // ------------------------------------------------------------------------ //
 // -- Defines for Get/Set Sensor Format Command: -------------------------- //
@@ -875,7 +864,7 @@ const
 
         PCI525_ERROR_DRIVER                = $00210000    ; // error at sensicam driver
 
-        PCO_ERROR_DRIVER_FIREWIRE          = $00300000    ; // error inside the firewire driver
+        PCO_ERROR_DRIVER_FIREWIRE          = $00300000    ; // error inside the firewirecamera driver
         PCO_ERROR_DRIVER_USB               = $00310000    ; // error inside the usb driver
         PCO_ERROR_DRIVER_GIGE              = $00320000    ; // error inside the GigE driver
         PCO_ERROR_DRIVER_CAMERALINK        = $00330000    ; // error inside the CameraLink driver
@@ -1257,6 +1246,60 @@ TPCO_ImageTiming = packed record
   ZZdwDummy : Array[0..10] of DWord ;                // 20
   end ;
 
+TPCO_OpenStructure = packed Record
+  Size : Word ;
+  InterfaceType : Word ;
+  CameraNumber : Word ;
+  CameraNumberAtInterface : Word ;
+  wOpenFlags : Array[0..9] of Word ;
+  dwOpenFlags : Array[0..4] of Word ;
+  OpenPtrs : Array[0..5] of Pointer ;
+  Dummy : Array[0..7] of Word ;
+  end ;
+PPCO_OpenStructure = ^TPCO_OpenStructure ;
+
+
+
+TPCO_SC2_Hardware_DESC = packed Record
+  szName: array[0..15] of ANSIChar ;      // string with board name
+  wBatchNo : Word ;        // production batch no
+  wRevision : Word ;       // use range 0 to 99
+  wVariant : Word ;        // variant    // 22
+  ZZwDummy : Array[0..19] of Word ;    //            // 62
+  end ;
+
+TPCO_HW_Ver = packed Record
+    BoardNum : Word ;       // number of devices
+    Board: Array[0..PCO_MAXVERSIONHW-1] of TPCO_SC2_Hardware_DESC ;// 622
+    end ;
+
+TPCO_SC2_Firmware_DESC = packed Record
+  szName: array[0..15] of ANSIChar ;      // string with device name
+  bMinorRev : byte ;       // use range 0 to 99
+  bMajorRev : byte ;       // use range 0 to 255
+  wVariant : Word ;        // variant    // 20
+  ZZwDummy : Array[0..21] of Word ;    //            // 64
+  end ;
+
+TPCO_FW_Vers = packed Record
+  DeviceNum : Word ;       // number of devices
+  Device: Array[0..PCO_MAXVERSIONFW-1] of TPCO_SC2_Firmware_DESC ;// 642
+  end ;
+
+TPCO_CameraType = packed record
+  Size : Word ;
+  CameraType : Word ;
+  CameraSubType : Word ;
+  Dummy1 : Word ;
+  SerialNumber : DWord ;            // 12
+  HWVersion : DWord ;
+  FWVersion : DWord ;
+  InterfaceType : Word ;            // 22
+  HardwareVersion : TPCO_HW_Ver ;   // 644
+  FirmwareVersion : TPCO_FW_Vers ;  // 1286
+  ZZwDummy : Array[0..38] of Word ; // 1364
+  end ;
+
 TPCO_BufListItem = packed record
   Size : Short ;
   reserved : Word ;
@@ -1290,6 +1333,7 @@ TPCOAPISession = record
      FrameBottom : Integer ;          // Width of CCD readout area
      BinFactor : Integer ;             // Binning factor (1,2,4,8,16)
 
+     SoftROIEnabled : Boolean ;       // TRUE = software ROI enabled
      AOIWidth : Word ;
      AOIHeight : Word ;
      AOIRowSpacing : Integer ;
@@ -1316,6 +1360,7 @@ TPCOAPISession = record
      TemperatureSettingsList : TStringList ;
      PCO_Description : TPCO_Description ;
      CameraName : string ;
+     CLFilePath : string ;
      end ;
 
 PPCOAPISession = ^TPCOAPISession ;
@@ -1325,6 +1370,16 @@ TPCO_OpenCamera = function(
                   var ph : THandle ;
                   wCamNum : Word
                   ) : Integer ; stdcall ;
+
+TPCO_OpenCameraEx = function(
+                  var ph : THandle ;
+                  var CameraData : TPCO_OpenStructure
+                  ) : Integer ; stdcall ;
+
+TPCO_GetCameraType = function(
+                     ph : THandle ;
+                     var CameraType : TPCO_CameraType
+                     ) : Integer ; stdcall ;
 
 TPCO_GetRecordingState = function(
                          ph : THandle ;
@@ -1626,6 +1681,15 @@ TPCO_SetROI = function(
 //      |     ROI      |
 //      ---------------x1,y1
 // Out: int -> Error message.
+
+TPCO_EnableSoftROI = function(
+                     ph : THandle ;
+                     wSoftROIFlags : Word ;
+                     param : Pointer ;
+                     iLen : Integer
+                     ) : Integer ; stdcall ;
+// Enable software ROI
+// Supported by Camera Link card only
 
 TPCO_GetBinning = function(
                   ph : THandle ;
@@ -2023,6 +2087,9 @@ procedure PCOAPI_CheckError(
           ErrNum : Integer      // Error # returned by function
           ) ;
 
+procedure PCO_DisableFPUExceptions ;
+procedure PCO_EnableFPUExceptions ;
+
 
 
 implementation
@@ -2038,6 +2105,8 @@ const
 var
 
   PCO_OpenCamera : TPCO_OpenCamera ;
+  PCO_OpenCameraEx : TPCO_OpenCameraEx ;
+  PCO_GetCameraType : TPCO_GetCameraType ;
   PCO_CloseCamera : TPCO_CloseCamera ;
   PCO_GetRecordingState : TPCO_GetRecordingState ;
   PCO_SetRecordingState : TPCO_SetRecordingState ;
@@ -2069,7 +2138,7 @@ var
   PCO_GetSizes : TPCO_GetSizes ;
   PCO_GetROI : TPCO_GetROI ;
   PCO_SetROI : TPCO_SetROI ;
-  PCO_GetBinning : TPCO_GetBinning ;
+  PCO_EnableSoftROI : TPCO_EnableSoftROI ;
   PCO_SetBinning : TPCO_SetBinning ;
   PCO_SetPixelRate : TPCO_SetPixelRate ;
   PCO_GetConversionFactor : TPCO_GetConversionFactor ;
@@ -2093,6 +2162,7 @@ var
   PCO_SetActiveLookupTable : TPCO_SetActiveLookupTable ;
 
   LibraryHnd : THandle ;         // DLL library handle
+  CameraLinkHnd : THandle ;
   LibraryLoaded : LongBool ;      // DLL library loaded flag
   ATHandle : Integer ;
   NumBuffersAcquired : Integer ;
@@ -2101,6 +2171,7 @@ var
   SessionLoc : TPCOAPISession ;
   NumFramesAcquired,MaxFramesAcquired,tBufferRead : Integer ;
   ImageNumber,TStart : Double ;
+  FPUExceptionMask : Set of TFPUException ;
 
 
 procedure TWaitBufferThread.Execute;
@@ -2194,10 +2265,11 @@ procedure PCOAPI_LoadLibrary(
   ---------------------------------------------}
 const
     LibFileName = 'sc2_cam.dll' ;
+    CLFileName = 'sc2_cl_me4.dll';
 var
     WinDir : Array[0..255] of Char ;
     SysDrive : String ;
-
+    CLFilePath : string ;
 begin
 
      LibraryLoaded := False ;
@@ -2218,7 +2290,22 @@ begin
            exit ;
            end ;
         end ;
+
+     // Cameralink DLL
+     CameraLinkHnd := 0 ;
+     Session.CLFilePath := ExtractFilePath(ParamStr(0)) + CLFileName ;
+     if FileExists(Session.CLFilePath) then CameraLinkHnd := LoadLibrary(PChar(Session.CLFilePath))
+     else
+        begin
+        Session.CLFilePath := SysDrive +
+                      '\Program Files (x86)\Digital Camera Toolbox\pco.sdk\bin\' +
+                      CLFileName ;
+        if FileExists(Session.CLFilePath) then CameraLinkHnd := LoadLibrary(PChar(Session.CLFilePath))
+                                           else Session.CLFilePath := '' ;
+        end ;
+
 {$ELSE}
+
      // Look for DLL initially in Winfluor folder
      Session.LibFileName := ExtractFilePath(ParamStr(0)) + LibFileName ;
      if not FileExists( Session.LibFileName ) then begin
@@ -2234,16 +2321,46 @@ begin
                 end ;
             end ;
         end ;
+
+     // Cameralink DLL
+     CameraLinkHnd := 0 ;
+     Session.CLFilePath := ExtractFilePath(ParamStr(0)) + CLFileName ;
+     if FileExists(Session.CLFilePath) then CameraLinkHnd := LoadLibrary(PChar(Session.CLFilePath))
+     else
+        begin
+        Session.CLFilePath := SysDrive +
+                      '\Program Files (x86)\Digital Camera Toolbox\pco.sdk\bin64\' +
+                      CLFileName ;
+        if FileExists(Session.CLFilePath) then CameraLinkHnd := LoadLibrary(PChar(Session.CLFilePath))
+        else
+           begin
+           Session.CLFilePath := SysDrive +
+                         '\Program Files\Digital Camera Toolbox\Camware4\' +
+                         CLFileName ;
+           if FileExists(Session.CLFilePath) then CameraLinkHnd := LoadLibrary(PChar(Session.CLFilePath))
+                                             else Session.CLFilePath := '' ;
+           end ;
+        end ;
+
+
 {$IFEND}
+     { Load DLL camera interface library }
+//     CameraLinkHnd := LoadLibrary( PChar(ExtractFilePath(ParamStr(0)) + 'sc2_cl_me4.dll' ));
+//     if CameraLinkHnd = 0 then begin
+//        ShowMessage( 'PCO: Unable to open sc2_cl_me4.dll'  ) ;
+//        Exit ;
+//        end ;
 
      { Load DLL camera interface library }
      LibraryHnd := LoadLibrary( PChar(Session.LibFileName));
-     if LibraryHnd <= 0 then begin
+     if LibraryHnd < 0 then begin
         ShowMessage( 'PCO: Unable to open' + Session.LibFileName ) ;
         Exit ;
         end ;
 
      @PCO_OpenCamera := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_OpenCamera') ;
+     @PCO_OpenCameraEx := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_OpenCameraEx') ;
+     @PCO_GetCameraType := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_GetCameraType') ;
      @PCO_CloseCamera := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_CloseCamera') ;
      @PCO_GetFrameRate := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_GetFrameRate') ;
      @PCO_SetFrameRate := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_SetFrameRate') ;
@@ -2275,7 +2392,7 @@ begin
      @PCO_GetSizes := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_GetSizes') ;
      @PCO_GetROI := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_GetROI') ;
      @PCO_SetROI := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_SetROI') ;
-     @PCO_GetBinning := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_GetBinning') ;
+     @PCO_EnableSoftROI := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_EnableSoftROI') ;
      @PCO_SetBinning := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_SetBinning') ;
      @PCO_SetPixelRate := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_SetPixelRate') ;
      @PCO_GetConversionFactor := PCOAPI_GetDLLAddress(LibraryHnd,'PCO_GetConversionFactor') ;
@@ -2337,7 +2454,7 @@ begin
 
      if FileExists(Destination) then Result := True
      else begin
-        ShowMessage('Andor SDK3: ' + Destination + ' is missing!') ;
+        ShowMessage('PCO: ' + Destination + ' is missing!') ;
         Result := False ;
         end ;
      end ;
@@ -2355,10 +2472,6 @@ begin
      Result := LoadLibrary(PChar(DestPath+DLLName)) ;
      if Result = 0 then ShowMessage('Unable to load ' + DestPath+DLLName );
      end;
-
-
-
-
 
 function PCOAPI_OpenCamera(
           var Session : TPCOAPISession ;   // Camera session record
@@ -2379,6 +2492,7 @@ var
     s : string ;
     cBuf : Array[0..99] of ANSIChar ;
     RecordingState : Word ;
+    CameraType : TPCO_CameraType ;
 begin
 
      Result := False ;
@@ -2391,15 +2505,21 @@ begin
         Exit ;
         end ;
      CameraInfo.Add( 'DLL: ' + Session.LibFileName ) ;
+     if Session.CLFilePath <> '' then
+        CameraInfo.Add( 'Camera Link DLL: ' + Session.CLFilePath ) ;
+
 
      // Open camera
+     Session.CamHandle := 0 ;
+     PCO_DisableFPUExceptions ;
+
      Err := PCO_OpenCamera( Session.CamHandle,0 ) ;
      if Err <> PCO_NOERROR then
         begin
         ShowMessage('PCO: Error opening camera. Check camera cables!');
         Exit ;
         end;
-
+     PCO_EnableFPUExceptions ;
      // Get camera properties
       Session.PCO_Description.wSize := SizeOf( Session.PCO_Description) ;
      PCOAPI_CheckError( 'PCO_GetCameraDescription',
@@ -2414,6 +2534,37 @@ begin
      Session.CameraName := ANSIString(cBuf) ;
      CameraInfo.Add('Camera: ' + Session.CameraName) ;
 
+     // Get camera interface type data
+     CameraType.Size := Sizeof(Cameratype);
+     PCOAPI_CheckError( 'PCO_GetCameraType',
+                        PCO_GetCameraType( Session.CamHandle,CameraType));
+     case CameraType.InterfaceType of
+         INTERFACE_FIREWIRE : CameraInfo.Add('Interface: Firewire');
+         INTERFACE_CAMERALINK : CameraInfo.Add('Interface: Camera Link');
+         INTERFACE_USB : CameraInfo.Add('Interface: USB 2.0') ;
+         INTERFACE_ETHERNET : CameraInfo.Add('Interface: Ethernet');
+         INTERFACE_SERIAL : CameraInfo.Add('Interface: Serial');
+         INTERFACE_USB3 : CameraInfo.Add('Interface: USB 3.0');
+         INTERFACE_CAMERALINKHS : CameraInfo.Add('Interface: Camera Link HS');
+         INTERFACE_COAXPRESS : CameraInfo.Add('Interface: Coax Express')
+         else CameraInfo.Add('Interface: Unknown') ;
+         end ;
+
+     if CameraType.InterfaceType = INTERFACE_CAMERALINK then
+        begin
+        // Enable software ROI feature for camera link cameras
+        PCOAPI_CheckError( 'PCO_EnableSoftROI',
+                           PCO_EnableSoftROI(Session.CamHandle,1,nil,0));
+        Session.SoftROIEnabled := True ;
+        CameraInfo.Add('Software ROI enabled') ;
+        end
+      else
+        begin
+        PCOAPI_CheckError( 'PCO_EnableSoftROI',
+                           PCO_EnableSoftROI(Session.CamHandle,0,nil,0));
+        Session.SoftROIEnabled := False ;
+        end;
+
      // Pixel sizes ;
      if ContainsText(Session.CameraName,'edge') then PixelWidth := 6.5
      else if ContainsText(Session.CameraName,'panda') then PixelWidth := 6.5
@@ -2425,7 +2576,6 @@ begin
      else PixelWidth := 6.5 ;
 
      CameraInfo.Add( format('CCD resolution: %d x %d (%.4g um)',[FrameWidthMax,FrameHeightMax,PixelWidth]));
-
      Session.ADCNum := 0 ;
      PixelDepth := Session.PCO_Description.wDynResDESC ;
      Session.NumBitsPerPixel := Session.PCO_Description.wDynResDESC ;
@@ -2547,7 +2697,7 @@ var
 begin
 
      if not Session.CameraOpen then Exit ;
-
+     exit;
      if (Session.PCO_Description.dwGeneralCapsDESC1 and GENERALCAPS1_COOLING_SETPOINTS) <> 0 then
         begin
         // Find nearest set point
@@ -2565,10 +2715,13 @@ begin
      else
         begin
         // Limit to cooling temp range
-        TSet := Min(Max(TSet,Session.PCO_Description.sMinCoolSetDESC),Session.PCO_Description.sMaxCoolSetDESC);
+        Session.SetPointTemperature := Min(Max(TSet,Session.PCO_Description.sMinCoolSetDESC),Session.PCO_Description.sMaxCoolSetDESC);
         end;
 
      // Set cooling set point
+//     Session.SetPointTemperature := 5;
+//     showmessage(format('set temp = %d',[Session.SetPointTemperature]));
+
      PCOAPI_CheckError( 'PCO_SetCoolingSetPointTemperature',
                         PCO_SetCoolingSetPointTemperature( Session.CamHandle,
                                                            Session.SetPointTemperature )) ;
@@ -2669,7 +2822,12 @@ begin
     PCOAPI_CheckError( 'PCO_CloseCamera', PCO_CloseCamera( Session.CamHandle )) ;
 
     // Free DLL library
-    if LibraryLoaded then FreeLibrary(libraryHnd) ;
+    if LibraryLoaded then
+    begin
+    FreeLibrary(libraryHnd) ;
+    if CameraLinkHnd <> 0 then FreeLibrary(CameraLinkHnd) ;
+    CameraLinkHnd := 0 ;
+    end;
     LibraryLoaded := False ;
 
     Session.GetImageInUse := False ;
@@ -2680,6 +2838,8 @@ begin
     Session.ADConverterList.Free ;
     Session.ModeList.Free ;
     Session.TemperatureSettingsList.Free ;
+
+    PCO_EnableFPUExceptions ;
 
     end ;
 
@@ -2772,8 +2932,9 @@ procedure PCOAPI_CheckROIBoundaries(
 const
     MaxTries = 10 ;
 var
-    i,Diff,MinDiff,iNearest,NearestBinFactor : Integer ;
+    i,Diff,MinDiff,iNearest,NearestBinFactor,XStep,YStep : Integer ;
 begin
+
     if not Session.CameraOpen then Exit ;
 
     // Set to nearest valid bin factor
@@ -2796,25 +2957,47 @@ begin
 
     // Ensure ROI limits are valid multiples of step sizes and greater than minimum sizes
 
-    FrameLeft := (FrameLeft div Session.PCO_Description.wRoiHorStepsDESC)*Session.PCO_Description.wRoiHorStepsDESC ;
-    FrameTop := (FrameTop div Session.PCO_Description.wRoiVertStepsDESC)*Session.PCO_Description.wRoiVertStepsDESC ;
-    FrameWidth := (FrameWidth div Session.PCO_Description.wRoiHorStepsDESC)*Session.PCO_Description.wRoiHorStepsDESC ;
+    if Session.SoftROIEnabled then
+       begin
+       // Use software step size rather than hardware if soft ROI enabled
+       XStep := Session.PCO_Description.wSoftRoiHorStepsDESC ;
+       YStep := Session.PCO_Description.wSoftRoiVertStepsDESC ;
+       end
+    else
+       begin
+       XStep := Session.PCO_Description.wRoiHorStepsDESC ;
+       YStep := Session.PCO_Description.wRoiVertStepsDESC ;
+       end;
+
+       XStep := Session.PCO_Description.wRoiHorStepsDESC ;
+       YStep := Session.PCO_Description.wRoiVertStepsDESC ;
+
+//    showmessage(format('%d %d',[XStep,YStep])) ;
+    FrameLeft := (FrameLeft div XStep)*XStep ;
+    FrameTop := (FrameTop div YStep)*YStep ;
+    FrameWidth := (FrameWidth div XStep)*XStep ;
     FrameWidth := Max( FrameWidth, Session.PCO_Description.wMinSizeHorzDESC ) ;
-    FrameHeight := (FrameHeight div Session.PCO_Description.wRoiVertStepsDESC)*Session.PCO_Description.wRoiVertStepsDESC ;
+    FrameHeight := (FrameHeight div YStep)*YStep ;
     FrameHeight := Max( FrameHeight, Session.PCO_Description.wMinSizeVertDESC ) ;
+
+//    showmessage(format('%d %d %d %d',
+//                       [ Session.PCO_Description.wRoiHorStepsDESC,Session.PCO_Description.wMinSizeHorzDESC,
+//                         Session.PCO_Description.wRoiVertStepsDESC,Session.PCO_Description.wMinSizeVertDESC]));
 
      // Set binning factors
      PCOAPI_CheckError( 'PCO_SetBinning',
                          PCO_SetBinning( Session.CamHandle,
                                          BinFactor,BinFactor)) ;
+
     // Set region of interest
+//    showmessage(format('%d %d %d %d',
+//                       [FrameLeft + 1,FrameTop + 1,FrameLeft + FrameWidth,FrameTop + FrameHeight]));
     PCOAPI_CheckError( 'PCO_SetROI',
                        PCO_SetROI( Session.CamHandle,
                                    FrameLeft + 1,
                                    FrameTop + 1,
                                    FrameLeft + FrameWidth,
                                    FrameTop + FrameHeight)) ;
-
     Session.AOIWidth := FrameWidth  ;
     Session.AOIHeight := FrameHeight ;
 
@@ -2822,6 +3005,7 @@ begin
     FrameTop := FrameTop*BinFactor ;
     FrameRight := FrameLeft + FrameWidth*BinFactor - 1 ;
     FrameBottom := FrameTop + FrameHeight*BinFactor - 1 ;
+
 
    end ;
 
@@ -3085,7 +3269,6 @@ var
     ImageTiming : TPCO_ImageTiming ;
     ExposureTime_us : DWord ;
 begin
-
      Result := False ;
      if not Session.CameraOpen then Exit ;
 
@@ -3124,6 +3307,8 @@ begin
      // allow some exposure time in triggered capture mode
      FrameInterval := Max(FrameInterval,ReadoutTime + 1E-3) ;
      Result := True ;
+
+
 
      end ;
 
@@ -3362,6 +3547,35 @@ begin
     ShowMessage(FuncName + ErrText);
 
     end ;
+
+
+
+procedure PCO_DisableFPUExceptions ;
+// ----------------------
+// Disable FPU exceptions
+// ----------------------
+var
+    FPUNoExceptions : Set of TFPUException ;
+begin
+
+     FPUExceptionMask := GetExceptionMask ;
+     Include(FPUNoExceptions, exInvalidOp );
+     Include(FPUNoExceptions, exDenormalized );
+     Include(FPUNoExceptions, exZeroDivide );
+     Include(FPUNoExceptions, exOverflow );
+     Include(FPUNoExceptions, exUnderflow );
+     Include(FPUNoExceptions, exPrecision );
+     SetExceptionMask( FPUNoExceptions ) ;
+
+     end ;
+
+procedure PCO_EnableFPUExceptions ;
+// ----------------------
+// Disable FPU exceptions
+// ----------------------
+begin
+     SetExceptionMask( FPUExceptionMask ) ;
+     end ;
 
 
 
