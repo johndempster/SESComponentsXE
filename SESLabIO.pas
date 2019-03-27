@@ -142,6 +142,7 @@ unit SESLabIO;
   09.09.16 Digidata 1550B support added.
   20.07.17 .ADCStart Analog input channels checked for duplicates and acquisition aborted.
   13.11.17 Support for Measurement Computing Corp devices added.
+  20.03.19 TritonRegisterValueToPercent() added. Calculates register % value from required value
   ================================================================================ }
 
 interface
@@ -597,6 +598,11 @@ type
               Reg : Integer ;
               Chan : Integer ;
               var PercentValue : single ) ;
+
+    function TritonRegValueToPercent(
+             Reg : Integer ;
+             Chan : Integer ;
+             Value : Single ) : Single ;
 
     function TritonGetRegEnabled(
               Reg : Integer ;
@@ -4385,6 +4391,21 @@ begin
      DbValue := PercentValue ;
      case FLabInterfaceType of
        Triton : TritonSetRegisterPercent( Reg, Chan, DbValue ) ;
+       end ;
+     end ;
+
+
+function TSESLabIO.TritonRegValueToPercent(
+          Reg : Integer ;
+          Chan : Integer ;
+          Value : Single ) : Single ;
+var
+    DbValue : Double ;
+begin
+     Result := 0.0 ;
+     DbValue := Value ;
+     case FLabInterfaceType of
+       Triton : Result := TritonRegisterValueToPercent( Reg, Chan, DbValue ) ;
        end ;
      end ;
 

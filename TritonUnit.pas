@@ -49,6 +49,7 @@ unit TritonUnit;
 //          Junction potential correct offset now subtracted from measured potential in current-clamp mode
 // 08.05.18 FCurrentStimulusBias field and TritonSetCurrentStimulusBias() & TritonGetCurrentStimulusBias added
 //          Current added to stimulus current to compensate for stimulus bias current of Pico
+// 20.03.19 TritonRegisterValueToPercent() added. Calculates register % value from required value
 
 interface
 
@@ -751,7 +752,7 @@ function TECELLA_ACQUIRE_CB(
           Handle : Integer ;
           Chan : Integer ;
           SamplesAvailable : Cardinal ) : Integer ;  cdecl ;
-          
+
   procedure Triton_InitialiseBoard ;
   procedure  Triton_Calibrate ;
   function  Triton_IsCalibrated : Boolean ;
@@ -876,6 +877,11 @@ function  Triton_MemoryToDACAndDigitalOut(
           Reg : Integer ;
           Chan : Integer ;
           var PercentValue : Double ) ;
+
+  function TritonRegisterValueToPercent(
+          Reg : Integer ;
+          Chan : Integer ;
+          var Value : Double ) : Double ;
 
   function TritonGetGain( Chan : Integer ) : Integer ;
   procedure TritonSetGain( Chan : Integer ; iGain : Integer ) ;
@@ -2533,6 +2539,35 @@ begin
                                              Reg,
                                              Chan,
                                              Value ) ) ;
+
+    end ;
+
+
+function TritonRegisterValueToPercent(
+          Reg : Integer ;
+          Chan : Integer ;
+          var Value : Double ) : Double ;
+// ---------------------------------------------
+// Return register % setting from required value
+// ---------------------------------------------
+var
+    RegProps : Ttecella_reg_props ;
+begin
+
+    Result := 0.0 ;
+    if Chan >= HardwareProps.nChans then Exit ;
+
+    Triton_CheckError( 'tecella_get_reg_props : ',
+                        tecella_get_reg_props( TecHandle,
+                                               Reg,
+                                               RegProps ));
+
+    if not RegProps.supported then exit ;
+
+    // Keep within range
+    Value := Max(Min(Value,RegProps.v_max),RegProps.v_min) ;
+
+    Result := ((Value - RegProps.v_min) * 100.0 ) / (RegProps.v_max - RegProps.v_min ) ;
 
     end ;
 
