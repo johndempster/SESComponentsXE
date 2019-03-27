@@ -78,6 +78,7 @@ unit SESCam;
  30.07.18 JD  Support for PCO cameras added
  31.10.18 JD  Support iDS uEYE cameras (based on ThorlabsUnit.pas added
  14.11.18 JD  IDSuEYE and Thorlabs now updates FFrameCounter with frame count since StartCapture()
+ 27.03.19 JD  DCAM FrameCount property now returns no. of frames captured
 
   ================================================================================ }
 {$OPTIMIZATION OFF}
@@ -1608,6 +1609,7 @@ begin
 
             DCAM : begin
               DCAMAPI_GetImage( DCAMSession ) ;
+              FFrameCount := DCAMSession.FrameCounter ;
               end ;
 
             IMAQ : begin
@@ -2564,7 +2566,6 @@ begin
                            FDisableEMCCD
                            ) ;
           FrameCounter := 0 ;
-          //FTemperature := QCAMSession.Temperature ;
           end ;
 
        IMAQ : begin

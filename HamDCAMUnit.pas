@@ -22,6 +22,7 @@ unit HamDCAMUnit;
 //             rather than Integer (possible cause of errors with 64 bit version)
 // 15.06.17 JD DCAMAPI_SetCooling(), DCAMAPI_SetFanMode(),
 //             DCAMAPI_SetTemperature(),DCAMAPI_SpotNoiseReduction() added.
+// 27.03.19 JD DCAMAPI_GetImage() now returns frame count in Session.FrameCounter
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, messages,
@@ -1098,7 +1099,7 @@ TDCAMAPISession = record
      PFrameBuffer : Pointer ;         // Frame buffer pointer
      ImageBufferSize : Integer ;           // No. images in Andor image buffer
      PImageBuffer : PIntegerArray ;        // Local Andor image buffer
-     NumFramesAcquired : Integer ;
+     FrameCounter : Cardinal ;
      NumFramesCopied : Integer ;
      GetImageInUse : Boolean ;       // GetImage procedure running
      CapturingImages : Boolean ;     // Image capture in progress
@@ -2255,6 +2256,7 @@ begin
     // Start capture
     Err := dcam_capture( Session.CamHandle ) ;
     Session.CapturingImages := True ;
+    Session.FrameCounter := 0 ;
     Result := True ;
 
     end ;
@@ -2459,7 +2461,17 @@ begin
 procedure DCAMAPI_GetImage(
           var Session : TDCAMAPISession  // Camera session record
           ) ;
+// --------------
+// Transfer image
+// --------------
+var
+     NewestFrameIndex : Cardinal ;
 begin
+
+    dcam_gettransferinfo( Session.CamHandle,
+                          NewestFrameIndex,
+                          Session.FrameCounter ) ;
+
     end ;
 
 procedure DCAMAPI_StopCapture(
