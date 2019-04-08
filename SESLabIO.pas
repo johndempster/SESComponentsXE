@@ -143,6 +143,7 @@ unit SESLabIO;
   20.07.17 .ADCStart Analog input channels checked for duplicates and acquisition aborted.
   13.11.17 Support for Measurement Computing Corp devices added.
   20.03.19 TritonRegisterValueToPercent() added. Calculates register % value from required value
+  21.04.19 THold now set to correct value in TritonAutoCompensate (rather than set to VHold)
   ================================================================================ }
 
 interface
@@ -4645,7 +4646,7 @@ begin
                                       UseDigitalArtefactSubtraction,
                                       CompensationCoeff,
                                       VHold,
-                                      VStep,
+                                      THold,
                                       VStep,
                                       TStep ) ;
        end ;

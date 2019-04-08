@@ -51,6 +51,7 @@ unit TritonUnit;
 //          Current added to stimulus current to compensate for stimulus bias current of Pico
 // 20.03.19 TritonRegisterValueToPercent() added. Calculates register % value from required value
 
+
 interface
 
 uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math, classes, strutils ;
