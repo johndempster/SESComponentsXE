@@ -50,6 +50,8 @@ unit TritonUnit;
 // 08.05.18 FCurrentStimulusBias field and TritonSetCurrentStimulusBias() & TritonGetCurrentStimulusBias added
 //          Current added to stimulus current to compensate for stimulus bias current of Pico
 // 20.03.19 TritonRegisterValueToPercent() added. Calculates register % value from required value
+// 11.04.19 Triton_RemoveArtifact() procedure added.
+// 16.04.19 Triton_GetDigitalLeak and Triton_SetDigitalLeak added
 
 
 interface
@@ -666,7 +668,9 @@ Ttecella_auto_artifact_enable =  function(
 Ttecella_auto_artifact_update =  function(
                            Handle : Integer ;
                            VHold : Double ;
+                           THold : Double ;
                            VStep : Double ;
+                           TStep : Double ;
                            Iterations : Integer ;
                            stimulus_index : Integer
                            ) : Integer ; cdecl ;
@@ -928,6 +932,12 @@ procedure TritonAutoCompensate(
           TStep : Single
           ) ;
 
+procedure Triton_RemoveArtifact(
+          VHold : Single ;
+          THold : Single ;
+          VStep : Single ;
+          TStep : Single ) ;
+
 procedure TritonJP_AutoZero ;
 
 function TritonGetNumChannels : Integer ;
@@ -936,6 +946,9 @@ procedure Triton_DigitalLeakSubtractionEnable(
          Chan : Integer ;
          Enable : Boolean
          ) ;
+
+function Triton_GetDigitalLeak( Chan : Integer ) : Double ;
+procedure Triton_SetDigitalLeak( Chan : Integer ;Value : Double ) ;
 
 procedure Triton_AutoArtefactRemovalEnable( Enable : Boolean ) ;
 
@@ -2911,6 +2924,42 @@ begin
 
      end ;
 
+procedure Triton_RemoveArtifact(
+          VHold : Single ;
+          THold : Single ;
+          VStep : Single ;
+          TStep : Single ) ;
+// ------------------------------------------------------
+// Remove artifact remaining after capacity compensation
+// ------------------------------------------------------
+var
+    v_hold : Double ;
+    t_hold : Double ;
+    v_step : Double ;
+    t_step : Double ;
+    acq_iterations : Integer ;
+    unused_stimulus_index : Integer ;
+begin
+
+     v_hold := VHold ;
+     t_hold := THold ;
+     v_step := VStep ;
+     t_step := TStep ;
+     acq_iterations := 20 ;
+     unused_stimulus_index := 0 ;
+     Triton_CheckError( 'tecella_auto_artifact_update : ',
+                         tecella_auto_artifact_update( TecHandle,
+                                                       v_hold,
+                                                       t_hold,
+                                                       v_step,
+                                                       t_step,
+                                                       acq_iterations,
+                                                       unused_stimulus_index
+                                                        )) ;
+
+     end;
+
+
 procedure TritonJP_AutoZero ;
 // ------------------------
 // Zero junction potentials
@@ -2953,6 +3002,32 @@ begin
                                            Chan,
                                            Enabled ) ;
     end ;
+
+
+function Triton_GetDigitalLeak( Chan : Integer ) : Double ;
+// -------------------------------------------------
+// Return current value of digital leak compensation
+// -------------------------------------------------
+begin
+      Triton_CheckError( 'tecella_chan_get_digital_leak : ',
+      tecella_chan_get_digital_leak( TecHandle,
+                                     Chan,
+                                     Result )) ;
+
+end;
+
+procedure Triton_SetDigitalLeak( Chan : Integer ;
+                                Value : Double ) ;
+// --------------------------------------
+// Set value of digital leak compensation
+// --------------------------------------
+begin
+      Triton_CheckError( 'tecella_chan_set_digital_leak : ',
+      tecella_chan_set_digital_leak( TecHandle,
+                                     Chan,
+                                     Value )) ;
+
+end;
 
 
 procedure Triton_AutoArtefactRemovalEnable( Enable : Boolean ) ;

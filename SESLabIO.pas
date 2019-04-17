@@ -143,7 +143,8 @@ unit SESLabIO;
   20.07.17 .ADCStart Analog input channels checked for duplicates and acquisition aborted.
   13.11.17 Support for Measurement Computing Corp devices added.
   20.03.19 TritonRegisterValueToPercent() added. Calculates register % value from required value
-  21.04.19 THold now set to correct value in TritonAutoCompensate (rather than set to VHold)
+  21.04.19 THold now set to correct value in TritonAutoCompensate() (rather than set to VHold)
+  11.04.19 TritonRemoveArtifact() procedure added.
   ================================================================================ }
 
 interface
@@ -404,6 +405,9 @@ type
     procedure SetTritonCurrentStimulusBias( Value : Single ) ;
     function GetTritonCurrentStimulusBias : Single ;
 
+    function GetTritonDigitalLeakConductance( Chan : Integer ) : single ;
+    procedure SetTritonDigitalLeakConductance( Chan : Integer ; value : single ) ;
+
     procedure TimerTickOperations ;
     procedure SetADCExternalTriggerActiveHigh( Value : Boolean ) ;
 
@@ -633,6 +637,12 @@ procedure TritonAutoCompensation(
           TStep : Single
           ) ;
 
+procedure TritonRemoveArtifact(
+          VHold : Single ;
+          THold : Single ;
+          VStep : Single ;
+          TStep : Single ) ;
+
     procedure TritonJPAutoZero ;
 
     procedure TritonZap(
@@ -745,6 +755,10 @@ procedure TritonAutoCompensation(
 
     Property TritonCurrentStimulusBias : Single read  GetTritonCurrentStimulusBias
                                                write  SetTritonCurrentStimulusBias ;
+
+    Property TritonDigitalLeakConductance[ Chan : Integer ] : Single
+                                                              read GetTritonDigitalLeakConductance
+                                                              write SetTritonDigitalLeakConductance ;
 
     Property DIGHoldingLevel : Integer
                                Read GetDIGHoldingLevel
@@ -4466,6 +4480,19 @@ begin
      end ;
 
 
+function TSESLabIO.GetTritonGain(
+         Chan : Integer                        // New gain
+         ) : Integer ;
+// -------------------------------------------------
+//  Get Triton patch clamp gain for selected channel
+// -------------------------------------------------
+begin
+     case FLabInterfaceType of
+       Triton : Result := TritonGetGain( Chan ) ;
+       else Result := 0 ;
+       end ;
+     end ;
+
 procedure TSESLabIO.SetTritonGain(
          Chan : Integer ;                   // Channel to be updated
          Value : Integer                       // New source
@@ -4480,18 +4507,33 @@ begin
      end ;
 
 
-function TSESLabIO.GetTritonGain(
+function TSESLabIO.GetTritonDigitalLeakConductance(
          Chan : Integer                        // New gain
-         ) : Integer ;
-// -------------------------------------------------
-//  Get Triton patch clamp gain for selected channel
-// -------------------------------------------------
+         ) : single ;
+// ---------------------------------------------------------------------
+//  Get Triton patch clamp digital leak conductance for selected channel
+// ---------------------------------------------------------------------
 begin
      case FLabInterfaceType of
-       Triton : Result := TritonGetGain( Chan ) ;
+       Triton : Result := Triton_GetDigitalLeak( Chan ) ;
        else Result := 0 ;
        end ;
      end ;
+
+
+procedure TSESLabIO.SetTritonDigitalLeakConductance(
+         Chan : Integer ;                   // Channel to be updated
+         Value : single                       // New source
+         ) ;
+// ---------------------------------------------------------------------
+//  Set Triton patch clamp digital leak conductance for selected channel
+// ---------------------------------------------------------------------
+begin
+     case FLabInterfaceType of
+       Triton : Triton_SetDigitalLeak( Chan, Value ) ;
+       end ;
+     end ;
+
 
 
 procedure TSESLabIO.SetTritonUserConfig(
@@ -4651,6 +4693,21 @@ begin
                                       TStep ) ;
        end ;
      end ;
+
+
+procedure TSESLabIO.TritonRemoveArtifact(
+          VHold : Single ;
+          THold : Single ;
+          VStep : Single ;
+          TStep : Single ) ;
+// ------------------------------------------------------
+//  Remove artifact remaining after capacity compensation
+// ------------------------------------------------------
+begin
+     case FLabInterfaceType of
+       Triton : Triton_RemoveArtifact( VHold, THold, VStep, Tstep ) ;
+       end ;
+end;
 
 
 procedure TSESLabIO.TritonJPAutoZero ;
