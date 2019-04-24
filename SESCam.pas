@@ -1197,7 +1197,7 @@ begin
 
              // List of readout speeds
              DCAMAPI_GetCameraReadoutSpeedList( DCAMSession, CameraReadoutSpeedList ) ;
-             FReadoutSpeed := 0 ;
+             FReadoutSpeed := Min(Max(FReadoutSpeed,0),CameraReadoutSpeedList.Count-1) ;
 
              // Get camera readout speed options
 
@@ -2953,7 +2953,8 @@ procedure TSESCam.SetReadOutSpeed( Value : Integer ) ;
 // -------------------------------
 begin
 
-     FReadoutSpeed := Max(Min(Value,CameraReadoutSpeedList.Count-1),0) ;
+     //FReadoutSpeed := Max(Min(Value,CameraReadoutSpeedList.Count-1),0) ;
+     FReadoutSpeed := Max(Value,0) ;
 
      case FCameraType of
        ITEX_CCIR : begin
