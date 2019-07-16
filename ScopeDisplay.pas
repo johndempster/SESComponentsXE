@@ -130,6 +130,7 @@ unit ScopeDisplay;
   27.10.16 ... JD Support for single, double floating point and 8 byte integer arrays added
                   .FloatingPointSamples property added
   04.11.16 ... JD ADCZero and cursors position properties now single type rather than integer
+  03.07.19 ... JD ?yd1 and ?yd2 1 and 2 fixed decimal place cursor readout format added
   }
 
 interface
@@ -1875,6 +1876,18 @@ begin
             else yz := 0 ;
             s := s + format('%6.5g %s',[(y-yz)*Channel[ch].ADCScale,Channel[ch].ADCUnits]) ;
             end
+         else if ANSIContainsText(VertCursors[iCurs].ADCName,'?yd1') then begin
+            // Display signal level (relative to baseline)
+              yz := Channel[ch].ADCZero ;
+              s := s + format('%.1f %s',[(y-yz)*Channel[ch].ADCScale,Channel[ch].ADCUnits]) ;
+              s := AnsiReplaceText(s,'?yd1','') ;
+              end
+         else if ANSIContainsText(VertCursors[iCurs].ADCName,'?yd2') then begin
+            // Display signal level (relative to baseline)
+              yz := Channel[ch].ADCZero ;
+              s := s + format('%.2f %s',[(y-yz)*Channel[ch].ADCScale,Channel[ch].ADCUnits]) ;
+              s := AnsiReplaceText(s,'?yd2','') ;
+              end
          else if ANSIContainsText(VertCursors[iCurs].ADCName,'?y') then begin
             // Display signal level (relative to baseline)
               yz := Channel[ch].ADCZero ;
@@ -1886,8 +1899,10 @@ begin
          s := AnsiReplaceText(s,'?t','') ;
          s := AnsiReplaceText(s,'?r','') ;
          s := AnsiReplaceText(s,'?i','') ;
+
          s := AnsiReplaceText(s,'?y0','') ;
          s := AnsiReplaceText(s,'?y','') ;
+
          if ANSIEndsText(', ',s) then s := LeftStr(s,Length(s)-2);
 
 

@@ -54,6 +54,8 @@ unit ADCDataFile;
 // 09.07.18 WCP file type NumScanPerRecord forced to be multiple of 256
 // 15.07.18 Pointer types in IBW wave records changed to Cardinal to work correctly when compiled in 64 bit
 //          Now exports correctly to IBW format from 64 bit programs
+// 16.07.19 .ASCIISaveRecordsinColumns property added. When set as TRUE exports records as columns in ASCII text table
+//          instead of blocks of rows.
 
 {$R 'adcdatafile.dcr'}
 interface
@@ -1333,6 +1335,7 @@ TWAVEDataChunk = packed record
     FASCIITimeUnits : String ;      // ASCII time units ('s','ms','min')
     //ASCScale : Array[0..ChannelLimit] of Single ;
     FASCIIFixedRecordSize : Boolean ; // Fixed record size flag
+    FASCIISaveRecordsinColumns : Boolean ; // TRUE = Save records as columns in ASCII text table
 
     UseTempFile : Boolean ;
     //InBuf : Array[0..64000] of SmallInt ;
@@ -1635,6 +1638,7 @@ TWAVEDataChunk = packed record
     Property ASCIITimeUnits : String Read FASCIITimeUnits Write FASCIITimeUnits ;
     Property ASCIITitleLines : Integer Read FASCIITitleLines Write FASCIITitleLines ;
     Property ASCIIFixedRecordSize : Boolean Read FASCIIFixedRecordSize Write FASCIIFixedRecordSize ;
+    Property ASCIISaveRecordsinColumns : Boolean Read FASCIISaveRecordsinColumns Write FASCIISaveRecordsinColumns ;
   end;
 
 procedure Register;
@@ -1681,6 +1685,7 @@ begin
      FASCIITitleLines := 2 ;
      FASCIITimeUnits := 's' ;
      FASCIIFixedRecordSize := False ;
+     FASCIISaveRecordsInColumns := False ;  // Save records as blocks of rows is default
 
      UseTempFile := False ;
 
@@ -4798,7 +4803,9 @@ var
     Value : Single ;
     NumLines : Cardinal ;     // No. of scans in file
     LineCounter : Cardinal ;  // Line counter
-    i,ch : Integer ;
+    iRecord,NumRecords : Cardinal ;  // No. of records to be exported
+    FilePointer : Int64 ;
+    i,ch,iCol : Integer ;
 begin
 
     // Create ASCII output file
@@ -4809,19 +4816,47 @@ begin
     NumLines :=  FileSeek(TempHandle, 0, 2) div FNumBytesPerScan ;
 
     // Copy data from temporary file to output file
-    FileSeek( TempHandle, 0, 0 ) ;
-    LineCounter := 0 ;
-    for i := 0 to NumLines-1 do begin
-        t :=  LineCounter*FScanInterval ;
-        s := format('%.7g',[t]) ;
-        for ch := 0 to FNumChannelsPerScan-1 do begin
-            FileRead( TempHandle, Value, SizeOf(Value)) ;
-            s := s + format('%s%.7g',[#9,Value]) ;
-            end ;
-        WriteLn( OutFile, s ) ;
-        Inc(LineCounter) ;
-        if LineCounter >= FNumScansPerRecord then LineCounter := 0 ;
-        end ;
+
+    if not FASCIISaveRecordsInColumns then
+       begin
+       //
+       // Save records as a table with records as blocks of rows, time and channels in columns
+       //
+       FileSeek( TempHandle, 0, 0 ) ;
+       LineCounter := 0 ;
+       for i := 0 to NumLines-1 do begin
+           t :=  LineCounter*FScanInterval ;
+           s := format('%.7g',[t]) ;
+           for ch := 0 to FNumChannelsPerScan-1 do begin
+               FileRead( TempHandle, Value, SizeOf(Value)) ;
+               s := s + format('%s%.7g',[#9,Value]) ;
+               end ;
+           WriteLn( OutFile, s ) ;
+           Inc(LineCounter) ;
+           if LineCounter >= FNumScansPerRecord then LineCounter := 0 ;
+           end ;
+       end
+    else
+       begin
+       //
+       // Save channels and records as a table of columns, rows containing matching time points
+       //
+       NumRecords := NumLines div FNumScansPerRecord ;
+       for i := 0 to FNumScansPerRecord-1 do begin
+           t :=  i*FScanInterval ;
+           s := format('%.7g',[t]) ;
+           for iRecord := 0 to NumRecords-1 do
+               begin
+               for ch := 0 to FNumChannelsPerScan-1 do begin
+                   FilePointer := SizeOf(Value)*(ch + i + iRecord*FNumScansPerRecord*FNumChannelsPerScan) ;
+                   FileSeek( TempHandle,FilePointer,0) ;
+                   FileRead( TempHandle, Value, SizeOf(Value)) ;
+                   s := s + format('%s%.7g',[#9,Value]) ;
+                   end ;
+               end;
+           WriteLn( OutFile, s ) ;
+           end ;
+       end;
 
     // Close ASCII file
     CloseFile( OutFile ) ;
