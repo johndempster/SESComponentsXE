@@ -1491,8 +1491,6 @@ function TImageFile.TIFLoadHeader(
 // ---------------------
 // Load TIFF file header
 // ---------------------
-var
-    nn : Integer ;
 begin
 
     Result := False ;

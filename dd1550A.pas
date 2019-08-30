@@ -24,6 +24,8 @@ unit dd1550A;
 //          Whatever version number of wdapi????.dll available in folder is now loaded (instead of
 //          only WDAPI1140.dll)
 // 04.09.17 .. Max. no. of DAC channels limited to 4
+// 28.08.19 Name of Axoscope folder on Windows 64 bit systems corrected
+
 interface
 
   uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math ;
@@ -672,7 +674,7 @@ begin
          if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
          if SourcePath <> '' then Break ;
 
-         TrialPath := format( '%s\Program Files\Molecular Devices (x86)\Axoscope%d.%d\',
+         TrialPath := format( '%s\Program Files (x86)\Molecular Devices\Axoscope%d.%d\',
                                [SYSDrive,VMaj,VMin,AxonDLL]);
          if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
          if SourcePath <> '' then Break ;
