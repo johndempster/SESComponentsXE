@@ -29,7 +29,7 @@ unit Dd1200Win98;
 interface
 
 uses WinTypes,Dialogs, SysUtils, WinProcs,
-     winrt, winrtdriver, winrtctl, winrtdimitem,mmsystem;
+      winrtdriver, winrtctl, winrtdimitem,mmsystem,winrtunit;
 const
      ADCBufSize = 32768 ;
      // Max. no. of samples allowed
@@ -129,7 +129,7 @@ function  DD98_MemoryToDAC(
 
 implementation
 
-uses seslabio ;
+uses seslabio, winrt ;
 
 const
      ClockPeriod = 2.5E-7 ; { 4MHz clock }

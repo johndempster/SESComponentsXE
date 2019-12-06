@@ -36,10 +36,15 @@ unit NIMAQDXUnit;
 // 05.09.17 IMAQDX_CheckFrameInterval() FP error when frame rate attribute does not exist
 //          fixed. returns fixed rate of 30 Hz
 //          IMAQDX_OpenCamera() Only one set of attributes now written to CameraInfo list
+// 04.12.19 Frame capture interval now updated correctly in 64 bit compiles, by substituting
+//          IMAQdxSetAttributeF64() DLL call which does not appear to work in 64 bit nimaqdx.DLL
+//          with a function which write 64 bit floating points to attributes file aand loads this
+//          into the camera.
+//
 
 interface
 
-uses WinTypes,sysutils, classes, dialogs, mmsystem, math, strutils ;
+uses WinTypes,sysutils, classes, dialogs, mmsystem, math, strutils, shlobj ;
 
 const
 
@@ -716,6 +721,7 @@ Type
         AttributeUpdatedEventCallbackPtr : Pointer ;
         CallbackData : Pointer ) : Integer ; stdcall ; //
 
+
 // ----------------------
 // Library function calls
 // ----------------------
@@ -981,6 +987,16 @@ procedure IMAQDX_CopyImageMono12PackedIIDC(
 
 function IMAQDX_ExposureTimeScale(
          var Session : TIMAQDXSession ) : double ;
+
+{$IFNDEF WIN32}
+function IMAQdxSetAttributeF64(
+          SessionID : Integer ;
+          AttributeName : PANSIChar ;
+          AttributeType : Cardinal ;
+          Value : Double
+          ) : Integer ;
+{$ENDIF}
+
 var
 
      IMAQdxSnap : TIMAQdxSnap;
@@ -1003,7 +1019,9 @@ var
      IMAQdxGetAttribute : TIMAQdxGetAttribute ;
      IMAQdxSetAttributeI32 : TIMAQdxSetAttributeI32 ;
      IMAQdxSetAttributeI64 : TIMAQdxSetAttributeI64 ;
+{$IFDEF WIN32}
      IMAQdxSetAttributeF64 : TIMAQdxSetAttributeF64 ;
+{$ENDIF}
      IMAQdxSetAttributeEnum : TIMAQdxSetAttributeEnum ;
      IMAQdxSetAttributeBool : TIMAQdxSetAttributeBool ;
      IMAQdxGetAttributeMinimum : TIMAQdxGetAttributeMinimum ;
@@ -1051,7 +1069,6 @@ const
 var
     LibraryHnd : THandle ;         // PVCAM32.DLL library handle
     LibraryLoaded : boolean ;      // PVCAM32.DLL library loaded flag
-    Val : Integer ;
 
 procedure IMAQDX_LoadLibrary  ;
 { -------------------------------------
@@ -1096,7 +1113,9 @@ begin
         @IMAQdxGetAttributeMinimum := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxGetAttributeMinimum') ;
         @IMAQdxSetAttributeI32 := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxSetAttribute') ;
         @IMAQdxSetAttributeI64 := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxSetAttribute') ;
+{$IFDEF WIN32}
         @IMAQdxSetAttributeF64 := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxSetAttribute') ;
+{$ENDIF}
         @IMAQdxSetAttributeEnum := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxSetAttribute') ;
         @IMAQdxSetAttributeBool := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxSetAttribute') ;
         @IMAQdxGetAttribute := IMAQDX_GetDLLAddress(LibraryHnd,'IMAQdxGetAttribute') ;
@@ -2428,45 +2447,55 @@ function IMAQDX_SetAttribute(
 // Set attribute (from 64 bit integer)
 // -----------------------------------
 var
-    DValue : Double ;
-    i64Value,Inc64,Max64,Min64 : Int64 ;
-    i32Value : Integer ;
+    DValue,DInc,DMax,DMin : Double ;
+    i32Value,Inc32,Max32,Min32 : Integer ;
+    i64Value,Inc64,Max64,Min64 : Integer ;
 begin
-//      outputdebugstring(pchar(format('Int64 %d %s,%d',
-//      [Attribute,ansistring(Session.Attributes[Attribute].name),Value])));
 
       Result := Value ;
       if Attribute < 0 then Exit ;
       if not Session.Attributes[Attribute].Writable then Exit ;
 
-      // Keep within min-max limits and incremental steps
-      IMAQDX_GetAttrRange( Session, Attribute, Min64,Max64,Inc64) ;
-      If Inc64 > 0 then Value := (Value div Inc64)*Inc64 ;
-      Value := Min(Max(Value,Min64),Max64) ;
-      Result := Value ;
+      // Keep within min-max limits and incremental steps and write attribute
 
       case Session.Attributes[Attribute].iType of
+
           IMAQdxValueTypeI64 : begin
              i64Value := Value ;
+             IMAQDX_GetAttrRange( Session, Attribute, Min64,Max64,Inc64) ;
+             If Inc64 > 0 then i64Value := (i64Value div Inc64)*Inc64 ;
+             i64Value := Min(Max(i64Value,Min64),Max64) ;
              IMAQdxSetAttributeI64( Session.id,
                                     Session.Attributes[Attribute].Name,
                                     Session.Attributes[Attribute].iType,
                                     i64Value) ;
+             Result := i64Value ;
              end ;
+
           IMAQdxValueTypeF64 : begin
              DValue := Value ;
+             IMAQDX_GetAttrRange( Session, Attribute, DMin,DMax,DInc) ;
+             If DInc > 0 then DValue := Floor(DValue / DInc)*DInc ;
+             DValue := Min(Max(DValue,DMin),DMax) ;
              IMAQdxSetAttributeF64( Session.id,
                                     Session.Attributes[Attribute].Name,
                                     Session.Attributes[Attribute].iType,
                                     DValue) ;
+             Result := Round(DValue) ;
              end ;
+
           else begin
              i32Value := Value ;
+             IMAQDX_GetAttrRange( Session, Attribute, Min32,Max32,Inc32) ;
+             If Inc32 > 0 then i32Value := (i32Value div Inc32)*Inc32 ;
+             i32Value := Min(Max(i32Value,Min32),Max32) ;
              IMAQdxSetAttributeI32( Session.id,
                                     Session.Attributes[Attribute].Name,
                                     Session.Attributes[Attribute].iType,
                                     i32Value) ;
+             Result := i32Value ;
              end;
+
           end;
 
       end ;
@@ -2481,9 +2510,9 @@ function IMAQDX_SetAttribute(
 // Set attribute (from 32 bit integer)
 // -------------
 var
-    DValue : Double ;
-    i64Value : Int64 ;
+    DValue,DInc,DMax,DMin : Double ;
     i32Value,Inc32,Max32,Min32 : Integer ;
+    i64Value,Inc64,Max64,Min64 : Integer ;
 
 begin
 //      outputdebugstring(pchar(format('Int32 %d %s,%d',
@@ -2493,34 +2522,45 @@ begin
       if Attribute < 0 then Exit ;
       if not Session.Attributes[Attribute].Writable then Exit ;
 
-      // Keep within min-max limits and incremental steps
-      IMAQDX_GetAttrRange( Session, Attribute, Min32,Max32,Inc32) ;
-      If Inc32 > 0 then Value := (Value div Inc32)*Inc32 ;
-     // Value := Min(Max(Value,Min32),Max32) ;
-      Result := Value ;
+      // Keep within min-max limits and incremental steps and write attribute
 
       case Session.Attributes[Attribute].iType of
           IMAQdxValueTypeI64 : begin
+
              i64Value := Value ;
+             IMAQDX_GetAttrRange( Session, Attribute, Min64,Max64,Inc64) ;
+             If Inc64 > 0 then i64Value := (i64Value div Inc64)*Inc64 ;
+             i64Value := Min(Max(i64Value,Min64),Max64) ;
              IMAQdxSetAttributeI64( Session.id,
                                     Session.Attributes[Attribute].Name,
                                     Session.Attributes[Attribute].iType,
                                     i64Value) ;
+             Result := i64Value ;
              end ;
+
           IMAQdxValueTypeF64 : begin
              DValue := Value ;
+             IMAQDX_GetAttrRange( Session, Attribute, DMin,DMax,DInc) ;
+             If DInc > 0 then DValue := Floor(DValue / DInc)*DInc ;
+             DValue := Min(Max(DValue,DMin),DMax) ;
              IMAQdxSetAttributeF64( Session.id,
                                     Session.Attributes[Attribute].Name,
                                     Session.Attributes[Attribute].iType,
                                     DValue) ;
+             Result := Round(DValue) ;
              end ;
           else begin
              i32Value := Value ;
+             IMAQDX_GetAttrRange( Session, Attribute, Min32,Max32,Inc32) ;
+             If Inc32 > 0 then i32Value := (i32Value div Inc32)*Inc32 ;
+             i32Value := Min(Max(i32Value,Min32),Max32) ;
              IMAQdxSetAttributeI32( Session.id,
                                     Session.Attributes[Attribute].Name,
                                     Session.Attributes[Attribute].iType,
                                     i32Value) ;
+             Result := i32Value ;
              end;
+
           end;
 
       end ;
@@ -2534,60 +2574,57 @@ function IMAQDX_SetAttribute(
 // -------------
 // Set attribute (from double)
 // -------------
+
 var
-    DValue, DMin,DMax,DInc,SetDValue : Double ;
-    i64Value : Int64 ;
-    i32Value,Err : Integer ;
-    Msg : Array[0..255] of ANSIChar ;
-    s : string ;
+    DValue,DInc,DMax,DMin : Double ;
+    i32Value,Inc32,Max32,Min32 : Integer ;
+    i64Value,Inc64,Max64,Min64 : Integer ;
     begin
-//      outputdebugstring(pchar(format('double %d %s,%.3g',
-//      [Attribute,ansistring(Session.Attributes[Attribute].name),Value])));
 
       Result := Value ;
       if Attribute < 0 then Exit ;
       if not Session.Attributes[Attribute].Writable then Exit ;
 
       // Keep within min-max limits and incremental steps
-      IMAQDX_GetAttrRange( Session, Attribute, DMin,DMax,DInc) ;
-      If DInc > 0 then Value := Floor(Value / DInc)*DInc ;
-      Value := Min(Max(Value,DMin),DMax) ;
-      Result := Value ;
 
       case Session.Attributes[Attribute].iType of
+
           IMAQdxValueTypeI64 : begin
              i64Value := Round(Value);
+             IMAQDX_GetAttrRange( Session, Attribute, Min64,Max64,Inc64) ;
+             If Inc64 > 0 then i64Value := (i64Value div Inc64)*Inc64 ;
+             i64Value := Min(Max(i64Value,Min64),Max64) ;
              IMAQdxSetAttributeI64( Session.id,
                                     Session.Attributes[Attribute].Name,
                                     Session.Attributes[Attribute].iType,
                                     i64Value) ;
+             Result := i64Value ;
              end ;
+
           IMAQdxValueTypeF64 : begin
              DValue := Value ;
-             Err := IMAQdxSetAttributeF64( Session.id,
+             IMAQDX_GetAttrRange( Session, Attribute, DMin,DMax,DInc) ;
+             If DInc > 0 then Value := Floor(Value / DInc)*DInc ;
+             DValue := Min(Max(DValue,DMin),DMax) ;
+             IMAQdxSetAttributeF64( Session.id,
                                     Session.Attributes[Attribute].Name,
                                     Session.Attributes[Attribute].iType,
                                     DValue) ;
-             IMAQdxGetAttribute( Session.id,
-                                    Session.Attributes[Attribute].Name,
-                                    Session.Attributes[Attribute].iType,
-                                    @SetDValue) ;
-
-             if Err <> 0 then begin
-                IMAQdxGetErrorString( Err, Msg, High(Msg));
-                s := ANSISTRING(msg) ;
-//             outputdebugstring(pchar(format('Double %s,%.3f,%.3f %s',
-//                [ansistring(Session.Attributes[Attribute].name),DValue,SetDValue,s])));
-
-             end;
+             Result := DValue ;
              end ;
+
           else begin
              i32Value := Round(Value) ;
+             IMAQDX_GetAttrRange( Session, Attribute, Min32,Max32,Inc32) ;
+             If Inc32 > 0 then i32Value := (i32Value div Inc32)*Inc32 ;
+             i32Value := Min(Max(i32Value,Min32),Max32) ;
              IMAQdxSetAttributeI32( Session.id,
                                     Session.Attributes[Attribute].Name,
                                     Session.Attributes[Attribute].iType,
                                     i32Value) ;
+             Result := i32Value ;
              end;
+
           end;
 
       end ;
@@ -2624,7 +2661,8 @@ begin
 
       // Find and set required value in list
       for i := 0 to nList-1 do
-         if Lowercase(ANSIString(List[i].Name)) = Lowercase(ANSIString(Value)) then begin
+         if Lowercase(ANSIString(List[i].Name)) = Lowercase(ANSIString(Value)) then
+            begin
             IMAQdxSetAttributeEnum( Session.id,
                                     Session.Attributes[Attribute].Name,
                                     Session.Attributes[Attribute].iType,
@@ -2665,6 +2703,63 @@ begin
 
       end ;
 
+{$IFNDEF WIN32}
+function IMAQdxSetAttributeF64(
+          SessionID : Integer ;
+          AttributeName : PANSIChar ;
+          AttributeType : Cardinal ;
+          Value : Double
+          ) : Integer ;
+// ==========================================================================
+// Special code to work round faulty IMAQdxSetAttributeF64 call in 64 bit DLL
+// 64 bit floating point value is written to attributes file and that file is
+// reloaded. JD 03.12.19
+// ==========================================================================
+var
+    SettingsDirectory : string ;
+    AttributesFileName : ANSIString ;
+    vSpecialPath : array[0..511] of Char;
+    AttributeList : TStringList ;
+    i : Integer ;
+begin
+
+     // get settings directory path
+     SHGetFolderPath( 0, CSIDL_COMMON_DOCUMENTS, 0,0,vSpecialPath) ;
+     SettingsDirectory := String(vSpecialPath) + '\National Instruments\NI-IMAQdx\Data\' ;
+
+     if not SysUtils.DirectoryExists(SettingsDirectory) then begin
+        if not SysUtils.ForceDirectories(SettingsDirectory) then
+           ShowMessage( 'Unable to create settings folder' + SettingsDirectory) ;
+        end ;
+     AttributesFileName := ANSIString( SettingsDirectory ) + 'camera attributes.ini' ;
+
+     // Save existing attributes from camera to file
+     IMAQdxWriteAttributes( SessionID, PANSIChar(AttributesFileName) ) ;
+
+     // Load into list
+     AttributeList := TStringList.Create ;
+     AttributeList.LoadFromFile( AttributesFileName ) ;
+     // Delete existing value of target attribute
+     for i := 0 to AttributeList.Count-1 do
+         begin
+         if ContainsText( AttributeList[i], AttributeName ) then
+            begin
+            AttributeList.Delete(i) ;
+            Break ;
+            end ;
+         end ;
+     // Add new attribute and value
+     AttributeList.Add(format('%s = "%.6g"',[AttributeName,Value]) );
+     // Save back to file
+     AttributeList.SaveToFile( AttributesFileName ) ;
+     AttributeList.Free ;
+     // load modified attributes from file to camera
+     IMAQdxReadAttributes( SessionID, PANSIChar(AttributesFileName) ) ;
+
+     Result := 0 ;
+
+end;
+{$ENDIF}
 
 
 procedure IMAQDX_StopCapture(

@@ -86,7 +86,6 @@ contains
   QCAMUnit in 'QCAMUnit.pas',
   SESCam in 'SESCam.pas',
   WinRTDriver in 'WinRTDriver.pas',
-  winrt in 'winrt.pas',
   WinRTCtl in 'WinRTCtl.pas',
   WinRTDimItem in 'WinRTDimItem.pas',
   pvcam in 'pvcam.pas',
@@ -106,6 +105,7 @@ contains
   dd1550B in 'dd1550B.pas',
   MCCUnit in 'MCCUnit.pas',
   PCOUnit in 'PCOUnit.pas',
-  IDSuEYEUnit in 'IDSuEYEUnit.pas';
+  IDSuEYEUnit in 'IDSuEYEUnit.pas',
+  winrtunit in 'winrtunit.pas';
 
 end.
