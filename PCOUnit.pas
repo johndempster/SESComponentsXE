@@ -12,7 +12,7 @@ unit PCOUnit;
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, messages, controls, math, strutils, winprocs ;
-//uses WinTypes,Dialogs, SysUtils, WinProcs, math, mmsystem, strutils, classes ;
+
 const
     PCOAPIMaxBufs = 10240 ;
     PCOAPINumBufs = 16 ;

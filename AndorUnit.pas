@@ -27,6 +27,8 @@ unit AndorUnit;
 // 11.09.14 Smallints changed to Integer,
 //          pointer arithmetic calculation now 64 compatible (NativeUInt rather than Cardinal)
 // 04.03.16 Andor_Set... procedure now exit if camera is not open
+// 08.01.20 atmcd32.dll or atmcd64.dll now loaded directly from c:\program files\andor sdk
+//          If not found then user requested to copy DLL to c:\program files\winfluor
 
 interface
 
@@ -703,6 +705,8 @@ procedure Andor_SetCameraADC(
           var GreyLevelMin : Integer ;
           var GreyLevelMax : Integer ) ;
 
+function Andor_CheckDLLExists( DLLName : String ) : Boolean ;
+
 
 implementation
 
@@ -954,15 +958,13 @@ var
 procedure Andor_LoadLibrary(
           var Session : TAndorSession   // Camera session record
           ) ;
-
 { ---------------------------------------------
   Load camera interface DLL library into memory
   ---------------------------------------------}
-
 var
     WinDir : Array[0..255] of Char ;
     SysDrive : String ;
-    LibFileName : string ;
+    LibName : string ;
 begin
 
      LibraryLoaded := False ;
@@ -974,31 +976,29 @@ begin
      { Load DLL camera interface library }
 
     {$IFDEF WIN32}
-      LibFileName := 'atmcd32d.dll' ;
+      LibName := 'atmcd32d.dll' ;
     {$ELSE}
-      LibFileName := 'atmcd64d.dll' ;
+      LibName := 'atmcd64d.dll' ;
     {$IFEND}
 
-     // Look for DLL initially in Winfluor folder
-     Session.LibFileName := ExtractFilePath(ParamStr(0)) + LibFileName ;
+     // Try to get DLL from SDK V2 program folder
+     GetWindowsDirectory( WinDir, High(WinDir) ) ;
+     SysDrive := ExtractFileDrive(String(WinDir)) ;
+     Session.LibFileName := SysDrive + '\Program Files\Andor SDK\' + LibName ;
 
-     if not FileExists( Session.LibFileName ) then begin
-        // If not in winfluor folder, try Andor SDK folder
-        Session.LibFileName := SysDrive + '\Program Files\Andor Solis\Drivers\' + LibFileName ;
-        if not FileExists( Session.LibFileName ) then begin
-            // If not in most recent SDK folder try older one
-            Session.LibFileName := SysDrive + '\Program Files\Ixon\Drivers\' + LibFileName ;
-            if not FileExists( Session.LibFileName ) then begin
-                // Use Windows directory
-                Session.LibFileName := LibFileName ;
-                end ;
-            end ;
+     // If DLL not found look for DLL in Winfluor program folder
+     if not FileExists( Session.LibFileName ) then
+        begin
+        Session.LibFileName := ExtractFilePath(ParamStr(0)) + LibName ;
+        // Check that DLLs are available in WinFluor program folder
+        if not Andor_CheckDLLExists( LibName ) then Exit ;
         end ;
 
      { Load DLL camera interface library }
      LibraryHnd := LoadLibrary( PChar(Session.LibFileName));
-     if LibraryHnd <= 0 then begin
-        ShowMessage( Session.LibFileName + ' not found! (Copy to c:\Program Files\Winfluor folder') ;
+     if LibraryHnd <= 0 then
+        begin
+        ShowMessage( Session.LibFileName + ' is missing! (Copy to c:\Program Files\Winfluor folder)') ;
         Exit ;
         end ;
 
@@ -2169,6 +2169,26 @@ begin
          Inc(i) ;
          end ;
      end ;
+
+
+function Andor_CheckDLLExists( DLLName : String ) : Boolean ;
+// -------------------------------------------
+// Check that a DLL is present in WinFluor folder
+// -------------------------------------------
+var
+    Destination : String ;
+begin
+     // Get system drive
+     Destination := ExtractFilePath(ParamStr(0)) + DLLName ;
+
+     if FileExists(Destination) then Result := True
+     else
+        begin
+        ShowMessage('Andor SDK3: ' + Destination + ' is missing!') ;
+        Result := False ;
+        end ;
+     end ;
+
 
 
 end.

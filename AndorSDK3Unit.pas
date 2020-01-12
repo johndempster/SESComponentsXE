@@ -11,10 +11,14 @@ unit AndorSDK3Unit;
 // 23.07.13 Check on number of camera taps in AndorSDK3_OpenCamera() now on ANSI string
 //          rather than widestring (for V7/XE compilation compatibility
 // 31.01.14 Updated to Compile under both 32/64 bits (File handle now THandle)
+// 08.01.20 atcore.dll now opened from c:\Program Files\Andor SDK3\ or c:\Program Files\Andor SDK3\\win32\
+//          If not found user is requested to copy DLL files into WinFluor
+//          All at????.DLL files now checked for presence.
 
 interface
 
-uses WinTypes,sysutils, classes, dialogs, mmsystem, messages, controls, math, strutils ;
+uses WinTypes,sysutils, classes, dialogs, mmsystem, messages, controls, math, strutils, winprocs ;
+
 const
     AndorSDK3MaxBufs = 10240 ;
     AndorSDK3AOIHeightSteps = 2 ;
@@ -665,23 +669,43 @@ procedure AndorSDK3_LoadLibrary(
   ---------------------------------------------}
 const
     LibName = 'atcore.dll' ;
+
+var
+    WinDir : Array[0..255] of Char ;
+    SysDrive : String ;
+
 begin
 
      LibraryLoaded := False ;
 
-     // Look for DLL initially in Winfluor folder
-     Session.LibFileName := ExtractFilePath(ParamStr(0)) + LibName ;
+     // Try to get DLL from SDK from SDK V3 program folder
+     GetWindowsDirectory( WinDir, High(WinDir) ) ;
+     SysDrive := ExtractFileDrive(String(WinDir)) ;
+    {$IFDEF WIN32}
+     Session.LibFileName := SysDrive + '\Program Files\Andor SDK3\win32\' + LibName ;
+    {$ELSE}
+     Session.LibFileName := SysDrive + '\Program Files\Andor SDK3\' + LibName ;
+    {$ENDIF}
 
-     // Check that DLLs are available in WinFluor program folder
-     if not AndorSDK3_CheckDLLExists( 'atcore.dll' ) then Exit ;
-     if not AndorSDK3_CheckDLLExists( 'atblkbx.dll' ) then Exit ;
-     if not AndorSDK3_CheckDLLExists( 'atcl_bitflow.dll' ) then Exit ;
-     if not AndorSDK3_CheckDLLExists( 'atdevregcam.dll' ) then Exit ;
+     // If DLL not found look for DLL in Winfluor program folder
+     if not FileExists( Session.LibFileName ) then
+        begin
+        Session.LibFileName := ExtractFilePath(ParamStr(0)) + LibName ;
+        // Check that DLLs are available in WinFluor program folder
+        if not AndorSDK3_CheckDLLExists( 'atcore.dll' ) then Exit ;
+        AndorSDK3_CheckDLLExists( 'atblkbx.dll' )  ;
+        AndorSDK3_CheckDLLExists( 'atcl_bitflow.dll' )  ;
+        AndorSDK3_CheckDLLExists( 'atdevregcam.dll' )  ;
+        AndorSDK3_CheckDLLExists( 'atusb_libusb.dll' )  ;
+        AndorSDK3_CheckDLLExists( 'atusb_libusb10.dll' )  ;
+        AndorSDK3_CheckDLLExists( 'atdevapogee.dll' )  ;
+        AndorSDK3_CheckDLLExists( 'atutility.dll' )  ;
+        end ;
 
      { Load DLL camera interface library }
      LibraryHnd := LoadLibrary( PChar(Session.LibFileName));
      if LibraryHnd <= 0 then begin
-        ShowMessage( 'Andor SDK3: Unable to open' + Session.LibFileName ) ;
+        ShowMessage( 'Andor SDK3: Unable to open ' + Session.LibFileName ) ;
         Exit ;
         end ;
 
@@ -745,7 +769,7 @@ begin
 
 function AndorSDK3_CheckDLLExists( DLLName : String ) : Boolean ;
 // -------------------------------------------
-// Check that a DLL present in WinFluor folder
+// Check that a DLL is present in WinFluor folder
 // -------------------------------------------
 var
     Source,Destination : String ;
@@ -757,6 +781,14 @@ begin
      SysDrive := ExtractFileDrive(String(WinDir)) ;
      Destination := ExtractFilePath(ParamStr(0)) + DLLName ;
 
+     if FileExists(Destination) then Result := True
+     else
+        begin
+        ShowMessage('Andor SDK3: ' + Destination + ' is missing! (Copy to c:\Program Files\Winfluor folder)') ;
+        Result := False ;
+        end ;
+
+{
      // Try to get file from win32 DLL folder of SDK
      if not FileExists(Destination) then begin
         Source := SysDrive + '\Program Files\Andor SDK3\win32\' + DLLName ;
@@ -786,6 +818,8 @@ begin
         ShowMessage('Andor SDK3: ' + Destination + ' is missing!') ;
         Result := False ;
         end ;
+}
+
      end ;
 
 

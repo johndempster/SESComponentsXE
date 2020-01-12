@@ -1,7 +1,7 @@
 unit Dd1320;
 { =================================================================           *`*`
   Axon Instruments Digidata 1320 Interface Library V1.0
-  (c) John Dempster, University of Strathclyde, All Rights Reserved
+  (c) John Dempster, University of Strathclyde, All Rights Reserved                                                                                                            ck
   8/2/2001
   12/3/2001 Axoutils32.dll now loaded from c:\axon\libs (not \windows\system)
   24/10/01 ... ADCToMemory modified to fix failure to acquire in
@@ -33,6 +33,7 @@ unit Dd1320;
   02.12.13 MemoryToDACAndDigital now works with very large (150s/12Msamples) buffers
            Digital update interval now correct
   05.12.13 Compiled under Delphi XE
+  03.01.20 Access violation when unable to find installed Digidata 132X device now fixed
   =================================================================}
 
 interface
@@ -383,7 +384,7 @@ var
 
    Err : Integer ;                           // Error number returned by Digidata
    OK :Boolean ;                            // Successful operation flag
-   ErrorMsg : Array[0..80] of ANSIchar ;         // Error messages returned by Digidata
+   ErrorMsg : Array[0..160] of ANSIchar ;         // Error messages returned by Digidata
    AIBufs : Array[0..DD132X_NumBuffers-1] of TDataBuffer ; // D/A data buffer definition records
    AOBufs : Array[0..DD132X_NumBuffers-1] of TDataBuffer ; // A/D sample buffer definition records
 
@@ -601,8 +602,9 @@ begin
      { Find Digidata 132X devices on SCSI bus and retrieve info. }
      DeviceInfo.Length := SizeOf(DeviceInfo) ;
      DD132X_FindDevices(DeviceInfo, 1, Err ) ;
-     if Err <> 0 then begin
-        DD132X_CheckError(Err) ;
+     if Err <> 0 then
+        begin
+        ShowMessage( 'Unable to find Digidata 132x!') ;
         Exit ;
         end ;
 
