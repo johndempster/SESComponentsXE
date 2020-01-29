@@ -14,6 +14,10 @@ unit AndorSDK3Unit;
 // 08.01.20 atcore.dll now opened from c:\Program Files\Andor SDK3\ or c:\Program Files\Andor SDK3\\win32\
 //          If not found user is requested to copy DLL files into WinFluor
 //          All at????.DLL files now checked for presence.
+// 29.01.20 Increment of NumBuffersAcquired by WaitBufferThread() now protected with Synchronize() function to avoid
+//          possible thread reentry issues. Main thread now also waits for completion of termination of WaitBufferThread() when
+//          it is terminated. AT_FLUSH() now called after WaitBufferThread() termination in AndorSDK3_StopCapture() to
+//          avoid access violation within SDK code with SIMCAM. Not tested yet on Zyla/Neo cameras.
 
 interface
 
@@ -647,16 +651,18 @@ var
     pRBuf : Pointer ;
 begin
   // execute codes inside the following block until the thread is terminated
-  while not Terminated do begin
+  while not Terminated do
+    begin
     repeat
        Err := AT_WaitBuffer( ATHandle, pRBuf, NumBytes, 10 ) ;
-       if Err = 0 then begin
+       if Err = 0 then
+          begin
           AT_QueueBuffer( ATHandle, pRBuf, NumBytes ) ;
-          Inc(NumBuffersAcquired) ;
+          Synchronize( procedure begin Inc(NumBuffersAcquired) end ) ;
           end ;
        if (Err <> 0) and (Err <> AT_ERR_TIMEDOUT) then BufferErr := Err ;
        until Err = AT_ERR_TIMEDOUT ;
-  end;
+    end;
 end;
 
 
@@ -1000,6 +1006,7 @@ begin
      Session.CameraOpen := True ;
      Session.CapturingImages := False ;
      Result := Session.CameraOpen ;
+     WaitBufferThread := Nil ;              // Clear wait buffer thread pointer
 
      end ;
 
@@ -1502,6 +1509,13 @@ begin
      BufferErr := 0 ;
 
      // Start image queue transfer thread
+     if WaitBufferThread <> Nil Then
+        begin
+        // Kill existing thread
+        WaitBufferThread.Terminate ;
+        WaitBufferThread.WaitFor ;
+        FreeAndNil(WaitBufferThread);
+        end;
      WaitBufferThread := TWaitBufferThread.Create(false);
 
      end;
@@ -1671,14 +1685,23 @@ begin
      AndorSDK3_CheckError( 'AT_Command:AcquisitionStop',
                            AT_Command( Session.CamHandle, 'AcquisitionStop' )) ;
 
+     // Kill buffer re-queuing thread
+     if WaitBufferThread <> Nil Then
+        begin
+        WaitBufferThread.Terminate ;
+        WaitBufferThread.WaitFor ;
+        FreeAndNil(WaitBufferThread);
+        end;
+
      // Flush buffers
+     // Note. 29.01.20 AT_Flush must come after termination of thread to avoid acess violations within SDK at least when using simulated camera
+     // This may be related to random hang-ups on restarting cameras reported with WinFluor and Zylas cameras but this is still to be confirmed
+
      AndorSDK3_CheckError( 'AT_Flush',AT_Flush( Session.CamHandle )) ;
 
      Session.CapturingImages := False ;
 
-     WaitBufferThread.Destroy ;
-
-     end;
+     end ;
 
 
 procedure AndorSDK3_CheckError(
