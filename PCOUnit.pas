@@ -2269,7 +2269,6 @@ const
 var
     WinDir : Array[0..255] of Char ;
     SysDrive : String ;
-    CLFilePath : string ;
 begin
 
      LibraryLoaded := False ;
@@ -3029,10 +3028,9 @@ function PCOAPI_StartCapture(
 // Start frame capture
 // -------------------
 var
-    i,iB : Integer ;
+    iB : Integer ;
     MaxWidth,MaxHeight : Word ;
-    ExposureTime_ns,ExposureTime_us : DWord ;
-    FrameRateStatus : Word ;
+    ExposureTime_us : DWord ;
     CCDTemp,CameraTemp,PowTemp : SmallInt ;
     pTransferParameters : Pointer ;
     TransferParametersSize : Integer ;
@@ -3263,7 +3261,6 @@ function PCOAPI_CheckFrameInterval(
 // Check that inter-frame interval is valid
 // ----------------------------------------
 var
-    TRead : Double ;
     TempWidth,TempHeight : Integer ;
     ImageTiming : TPCO_ImageTiming ;
     ExposureTime_us : DWord ;
@@ -3319,7 +3316,7 @@ procedure PCOAPI_GetImage(
 // Transfer images from Andor driverbuffer to main buffer
 // ------------------------------------------------------
 var
-    i,iFrom,iTo,NumFramesAcquired,MaxFramesPerCall,t0 : Integer ;
+    i,iTo,NumFramesAcquired,MaxFramesPerCall,t0 : Integer ;
     pBuf : PWordArray ;
     StatusDLL, StatusDrv : DWord  ;
     Done : Boolean ;

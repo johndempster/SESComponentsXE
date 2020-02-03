@@ -2797,8 +2797,6 @@ procedure IMAQ_SetCCDYShift(
 // -------------------------
 // Set CCD stage Y position
 // -------------------------
-var
-    iPosNm : Cardinal ;
 begin
     if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
        begin

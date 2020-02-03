@@ -3583,7 +3583,6 @@ var
     i : Integer ;
     ExposureTime,ActualFPS : Double ;
     AOI : TIS_RECT ;
-    PixelClock : DWORD ;
 begin
 
      Result := False ;
@@ -3615,7 +3614,7 @@ begin
 
      // Set pixel clock
      is_PixelClock( Session.CamHandle,is_PixelClock_CMD_SET,
-                    @Session.PixelClocks[Session.PixelClock],SizeOf(PixelClock));
+                    @Session.PixelClocks[Session.PixelClock],SizeOf(Session.PixelClock));
 
      // Check frame interval
      // (Also ensures Session.ReadoutTime is set)
@@ -3763,8 +3762,8 @@ procedure IDS_GetImage(
 // Transfer images from Andor driverbuffer to main buffer
 // ------------------------------------------------------
 var
-    i,j,jStep,y,imageID,Err,iTo : Integer ;
-    pImageBuf,pFrom,pTo,pBuf : Pointer ;
+    i,j,y,imageID,Err,iTo : Integer ;
+    pImageBuf,pFrom,pBuf : Pointer ;
     nBytes : NativeInt ;
     Done : Boolean ;
 begin

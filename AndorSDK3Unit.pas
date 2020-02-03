@@ -18,6 +18,9 @@ unit AndorSDK3Unit;
 //          possible thread reentry issues. Main thread now also waits for completion of termination of WaitBufferThread() when
 //          it is terminated. AT_FLUSH() now called after WaitBufferThread() termination in AndorSDK3_StopCapture() to
 //          avoid access violation within SDK code with SIMCAM. Not tested yet on Zyla/Neo cameras.
+// 03.02.20 WaitBufferThread code simplified to avoid possible infinite loop condition
+//          Delay added at end of StopCapture() to ensure delay between stopping and starting camera
+//          to test if this is cause of intermittent hang ups with Zylas.
 
 interface
 
@@ -646,23 +649,29 @@ var
   WaitBufferThread : TWaitBufferThread ;
 
 procedure TWaitBufferThread.Execute;
+// ================================================================================
+// Wait for camera image buffer transfers to complete then add buffer back to queue.
+// ================================================================================
+
 var
     NumBytes,Err : Integer ;
     pRBuf : Pointer ;
 begin
+
   // execute codes inside the following block until the thread is terminated
+
   while not Terminated do
     begin
-    repeat
-       Err := AT_WaitBuffer( ATHandle, pRBuf, NumBytes, 10 ) ;
-       if Err = 0 then
-          begin
-          AT_QueueBuffer( ATHandle, pRBuf, NumBytes ) ;
-          Synchronize( procedure begin Inc(NumBuffersAcquired) end ) ;
-          end ;
-       if (Err <> 0) and (Err <> AT_ERR_TIMEDOUT) then BufferErr := Err ;
-       until Err = AT_ERR_TIMEDOUT ;
+    Err := AT_WaitBuffer( ATHandle, pRBuf, NumBytes, 10 ) ;
+    if Err = 0 then
+       begin
+       AT_QueueBuffer( ATHandle, pRBuf, NumBytes ) ;
+       Synchronize( procedure begin Inc(NumBuffersAcquired) end ) ;
+       end ;
+    if (Err <> 0) and (Err <> AT_ERR_TIMEDOUT) then BufferErr := Err ;
     end;
+
+
 end;
 
 
@@ -778,7 +787,7 @@ function AndorSDK3_CheckDLLExists( DLLName : String ) : Boolean ;
 // Check that a DLL is present in WinFluor folder
 // -------------------------------------------
 var
-    Source,Destination : String ;
+    Destination : String ;
     WinDir : Array[0..255] of Char ;
     SysDrive : String ;
 begin
@@ -1698,6 +1707,10 @@ begin
      // This may be related to random hang-ups on restarting cameras reported with WinFluor and Zylas cameras but this is still to be confirmed
 
      AndorSDK3_CheckError( 'AT_Flush',AT_Flush( Session.CamHandle )) ;
+
+     // Wait 100 ms
+     // Add just in case delay between stopping and restarting camera required
+     AndorSDK3_Wait(0.1) ;
 
      Session.CapturingImages := False ;
 

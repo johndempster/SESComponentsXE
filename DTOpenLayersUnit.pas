@@ -1616,7 +1616,6 @@ const
 var
     i,NumCameras : Integer ;
     DeviceInfo : Array[0..MaxDevices] of TOLT_IMGDEVINFO ;
-    PDI : POLT_IMGDEVINFO ;
     DeviceAlias,DeviceName : String ;
     NewVideoSource,OldVideoSource : Word ;
     SupportFeatures,DeviceType : DWord ;
@@ -1980,7 +1979,7 @@ procedure DTOL_StopCapture(
 // -------------------
 var
     i : Integer ;
-    Status,JobStatus,BytesWritten : DWORD ;
+    JobStatus,BytesWritten : DWORD ;
     Done : LongBool ;
 begin
 
@@ -2043,7 +2042,7 @@ var
     LatestFrameAcquired : Integer ;
     pToBuf,pFromBuf : PByteArray ;
     Done : LongBool ;
-    Status,JobStatus,BytesWritten : DWORD ;
+    Status,BytesWritten : DWORD ;
 begin
 
     if not Session.CameraOpen then Exit ;
