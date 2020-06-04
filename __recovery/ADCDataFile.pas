@@ -2478,7 +2478,7 @@ var
    RecordStatus : string ;
    i,NumBytesInFile,FilePointer,ch,RecordCounter : Integer ;
    Done : Boolean ;
-   NumSectors : Double ;
+   NumSectors : Integer ;
 begin
 
      { Determine size of file header }
@@ -2545,8 +2545,8 @@ begin
      FMinADCValue := -FMaxADCValue - 1 ;
 
      // Size of data record
-     ReadDouble( Header, 'NBD=', NumSectors ) ;
-     FNumRecordDataBytes := Round(NumSectors*NumBytesPerSector) ;
+     ReadInt( Header, 'NBD=', NumSectors ) ;
+     FNumRecordDataBytes := NumSectors*NumBytesPerSector ;
 
      { Compute other record size parameters, handling situation where
        overall record size is not known }

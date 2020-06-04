@@ -3013,6 +3013,7 @@ begin
         Until Err = 0 ;
 
      // Return actual sampling interval
+     outputdebugstring(pchar(format('Sampling Rate: Set %.4g Actual %.4g', [SamplingInterval, (1.0 / ActualSamplingRate)])));
      SamplingInterval := 1.0 / ActualSamplingRate ;
 
      // Clear task

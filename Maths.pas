@@ -279,6 +279,7 @@ type
 
 
 function ExtractFloat ( CBuf : string ; Default : Single) : single ;
+function ExtractDouble ( CBuf : string ; Default : Double ) : Double ;
 function MinInt( const Buf : array of LongInt ) : LongInt ;
 function MinFlt( const Buf : array of Single ) : Single ;
 function MaxInt( const Buf : array of LongInt ) : LongInt ;
@@ -420,14 +421,73 @@ begin
      if dsep = '.' then CNum := ANSIReplaceText(CNum ,',',dsep);
      if dsep = ',' then CNum := ANSIReplaceText(CNum, '.',dsep);
 
+     if not TryStrToFloat(cNum,Result) then Result := Default ;
+
      { Convert number from ASCII to real }
-     try
+{     try
         if Length(CNum)>0 then ExtractFloat := StrToFloat( CNum )
                           else ExtractFloat := Default ;
      except
         on E : EConvertError do ExtractFloat := Default ;
-        end ;
+        end ;}
      end ;
+
+
+function ExtractDouble (
+         CBuf : string ;     { ASCII text to be processed }
+         Default : Double    { Default value if text is not valid }
+         ) : Double ;
+{ -------------------------------------------------------------------
+  Extract a floating point number from a string which
+  may contain additional non-numeric text and store in double variable
+  28/10/99 ... Now handles both comma and period as decimal separator
+
+  -------------------------------------------------------------------}
+
+var
+   CNum,dsep : string ;
+   i : integer ;
+   Done,NumberFound : Boolean ;
+begin
+     { Extract number from othr text which may be around it }
+
+     if CBuf = '' then begin
+        Result := Default ;
+        Exit ;
+        end ;
+
+     CNum := '' ;
+     Done := False ;
+     NumberFound := False ;
+     i := 1 ;
+     repeat
+         if CBuf[i] in ['0'..'9', 'E', 'e', '+', '-', '.', ',' ] then begin
+            CNum := CNum + CBuf[i] ;
+            NumberFound := True ;
+            end
+         else if NumberFound then Done := True ;
+         Inc(i) ;
+         if i > Length(CBuf) then Done := True ;
+         until Done ;
+
+     { Correct for use of comma/period as decimal separator }
+     {$IF CompilerVersion > 7.0} dsep := formatsettings.DECIMALSEPARATOR ;
+     {$ELSE} dsep := DECIMALSEPARATOR ;
+     {$IFEND}
+     if dsep = '.' then CNum := ANSIReplaceText(CNum ,',',dsep);
+     if dsep = ',' then CNum := ANSIReplaceText(CNum, '.',dsep);
+
+     if not TryStrToFloat(cNum,Result) then Result := Default ;
+
+     { Convert number from ASCII to real }
+{     try
+        if Length(CNum)>0 then ExtractFloat := StrToFloat( CNum )
+                          else ExtractFloat := Default ;
+     except
+        on E : EConvertError do ExtractFloat := Default ;
+        end ;}
+     end ;
+
 
 
 { -------------------------------------------
