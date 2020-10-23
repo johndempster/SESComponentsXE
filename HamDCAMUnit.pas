@@ -23,6 +23,10 @@ unit HamDCAMUnit;
 // 15.06.17 JD DCAMAPI_SetCooling(), DCAMAPI_SetFanMode(),
 //             DCAMAPI_SetTemperature(),DCAMAPI_SpotNoiseReduction() added.
 // 27.03.19 JD DCAMAPI_GetImage() now returns frame count in Session.FrameCounter
+// 23.10.20 JD sCMOS cameras now detected from model numbers containing '440' so that it
+//             now includes OCRCA-FUSION and FRASH 4.0 V3. Min. frame interval for sCMOS
+//             cameras set to twice readout rate
+
 interface
 
 uses WinTypes,sysutils, classes, dialogs, mmsystem, messages,
@@ -2233,7 +2237,7 @@ begin
           // camera can only have exposure times as multiples of readout time
           ExposureTime := InterFrameTimeInterval - Session.ReadoutTime - 0.001 ;
           end
-       else if ANSIContainsText(Session.CameraModel, 'C11440') then begin
+       else if ANSIContainsText(Session.CameraModel, '440') then begin
           // Special handling for Flash 2.8 and 4.0 sCMOS cameras
           // exposure time reduced to accommodate rolling shutter exposure starts
           ExposureTime := InterFrameTimeInterval - (Session.ReadoutTime*0.5) - 0.0005 ;
@@ -2407,7 +2411,7 @@ begin
           MultipleofReadoutTime := MultipleofReadoutTime + ReadOutTime*2 ;
        FrameInterval := MultipleofReadoutTime ;
        end
-    else if ANSIContainsText(Session.CameraModel, 'C11440') then begin
+    else if ANSIContainsText(Session.CameraModel, '440') then begin
        // Special handling for Flash 2.8 and 4.0 sCMOS cameras
        // exposure time reduced to accommodate rolling shutter exposure starts
        if ExternalTrigger = camExtTrigger then ReadoutTime := ReadoutTime*2.0 ;
