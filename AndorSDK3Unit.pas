@@ -699,7 +699,7 @@ begin
     {$IFDEF WIN32}
      Session.LibFileName := SysDrive + '\Program Files\Andor SDK3\win32\' + LibName ;
     {$ELSE}
-     Session.LibFileName := SysDrive + '\Program Files\Andor SDK3\' + LibName ;
+     Session.LibFileName := SysDrive + '\Program Files\Andor SDK3X\' + LibName ;
     {$ENDIF}
 
      // If DLL not found look for DLL in Winfluor program folder

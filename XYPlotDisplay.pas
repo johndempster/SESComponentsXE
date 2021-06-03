@@ -30,6 +30,7 @@ unit XYPlotDisplay;
  18.02.14 ... pXY now all defined as Pointer (not PCHAR)
               Integer() -> NativeInt()
  17.11.16 ... Axis tick numbers now display up 99999 before switching to powers of 10.
+ 31.05.21 ...
  }
 
 interface
@@ -381,6 +382,7 @@ type
     procedure AddPrinterTitleLine( Line : string );
     procedure CopyImageToClipboard ;
     procedure CopyDataToClipboard ;
+    procedure SaveDataToFile( FileName : string ) ;
     procedure SortByX( Line : Integer ) ;
     function TickSpacing( Range : Single ) : Single ;    
 
@@ -1398,8 +1400,6 @@ begin
      // Open clipboard preventing others acceessing it
      Clipboard.Open ;
 
-
-
         // Find maximum number of points in any line
         NumPointsMax := 0 ;
         NumLines := 0 ;
@@ -1416,7 +1416,6 @@ begin
         if Histogram then BufSize := BufSize*2 ;
 
         CopyBuf := StrAlloc( BufSize ) ;
-
 
      try
         StrCopy(CopyBuf, PChar('')) ;
@@ -1495,6 +1494,127 @@ begin
      end ;
 
 
+procedure TXYPlotDisplay.SaveDataToFile(
+          FileName : string
+          ) ;
+{ ---------------------------------------------------------------
+  Copy plot data points to .CSV file as comma separated variables
+  --------------------------------------------------------------- }
+var
+   L,i,NumPoints,NumLines : Integer ;
+   x,y,BinLo,BinMid,BinHi,Sum : Single ;
+   BinY : Array[0..MaxLines] of Single ;
+   YScale : Array[0..MaxLines] of Single ;
+   pXY : Pointer ;
+   First,Histogram : Boolean ;
+   s : string ;
+   Table : TStringList ;
+begin
+
+     // Exit if no lines
+     if not GetLinesAvailable then Exit ;
+
+     Screen.Cursor := crHourglass ;
+
+     // Create CSV table
+     Table := TStringList.Create ;
+
+     NumPoints := 0 ;
+     NumLines := 0 ;
+     for L := 0 to High(FLines) do
+         if (FLines[L].XYBuf <> Nil) then
+         begin
+         NumPoints := Max(NumPoints,FLines[L].NumPoints) ;
+         Inc(NumLines) ;
+         end;
+
+     { Initialisations for cumulative and/or percentage histograms }
+     for L := 0 to High(FLines) do
+         if FLines[L].XYBuf <> Nil then
+         begin
+         // Initialise cumulative Y value
+         BinY[L] := 0.0 ;
+         // Calculate percentage scale factor }
+         if FHistogramPercentage then
+            begin
+            Sum := 0.0 ;
+            for i := 0 to FLines[L].NumPoints-1 do
+                begin
+                pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(THist)) )  ;
+                Sum := Sum + THistPointer(pXY)^.y ;
+                end ;
+            YScale[L] := 100.0 / Sum ;
+            end
+         else YScale[L] := 1.0 ;
+         end ;
+
+     { Create CSV table of data values }
+
+     // Create column titles
+     if NumLines < 2 then s := format( '"%s","%s"',[FXAXis.Lab,FYAxis.Lab])
+     else
+        begin
+        for L := 1 to NumLines do
+            s := format( '"%s.%d","%s.%d"',[FXAXis.Lab,L,FYAxis.Lab,L])
+        end;
+     Table.Add(s) ;
+
+     for i := 0 to NumPoints-1 do
+         begin
+         s := '' ;
+         { Create a line of data values }
+         First := True ;
+         for L := 0 to High(FLines) do
+             if (FLines[L].XYBuf <> Nil) then
+             begin
+             { Add comma separator between X,Y and/or histogram bin data points }
+             if not First then s := s + ',' ;
+             First := False ;
+
+             if FLines[L].LineType = ltLine then
+                begin
+               { Add an X,Y line point }
+                if (i < FLines[L].NumPoints) then
+                   begin
+                   { Get x,y point from buffer }
+                   pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(TXY)) ) ;
+                   x := TXYPointer(pXY)^.x ;
+                   y := TXYPointer(pXY)^.y ;
+                   s := s + format('"%.5g","%.5g"',[x,y]) ;
+                   end
+                else s := s + '"",""' ;
+                end
+             else
+                begin
+                { Add a histogram bin }
+                if (i < FLines[L].NumPoints) then
+                    begin
+                    pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(THist)))  ;
+                    BinLo := THistPointer(pXY)^.Lo ;
+                    BinMid := THistPointer(pXY)^.Mid ;
+                    BinHi := THistPointer(pXY)^.Hi ;
+                    if FHistogramCumulative then BinY[L] := BinY[L] + THistPointer(pXY)^.y*YScale[L]
+                                            else BinY[L] :=THistPointer(pXY)^.y*YScale[L] ;
+                    s := s + format('"%.5g","%.5g","%.5g","%.5g"',[BinLo,BinMid,BinHi,BinY[L]]) ;
+                    end
+                else s := s + '"","",""' ;
+                end ;
+
+
+             end ;
+
+         // Add to CSV table
+         Table.Add(s) ;
+
+         end ;
+
+     // Save CSV table to file
+     Table.SaveToFile(FileName);
+
+     Screen.Cursor := crDefault ;
+     Table.Free ;
+
+     end ;
 
 
 procedure TXYPlotDisplay.DrawAxes(

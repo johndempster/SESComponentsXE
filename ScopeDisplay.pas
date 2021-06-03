@@ -131,6 +131,7 @@ unit ScopeDisplay;
                   .FloatingPointSamples property added
   04.11.16 ... JD ADCZero and cursors position properties now single type rather than integer
   03.07.19 ... JD ?yd1 and ?yd2 1 and 2 fixed decimal place cursor readout format added
+  25.05.21 ... JD SaveToFile public procedure added
   }
 
 interface
@@ -476,6 +477,7 @@ type
     procedure SetDataBuf( Buf : Pointer ) ;
     procedure CopyDataToClipBoard ;
     procedure CopyImageToClipBoard ;
+    procedure SaveDataToFile( FileName : string ) ;
     procedure Print ;
     procedure ClearPrinterTitle ;
     procedure AddPrinterTitleLine( Line : string);
@@ -1871,7 +1873,7 @@ begin
             // Display signal level (relative to cursor 0)
             j := Round(VertCursors[0].Position)*FNumChannels + Channel[ch].ADCOffset ;
             if (j >= 0) and (j < (FMaxPoints*FNumChannels)) and (FBuf <> Nil) then begin
-               y := GetSample( FBuf, j, FNumBytesPerSample, FFloatingPointSamples ) ;
+               yz := GetSample( FBuf, j, FNumBytesPerSample, FFloatingPointSamples ) ;
                end
             else yz := 0 ;
             s := s + format('%6.5g %s',[(y-yz)*Channel[ch].ADCScale,Channel[ch].ADCUnits]) ;
@@ -3444,6 +3446,198 @@ begin
        Clipboard.Close ;
        Screen.Cursor := crDefault ;
        end ;
+
+     end ;
+
+
+procedure TScopeDisplay.SaveDataToFile(
+          FileName : string               // Name of file
+          ) ;
+{ -------------------------------------------------------
+  Copy the data points on display to a file in CSV format
+  -------------------------------------------------------}
+const
+      MaxPoints = 10000 ;
+var
+   L,i,ch,NumLines,jPoint : Integer ;
+   iYMin,iYMax,NumCompressed,NumPointsPerBlock,iBlock,iPoint,NumChannelsInUse,LineCount : Integer ;
+   y,yMin,YMax : single ;
+   iCell,Col,Row,RowStart,ColOffset,NumColumns : Integer ;
+   CompBuf : PSingleArray ;
+   InUse : PSMallIntArray ;
+   s : string ;
+   Table : TStringList ;
+begin
+
+     Screen.Cursor := crHourGlass ;
+
+     // No. channels in use
+     NumChannelsInUse := 0 ;
+     for ch := 0 to FNumChannels-1 do if Channel[ch].InUse then Inc(NumChannelsInUse) ;
+
+     // No. lines on display
+     NumLines := 0 ;
+     for L := 0 to High(FLines) do if (FLines[L].Count > 0) and Channel[FLines[L].Channel].InUse then Inc(NumLines) ;
+
+     // Total no. of columns in data table (Time + Channels + Lines)
+     NumColumns := NumLines + NumChannelsInUse + 1 ;
+
+     // Allocated compressed data buffer and InUse flags
+     GetMem( CompBuf, MaxPoints*NumColumns*SizeOf(Single)*3 ) ;
+     GetMem( InUse, MaxPoints*NumColumns*SizeOf(SmallInt)*3 ) ;
+
+     // Clear in use flags
+     for i := 0 to MaxPoints*NumColumns-1 do InUse[i] := 0 ;
+
+     // Build compressed data table
+
+     // No. of data points per compression block
+     NumPointsPerBlock := Max((FXMax - FXMin) div MaxPoints,1) ;
+     // Starting column for channels
+     ColOffset := 1 ;
+     RowStart := 0 ;
+     for ch := 0 to FNumChannels-1 do if Channel[ch].InUse then begin
+
+         // Point to starting index in source data buffer
+         jPoint := Max(FXMin,0)*FNumChannels + Channel[ch].ADCOffset ;
+         // pointer to first element of row in table
+         RowStart := 0 ;
+         // Compression block point counter
+         iBlock := 0 ;
+         // Initiialise compression block min/max
+         iYMin := 0 ;
+         iYMax := 0 ;
+         YMin := 1E30 ;
+         YMax := -YMin ;
+
+         for iPoint := Max(FXMin,0) to Min(FXMax,FNumPoints-1) do
+             begin
+
+             // Get data point
+             y := GetSample( FBuf, jPoint, FNumBytesPerSample, FFloatingPointSamples ) ;
+
+             // Update min/max limits
+             if y < Ymin then
+                begin
+                iYMin := iPoint ;
+                YMin := y ;
+                end;
+             if y > Ymax then
+                begin
+                iYMax := iPoint ;
+                YMax := y ;
+                end;
+
+             // Add to compressed data table
+             Inc(iBlock) ;
+             if iBlock >= NumPointsPerBlock then
+                begin
+                if iYMin = iYMax then
+                   begin
+                   CompBuf^[RowStart] := (iYMin-FXMin) ;
+                   InUse[RowStart] := 1 ;
+                   CompBuf^[RowStart + ColOffset] := (YMin - Channel[ch].ADCZero)*Channel[ch].ADCScale ;
+                   InUse[RowStart + ColOffset] := 1 ;
+                   RowStart := RowStart + NumColumns ;
+                   end
+                else if iYMin < iYMax then
+                   begin
+                   CompBuf^[RowStart] := (iYMin-FXMin) ;
+                   InUse[RowStart] := 1 ;
+                   CompBuf^[RowStart + ColOffset] := (YMin - Channel[ch].ADCZero)*Channel[ch].ADCScale ;
+                   InUse[RowStart + ColOffset] := 1 ;
+                   RowStart := RowStart + NumColumns ;
+                   CompBuf^[RowStart] := (iYMax-FXMin) ;
+                   InUse[RowStart] := 1 ;
+                   CompBuf^[RowStart + ColOffset] := (YMax - Channel[ch].ADCZero)*Channel[ch].ADCScale ;
+                   InUse[RowStart + ColOffset] := 1 ;
+                   RowStart := RowStart + NumColumns ;
+                   end
+                else
+                   begin
+                   CompBuf^[RowStart] := (iYMax-FXMin) ;
+                   InUse[RowStart] := 1 ;
+                   CompBuf^[RowStart + ColOffset] := (YMax - Channel[ch].ADCZero)*Channel[ch].ADCScale ;
+                   InUse[RowStart + ColOffset] := 1 ;
+                   RowStart := RowStart + NumColumns ;
+                   CompBuf^[RowStart] := (iYMin-FXMin) ;
+                   InUse[RowStart] := 1 ;
+                   CompBuf^[RowStart + ColOffset] := (YMin - Channel[ch].ADCZero)*Channel[ch].ADCScale ;
+                   InUse[RowStart + ColOffset] := 1 ;
+                   RowStart := RowStart + NumColumns ;
+                   end;
+
+                iBlock := 0 ;
+                YMin := 1E30 ;
+                YMax := -YMin ;
+
+                end;
+
+             jPoint := jPoint + FNumChannels ; // Increment data pointer
+
+             end;
+
+         Inc(ColOffset) ;
+         end ;
+     NumCompressed := RowStart div NumColumns ;
+
+     // Add data points of superimposed lines to table row
+
+     RowStart := 0 ;
+     for Row := 0 to NumCompressed-1 do
+         begin
+         LineCount := 0 ;
+         for L := 0 to High(FLines) do if (FLines[L].Count > 0) and Channel[FLines[L].Channel].InUse then
+             begin
+             ch := FLines[L].Channel ;
+             for i := 0 to FLines[L].Count-1 do
+                 if Round(CompBuf^[RowStart]) = (FLines[L].x^[i]-FXMin) then
+                 begin
+                 Col := RowStart+LineCount+NumChannelsInUse+1 ;
+                 CompBuf^[Col] := (FLines[L].y^[i]- Channel[ch].ADCZero)*Channel[ch].ADCScale ;
+                 InUse^[Col] := 1 ;
+                 end;
+             Inc(LineCount) ;
+             end ;
+         RowStart := RowStart + NumColumns ;
+         end;
+
+       // Write table of data to copy buffer
+
+
+
+       // Create table
+       Table := TStringList.Create ;
+
+       // Table column names
+       s := 'Time' ;
+       for ch := 0 to FNumChannels-1 do if Channel[ch].InUse then begin
+           s := s + ',"' + Channel[ch].ADCName + ' ' + Channel[ch].ADCUnits + '"' ;
+       end;
+       Table.Add(s) ;
+
+       iCell := 0 ;
+       for i := 0 to NumCompressed-1 do
+           begin
+           s := format( '%.6g', [CompBuf^[iCell]*FTScale] ) ;
+           Inc(iCell) ;
+           for Col := 1 to NumColumns-1 do
+               begin
+               if InUse[iCell]=1 then s := s + Format(',"%.6g"',[CompBuf^[iCell]])
+                                 else s := s + ',' ;
+               Inc(iCell) ;
+               end ;
+            Table.Add(s) ;
+           end;
+
+     Table.SaveToFile(FileName) ;
+     Table.Free ;
+
+     // Free buffer
+     FreeMem(CompBuf) ;
+     FreeMem(InUse) ;
+
+     Screen.Cursor := crDefault ;
 
      end ;
 
