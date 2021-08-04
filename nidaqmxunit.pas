@@ -64,6 +64,7 @@ unit NidaqMXUnit;
 // 21.11.17 D/A update rate of NI USB-600X devices now forced to be no more than 500 Hz to avoid intermittent 5 sec delays when calling .StopADC.
 // 25.11.17 Change in special DAQmxSetAIUsbXferReqCount setting for USB06008/9 no longer reset for other devices by NIMX_ADCToMemory to avoid
 //          unsupported function error.
+// 04.08.21 NIMX_CheckMaxADCChannels() Now much faster, <1ms vs 600ms by using device property
 
 
 interface
@@ -2128,7 +2129,7 @@ var
     FADCPointer : Integer ;
     FADCNumSamples : Integer ;
     FADCNumChannels : Integer ;
-    FADCScaleFactors : Array[0..10] of Double ;
+//    FADCScaleFactors : Array[0..10] of Double ;
     FADCCircularBuffer : Boolean ;
     FADCNumSamplesAcquired : Integer ;
     FValidADCInputMode : Integer ;
@@ -2486,11 +2487,22 @@ var
     DValue : Double ;
     Task : Integer ;
     ChannelName : ANSIString ;
+    ChannelList : Array[0..10000] of ANSICHar ;
+    NumChannels : Integer ;
 begin
 
     // Create A/D task
     ADCNumChannels := 0 ;
     Result := 0 ;
+
+    // Determine number of available AI channels
+    NIMX_CheckError( DAQmxGetDevAIPhysicalChans( PANSIChar(DeviceName), ChannelList, High(ChannelList)) ) ;
+    NumChannels := 0 ;
+    while ContainsText(String(ChannelList),format('ai%d',[NumChannels])) do Inc(NumChannels) ;
+//    CheckError( DAQmxGetDevAISimultaneousSamplingSupported( PANSIChar(DeviceName[DeviceNum]),SimultaneousSampling));
+    if ADCInputMode = DAQmx_Val_Diff then NumChannels := NumChannels div 2 ;
+
+    Result := NumChannels ;
 
     Err := 0 ;
     While Err = 0 do begin
@@ -2520,10 +2532,10 @@ begin
                             DValue)) ;
 
            // Channel scaling factors
-           NIMX_CheckError( DAQmxGetAIDevScalingCoeff( Task,
+  {         NIMX_CheckError( DAQmxGetAIDevScalingCoeff( Task,
                             PANSIChar(ChannelName),
                             FADCScaleFactors,
-                            High(FADCScaleFactors)+1 )) ;
+                            High(FADCScaleFactors)+1 )) ;}
 
            FADCResolution := Round(DValue) ;
            FADCMaxValue := Round(Power(2.0,DValue-1.0)) - 1 ;
@@ -3013,7 +3025,7 @@ begin
         Until Err = 0 ;
 
      // Return actual sampling interval
-     outputdebugstring(pchar(format('Sampling Rate: Set %.4g Actual %.4g', [SamplingInterval, (1.0 / ActualSamplingRate)])));
+//     outputdebugstring(pchar(format('Sampling Rate: Set %.4g Actual %.4g', [SamplingInterval, (1.0 / ActualSamplingRate)])));
      SamplingInterval := 1.0 / ActualSamplingRate ;
 
      // Clear task
@@ -3054,13 +3066,11 @@ begin
      if not BoardInitialised then Exit ;
      if FADCNumChannels <= 0 then Exit ;
 
-     // Stop any running A/D task
-     NIMX_StopADC ;
-
      NIMX_DisableFPUExceptions ;
 
      // Stop running A/D task
-     if ADCActive then begin
+     if ADCActive then
+        begin
         NIMX_CheckError( DAQmxClearTask(ADCTaskHandle)) ;
         ADCActive := False ;
         end ;
@@ -3069,8 +3079,6 @@ begin
      NIMX_CheckError( DAQmxCreateTask( '', ADCTaskHandle ) ) ;
 
      // Select A/D input channels
-//     ChannelList := format( DeviceName + '/AI0:%d', [nChannels-1] ) ;
-
      ChannelList := '' ;
      for ch := 0 to nChannels-1 do begin
          ChannelList := ChannelList +
@@ -3083,7 +3091,9 @@ begin
      ADCModeCode := NIMX_GetADCInputModeCode( ADCInputMode ) ;
 
      // Call this to ensure A/D scaling factors are correct for this input mode
-     FADCNumChannels := NIMX_CheckMaxADCChannels( ADCModeCode ) ;
+//     FADCNumChannels := NIMX_CheckMaxADCChannels( ADCModeCode ) ;
+//   No longer required and removed since slows down routine
+
 
      NIMX_CheckError( DAQmxCreateAIVoltageChan( ADCTaskHandle,
                                                 PANSIChar(ChannelList),
@@ -3103,7 +3113,8 @@ begin
         end ;
 
      // Set individual channel voltage range
-     for ch := 0 to nChannels-1 do begin
+     for ch := 0 to nChannels-1 do
+         begin
          ADCVoltageRange := ADCVoltageRanges[ch] ;
          Channel := format(DeviceName + '/AI%d',[ADCChannelInputNumber[ch]]) ;
          NIMX_CheckError( DAQmxSetAIRngHigh( ADCTaskHandle, PANSIChar(Channel),ADCVoltageRange)) ;
