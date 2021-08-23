@@ -52,6 +52,7 @@ unit TritonUnit;
 // 20.03.19 TritonRegisterValueToPercent() added. Calculates register % value from required value
 // 11.04.19 Triton_RemoveArtifact() procedure added.
 // 16.04.19 Triton_GetDigitalLeak and Triton_SetDigitalLeak added
+// 23.08.21 Support for 16/32 channel Triton X added
 
 
 interface
@@ -1275,7 +1276,8 @@ begin
      Model := '' ;
 
      // Name
-     for i := 0 to High(HardwareProps.device_name) do begin
+     for i := 0 to High(HardwareProps.device_name) do
+         begin
          if (HardwareProps.device_name[i] = '?') or
             (HardwareProps.device_name[i] = #0) then Break ;
             Model := Model + HardwareProps.device_name[i] ;
@@ -1290,7 +1292,8 @@ begin
 
      // Serial numner
      Model := Model + ' (s/n ' ;
-     for i := 0 to High(HardwareProps.serial_number) do begin
+     for i := 0 to High(HardwareProps.serial_number) do
+         begin
          if (HardwareProps.serial_number[i] = '?') or
             (HardwareProps.serial_number[i] = #0) then Break ;
             Model := Model + HardwareProps.serial_number[i] ;
@@ -1300,7 +1303,11 @@ begin
      if ANSIContainsText( Model, 'pico' ) then FStreamDACSupported := True
                                           else FStreamDACSupported := False ;
 
+     // No. of A/D input channels
      ADCMaxChannels := HardwareProps.nchans + 1 ;
+     // If this is a Triton X with 16 patch clamp amplifiers ('Triton 16' in the model name),
+     // limit the max. available channels to 16 rather than the default 32 digitiser channels
+     if ANSIContainsText( Model, 'Triton 16' ) then ADCMaxChannels := Min(ADCMaxChannels,17) ;
 
      ADCMinSamplingInterval := HardwareProps.sample_period_min ;
      FADCMinSamplingInterval := ADCMinSamplingInterval ;
@@ -1312,7 +1319,6 @@ begin
      ADCVoltageRanges[0] := 1.0 ;
      NumADCVoltageRanges := 1 ;
      FADCMaxVolts := ADCVoltageRanges[0] ;
-     //ADCBufferLimit := 32768*2 ;
 
      // Note. Set to to 1 mV/pA less than range returned by
      // stimulus_value_max because negative limits clips
@@ -1324,7 +1330,8 @@ begin
 
      // Patch clamp gain factors
 
-     for ch := 0 to HardwareProps.nchans-1 do begin
+     for ch := 0 to HardwareProps.nchans-1 do
+         begin
          Triton_CheckError( 'TritonSetGain : ',
                             tecella_chan_set_gain( TecHandle,ch,0 )) ;
          // Get current scaling factor
@@ -2286,6 +2293,8 @@ function Triton_WriteDACsAndDigitalPort(
             ) : Boolean ;
 begin
 
+    Result := False ;
+
     if not DeviceInitialised then Exit ;
 
     if ADCActive then begin
@@ -2375,7 +2384,7 @@ procedure Triton_Channel_Calibration(
 // Returns channel calibration factor
 // ----------------------------------
 var
-    VJP,VJPFine,IScale : Double ;
+    VJP,VJPFine : Double ;
 begin
 
     if Chan = 0 then begin
