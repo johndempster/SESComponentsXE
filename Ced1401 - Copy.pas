@@ -1,8 +1,8 @@
 unit Ced1401;
 { ===========================================================================
-  CED 1401 Interface Library                                                                                                                                     dcmf
+  CED 1401 Interface Library
   (c) John Dempster, University of Strathclyde, All Rights Reserved 1997-2003
-  ===========================================================================                                                                                              etstringf
+  ===========================================================================
   V1.0 Started 6/3/97, Working 20/3/97
   V1.1 1/12/97 ... Support for old 1401s without Z8 added using ADCMEMI
   23/8/99 ... 32 bit version for WinWCP V3.0 and later
@@ -14,7 +14,7 @@ unit Ced1401;
   25/11/02 ... Micro-1401 Mk2 supported added
                1401 commands now taken from c:\1401
                use1432.dll now loaded from c:\1401\utils
-  4/4/03 ..... Support for 10V 1401s added                                          m
+  4/4/03 ..... Support for 10V 1401s added
                (using CEDDAC10V.txt CEDADC10V.txt flag files )
   25/8/03 .... Both \1401 and \1401\utils checked for 1401 commands
   18/9/03 .... Error messages now indicates name of 1401 commands which fail to load
@@ -77,14 +77,11 @@ unit Ced1401;
    06.11.13    A/D input channels can now be mapped to different physical inputs
  28/11/13 ...  DACPointsInBlock now adjusted to ensure at least 3 buffers in 1401 DAC buffer
                to fix problems with CED 1401-plus. CED 1401-plus buffer sizes changed DAC buffer increased
- 18.11.21 ...  Support for Micro 1401 Mk4 added. DIGTIM.ars ADCMEM.ars command bugs fixed by Greg Smith from CED
- 22.11.21 ...  U14Ld now automatically looks for commands in folder c:\1401
-               CLIST used to check for presence of Micro1401 MK4 ADCMEM 80.0 which returns Word pointer
-               rather than Byte pointer in response to ADCMEM,P. Get_ADCSamples() adapts to this.
+
 }
 interface
 
-uses WinTypes,Dialogs, SysUtils, WinProcs, Classes,use1401, math, strutils, System.UITypes ;
+uses WinTypes,Dialogs, SysUtils, WinProcs, Classes,use1401, math, strutils, UITypes ;
 
 const
      MaxADCChannel = 15 ;
@@ -202,7 +199,9 @@ procedure CED_CheckSamplingInterval(
   procedure CED_WriteToDACBuffer ;
 
   function ExtractInt ( CBuf : string ) : longint ;
+
   procedure CED_TestDIGTIM ;
+
 
 implementation
 
@@ -217,38 +216,28 @@ type
     TU14DriverVersion = FUNCTION : LongInt; stdcall;
     TU14Open1401 = FUNCTION (n1401:SmallInt):SmallInt ;stdcall;
     TU14Ld = FUNCTION (hand:SmallInt;vl:PANSIChar;str:PANSIChar):DWORD;stdcall;
-    TU14LdCmd = FUNCTION (hand:SmallInt;command:PANSIChar):DWORD;stdcall;
     TU14Close1401 = FUNCTION (hand:SmallInt):SmallInt;stdcall;
-    TU14LongsFrom1401 = FUNCTION ( hand:SmallInt;
-                                   palBuff:TpNums;
-                                   sMaxLongs:SmallInt):
-                                   SmallInt;stdcall;
+    TU14LongsFrom1401 = FUNCTION (hand:SmallInt;palBuff:TpNums;
+                                sMaxLongs:SmallInt):SmallInt;stdcall;
     TU14ToHost = FUNCTION (hand:SmallInt;lpAddrHost:PANSIChar;dwSize:DWORD;
                     lAddr1401:LongInt;eSz:SmallInt):SmallInt;stdcall;
     TU14To1401 = FUNCTION (hand:SmallInt;lpAddrHost:Pointer;dwSize:DWORD;
                     lAddr1401:LongInt;eSz:SmallInt):SmallInt;stdcall;
     TU14sendstring = FUNCTION (hand:SmallInt;PCharing:PANSIChar):SmallInt; stdcall;
     TU14KillIO1401 = FUNCTION(hand:SmallInt):SmallInt; stdcall;
-    TU14GetUserMemorySize = function(hand:SmallInt; var MemoryAvailable : DWORD ) : SmallInt; stdcall;
-    TU14GetString = function(hand:SmallInt; Reply : pANSIChar ; Size :WORD  ) : SmallInt; stdcall;
-
-
 var
    { Variables for dynamic calls to USE1401.DLL }
    U14TypeOf1401 : TU14TypeOf1401 ;
    U14DriverVersion : TU14DriverVersion ;
    U14Open1401 :TU14Open1401 ;
    U14Ld :TU14Ld ;
-   U14LdCmd :TU14LdCmd ;
    U14Close1401 :TU14Close1401 ;
    U14LongsFrom1401 :TU14LongsFrom1401 ;
    U14ToHost : TU14ToHost ;
    U14To1401 : TU14To1401 ;
    U14sendstring : TU14sendstring ;
    U14KillIO1401 : TU14KillIO1401 ;
-   U14GetUserMemorySize : TU14GetUserMemorySize ;
-   U14GetString : TU14GetString ;
-
+   ProgDirectory : ANSIstring ;
    LibraryHnd : THandle ; { DLL library handle }
    LibraryLoaded : boolean ;      { True if CED 1401 procedures loaded }
 
@@ -282,7 +271,6 @@ var
    DACActive : Boolean ;
    TypeOf1401 : Integer ;
    ADCCommand : ANSIstring ;
-   ADCMEMVersion : string ;     // ADCMEM Command version (used only by Micro 1401 Mk4)
    IOBuf : PADCBuf ;
    DACBuf : PADCBuf ;
    EndofADCBuf : Integer ;
@@ -345,9 +333,6 @@ begin
         @U14Ld := GetProcAddress(LibraryHnd,'U14Ld') ;
         if @U14Ld = Nil then CED_ReportFailure('U14Ld') ;
         @U14Close1401 := GetProcAddress(LibraryHnd,'U14Close1401') ;
-        @U14LdCmd := GetProcAddress(LibraryHnd,'U14LdCmd') ;
-        if @U14LdCmd = Nil then CED_ReportFailure('U14LdCmd') ;
-
         if @U14Close1401 = Nil then CED_ReportFailure('U14Close1401') ;
         @U14LongsFrom1401 := GetProcAddress(LibraryHnd,'U14LongsFrom1401') ;
         if @U14LongsFrom1401 = Nil then CED_ReportFailure('U14LongsFrom1401') ;
@@ -359,12 +344,6 @@ begin
         if @U14sendstring = Nil then CED_ReportFailure('U14SendString') ;
         @U14KillIO1401 := GetProcAddress(LibraryHnd,'U14KillIO1401') ;
         if @U14KillIO1401 = Nil then CED_ReportFailure('U14KillIO1401') ;
-        @U14GetUserMemorySize := GetProcAddress(LibraryHnd,'U14GetUserMemorySize') ;
-        if @U14GetUserMemorySize = Nil then CED_ReportFailure('U14GetUserMemorySize') ;
-        @U14GetString := GetProcAddress(LibraryHnd,'U14GetString') ;
-        if @U14GetUserMemorySize = Nil then CED_ReportFailure('U14GetString') ;
-
-
         LibraryLoaded := True ;
         end
      else begin
@@ -426,17 +405,11 @@ function CED_GetLabInterfaceInfo(
   --------------------------------------}
 var
    Ver,VerHigh,VerLow : Integer ;
-   Buf : Array[0..5000] of AnsiCHar ;
-   s : ANSIString ;
-   Err : SmallInt ;
 begin
 
      if not DeviceInitialised then CED_InitialiseBoard ;
 
-     ADCMEMVersion := '' ;
-
-     if DeviceInitialised then
-        begin
+     if DeviceInitialised then begin
 
         { Get the 1401 model }
         case U14TypeOf1401( Device ) of
@@ -558,6 +531,7 @@ begin
 
              U14TYPEMICROMK4 : begin
                 Model := 'CED Micro-1401 Mk4 ';
+                Model := 'CED Micro-1401 Mk3 ';
                 ADCMaxChannels := 4 ;
                 DACMaxChannels := 2;
                 ADCMinSamplingInterval := 2.0E-6 ;
@@ -567,15 +541,6 @@ begin
                 DAC1401BufferSize := ADC1401BufferSize ;
                 MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
                 ClockPeriod := 2.50E-7 ;
-
-                // 22.11.21 Determine version of ADCMEM in use
-                // Note. V80.0 ADCMEM,P returns Word pointers rather than Byte pointers
-                SendCommand('CLIST;');
-                repeat
-                    Err := U14GetString( Device, @Buf, High(Buf));
-                    s := String(Buf) ;
-                    if ANSIContainsText(s,'ADCMEM 80.0') then ADCMEMVersion := '80.0' ;
-                    until (s='') or (Err <> U14ERR_NOERROR) ;
                 end ;
 
              else begin
@@ -614,9 +579,12 @@ begin
 
         DIGTIMStartEvent := 0 ;
 
+        { Define digital buffer area }
+        StartOf1401DigBuffer := 0 ;
+        EndOf1401DigBuffer := StartOf1401DigBuffer + MaxDIGTIMSlices*16 - 1 ;
+
         { Cancel all commands and reset 1401 }
         SendCommand( 'CLEAR;' ) ;
-        CED_GetError ;
 
         Result := True ;
 
@@ -625,12 +593,6 @@ begin
           Model := 'Device Not Initialised' ;
           Result := False ;
           end ;
-
-     // Initial placement of DIGTIM buffer
-     Endof1401ADCBuffer := 0 ;
-     StartOf1401DigBuffer := Endof1401ADCBuffer + 1 ;
-     EndOf1401DigBuffer := StartOf1401DigBuffer + MaxDIGTIMSlices*16 - 1 ;
-
      end ;
 
 
@@ -647,6 +609,7 @@ procedure CED_InitialiseBoard ;
   -------------------------------------------}
 var
    Err : DWORD ;
+   Path : Array[0..255] of Char ;
 begin
 
    DeviceInitialised := False ;
@@ -656,45 +619,56 @@ begin
 
    if LibraryLoaded then begin
 
+      { Find programme directory (contains 1401 commands) }
+      GetSystemDirectory( Path, High(Path) ) ;
+      ProgDirectory := ExtractFileDrive(String(Path))  + '\1401\' ;
+
       { Open 1401 }
       Device := U14Open1401(0) ;
 
-      if Device >= 0 then
-         begin
+      if Device >= 0 then begin
 
          { Load ADCMEM command }
-         Err := U14Ld(Device,'','ADCMEM') ;
-         if Err = -540 then
-            ShowMessage( 'CED 1401 ERROR: Cannot find/load ADCMEM command! Check c:\1401 folder.');
+         Err := U14Ld(Device,PANSIChar(ProgDirectory),'ADCMEM') ;
+         if Err <> U14ERR_NOERROR then
+            Err := U14Ld(Device,PANSIChar(ProgDirectory + 'utils\'),'ADCMEM') ;
 
-         if Err = -541 then
-            begin
-            { If ADCMEM load fails (usually due to an old 1401 not
-              having a Z8 chip) load the older command ADCMEMI }
-            Err := U14Ld(Device,'','ADCMEMI') ;
-           if Err = -540 then
-              ShowMessage( 'CED 1401 ERROR: Cannot find ADCMEMI command! Check c:\1401 folder.');
-           ADCCommand := 'ADCMEMI' ;
-           end
+         if Err <> U14ERR_NOERROR then begin
+              { If ADCMEM load fails (usually due to an old 1401 not
+                having a Z8 chip) load the older command ADCMEMI }
+              Err := U14Ld(Device,PANSIChar(ProgDirectory),'ADCMEMI') ;
+              if Err <> U14ERR_NOERROR then
+                 Err := U14Ld(Device,PANSIChar(ProgDirectory + 'utils\'),'ADCMEMI') ;
+              ADCCommand := 'ADCMEMI' ;
+              end
          else ADCCommand := 'ADCMEM' ;
 
+         if Err <> U14ERR_NOERROR then
+            MessageDlg( 'Cannot find/load ADCMEM or ADCMEMI command!', mtError,[mbOK],0) ;
+
          // Load MEMDAC = D/A output command
-         Err := U14Ld(Device,'','MEMDAC') ;
-         if Err = -540 then
-            ShowMessage( 'CED 1401 ERROR: Cannot find MEMDAC command! Check c:\1401 folder.');
+         Err := U14Ld(Device,PANSIChar(ProgDirectory),'MEMDAC') ;
+         if Err <> U14ERR_NOERROR then
+            Err := U14Ld(Device,PANSIChar(ProgDirectory + 'utils\'),'MEMDAC') ;
+
+         if Err <> U14ERR_NOERROR then
+            MessageDlg( 'Cannot find/load MEMDAC command!', mtError,[mbOK],0) ;
 
          // Load DIGTIM = digital timing command
-         Err := U14Ld(Device,'','DIGTIM') ;
-         if Err = -540 then
-            ShowMessage( 'CED 1401 ERROR: Cannot find DIGTIM command! Check c:\1401 folder.');
+         Err := U14Ld(Device,PANSIChar(ProgDirectory),'DIGTIM') ;
+         if Err <> U14ERR_NOERROR then
+            Err := U14Ld(Device,PANSIChar(ProgDirectory + 'utils\'),'DIGTIM') ;
 
-         if Err = U14ERR_NOERROR then
-            begin
+         if Err <> U14ERR_NOERROR then
+            MessageDlg( 'Cannot find/load DIGTIM command!', mtError,[mbOK],0) ;
+
+         if Err = U14ERR_NOERROR then begin
             { CED 1401 model }
             TypeOf1401 := U14TypeOf1401( Device ) ;
             DeviceInitialised := True ;
             { Make all events inputs ACTIVE-LOW }
             SendCommand( 'EVENT,P,63;' ) ;
+
             end
          else U14Close1401( Device ) ;
          end
@@ -710,6 +684,8 @@ begin
 
    ADCActive := False ;
    DACActive := False ;
+
+   SendCommand( 'DIGTIM,K;' ) ;
    end ;
 
 
@@ -830,7 +806,7 @@ begin
      // (must be a multiple of 2*nChannels)
      ADC1401BufferNumBytes := (ADC1401BufferSize div (nChannels*2))*nChannels*4 ;
 
-     StartOf1401ADCBuffer := 0;
+     StartOf1401ADCBuffer := 0;//EndOf1401DigBuffer + 1 ;
      Endof1401ADCBuffer := ADC1401BufferNumBytes - 1 ;
      ADC1401Pointer := 0 ;
 
@@ -875,7 +851,7 @@ begin
      ADCActive := True ;
      Result := ADCActive ;
 
-//     CED_TestDIGTIM ;
+  //  CED_TestDIGTIM ;
 
      end ;
 
@@ -893,21 +869,13 @@ var
    Done : Boolean ;
 begin
 
-     // Query ADC byte pointer
      SendCommand( ADCCommand + ',P;' ) ;
      U14LongsFrom1401( Device, @Reply, High(Reply) ) ;
 
-     // Code to ensure correct interpretation of ADCMEM,P with Micro 1401 Mk4.
-     // Pre-2022 versions (80.0) of ADCMEM command returned Word rather than Byte pointers.
-     // Version 80.1 of the command fixed this.
-     if ADCMEMVersion = '80.0' then Reply[0] := Reply[0]*2 ;
-
-     if Reply[0] > ADC1401Pointer then
-        begin
+     if Reply[0] > ADC1401Pointer then begin
         // Transfer samples to host memory as they are acquired }
         StartAt := ADC1401Pointer ;
-        // Ensure 2 bytes blocks
-        ADC1401Pointer := 2*(Reply[0] div 2);
+        ADC1401Pointer := Reply[0] ;
         nBytes := Min(ADC1401Pointer - StartAt,ADC1401BufferNumBytes) ;
         end
      else if Reply[0] < ADC1401Pointer then begin
@@ -922,8 +890,6 @@ begin
 
      NumSamples := nBytes div 2 ;
      IOBufPointer := Cardinal(IOBuf) ;
-
-//     outputdebugString(PChar(format('%d %d %d',[Reply[0],StartAt,nbytes])));
      repeat
        nWrite := Min(nBytes,MaxBytesinBlock) ;
        U14ToHost( Device,PANSIChar(Pointer(IOBufPointer)),nWrite,StartAt, 0 ) ;
@@ -932,6 +898,7 @@ begin
        nBytes := nBytes - nWrite ;
        until nBytes = 0 ;
         //outputdebugString(PChar(format('%d',[nBytes div 2])));
+
 
      // Copy A/D samples to host buffer
      i := 0 ;
@@ -1379,8 +1346,9 @@ begin
           Don't know whether this is a bug in DIGTIM command
           or in my own code. }
      nSlices := 2 ;
-     Slice[nSlices-1].State := DigBuf[iDig] and $FF ;
+     Slice[nSlices-1].State := DigBuf[iDig] and $FF;
      Slice[nSlices-1].Count := 2 ;
+
 
      // DIGTIM command seems to operate differently with Power 1401
      // All other 1401 DIGTIM slices seem to count before changing state
@@ -1390,16 +1358,13 @@ begin
      // offset. So option CEDPOWER1401DIGTIMCOUNTSHIFT added to 'lab interface.xml'
      // to allow user to enable or disable offset
 
-//     Removed 22.11.2021
-//     if (TypeOf1401 = U14TYPEPOWER) or
-//        (TypeOf1401 = U14TYPEPOWERMK2) then iDigShift := CEDPower1401DIGTIMCountShift
-//                                       else iDigShift := 0 ;
-//    Added ... These problems seem to have been fixed. Now always assume that state changes at end of slice
+     if (TypeOf1401 = U14TYPEPOWER) or
+        (TypeOf1401 = U14TYPEPOWERMK2) then iDigShift := CEDPower1401DIGTIMCountShift
+                                       else iDigShift := 0 ;
 
-      iDigShift := 0 ;
-
-     iDig := iDig + 2 ;
+     iDig := iDig + 1 ;
      LastChange := iDig ;
+     iDigShift := 1 ;
      while (iDig <= nValues) and (nSlices < (MaxDIGTIMSlices-1)) do begin;
            Inc(iDig) ;
            if (DigBuf[iDig] <> DigBuf[iDig-1]) or (iDig >= nValues) then begin
@@ -1446,8 +1411,9 @@ begin
      { Allow DIGTIM to control digital O/P ports only }
      SendCommand( 'DIGTIM,OD;' ) ;
 
+     { Send slice table to 1401 }
      for i := 0 to nSlices-1 do begin
-         Command := format('DIGTIM,A,$FF,%d,%d;',[Slice[i].State,Slice[i].Count]);
+         Command := format('DIGTIM,A,$FF,%d,%d,1,1;',[Slice[i].State,Slice[i].Count]);
          SendCommand( Command ) ;
          CED_GetError ;
          end ;
@@ -1459,7 +1425,7 @@ begin
 
      CED_CheckSamplingInterval( dt, PreScale, Ticks, 'C' ) ;
      Ticks := Ticks div 2 ;
-     Command := format('DIGTIM,CT,%d,%d,5;',[PreScale,Ticks] );
+     Command := format('DIGTIM,CT,%d,%d,1;',[PreScale,Ticks] );
      SendCommand( Command ) ;
      CED_GetError ;
 
@@ -1468,23 +1434,10 @@ begin
 
      end ;
 
-
 procedure CED_TestDIGTIM ;
-var
-  Command : string ;
 begin
 
      SendCommand( 'DIGTIM,K;' ) ;
-     CED_GetError ;
-
-     // All other 1401s - Set DIGTIM gate event to internal
-        SendCommand( format('EVENT,D,%d;',[Event2])) ;
-    CED_GetError ;
-
-     { Create DIGTIM slice table }
-     Command := format('DIGTIM,SI,%d,%d;',[StartOf1401DigBuffer,40*16]);
-     SendCommand( Command ) ;
-    CED_GetError ;
 
 
      { Allow DIGTIM to control digital O/P ports only }
@@ -1492,32 +1445,15 @@ begin
      CED_GetError ;
 
      { Send slice table to 1401 }
-     SendCommand( 'DIGTIM,A,$ff,1,100;' ) ;
+     SendCommand( 'DIGTIM,A,$FF,1,100,1,1;' ) ;
      CED_GetError ;
-     SendCommand( 'DIGTIM,A,$FF,0,900;' ) ;
+     SendCommand( 'DIGTIM,A,$FF,0,100,1,1;' ) ;
      CED_GetError ;
-     SendCommand( 'DIGTIM,A,$ff,1,200;' ) ;
+     SendCommand( 'DIGTIM,A,$FF,1,100,1,1;' ) ;
      CED_GetError ;
-     SendCommand( 'DIGTIM,A,$FF,0,800;' ) ;
+     SendCommand( 'DIGTIM,A,$FF,0,100,1,1;' ) ;
      CED_GetError ;
-     SendCommand( 'DIGTIM,A,$ff,1,300;' ) ;
-     CED_GetError ;
-     SendCommand( 'DIGTIM,A,$FF,0,700;' ) ;
-     CED_GetError ;
-     SendCommand( 'DIGTIM,A,$ff,0,100;' ) ;
-     CED_GetError ;
-     SendCommand( 'DIGTIM,A,$FF,0,900;' ) ;
-     CED_GetError ;
-
-   {  SendCommand( 'DIGTIM,A,$FF,1,1000,0,1;' ) ;
-     CED_GetError ;
-     SendCommand( 'DIGTIM,A,$FF,0,1000,0,1;' ) ;
-     CED_GetError ;}
-
-
- //    SendCommand( 'DIGTIM,A,$FF,0,100,1,1;' ) ;
- //    CED_GetError ;
-     SendCommand( 'DIGTIM,C,2,500,10;' ) ;
+     SendCommand( 'DIGTIM,C,2,1000,1;' ) ;
      CED_GetError ;
 
      end ;

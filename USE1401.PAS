@@ -88,6 +88,7 @@ CONST U14TYPEMICROMK2      = 4 ;          { Micro-1401 Mk2 Added by JD 23-10-02 
 CONST U14TYPEPOWERMK2      = 5 ;          { Power-1401 Mk2 Added by JD 19-2-08 }
 CONST U14TYPEMICROMK3      = 6 ;          { Micro-1401 Mk2 Added by JD 23-10-02 }
 CONST U14TYPEPOWERMK3      = 7 ;
+CONST U14TYPEMICROMK4      = 8 ;          { Micro-1401 Mk4 Added by JD 14-10-21 }
 CONST U14TYPEUNKNOWN       =-1;          (* dont know                      *)
 
 

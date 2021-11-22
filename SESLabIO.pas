@@ -1078,7 +1078,8 @@ begin
     FDBSSleepMode := False ;
 
     // Default settings for CED Power 1401 DIGTIM count shift
-    FCEDPower1401DIGTIMCountShift := 1 ;
+    // 23.11.21 Default now set to zero since most Power 1401's do not display change at start of slice
+    FCEDPower1401DIGTIMCountShift := 0 ;
 
      // Load settings
      SettingsDirectory := GetSpecialFolder(CSIDL_COMMON_DOCUMENTS) + '\SESLABIO\';

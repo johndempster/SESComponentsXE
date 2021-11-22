@@ -2,7 +2,7 @@ unit TritonUnit;
 // ------------------------------------
 // Tecella Triton 16 channel patch clamp
 // ------------------------------------
-// (c) J. Dempster, University of Strathclyde, 2008-10
+// (c) J. Dempster, University of Strathclyde, 2008-21
 // 9.07.08
 // 04.09.08 Revised to work with TecellaAmp.dll library
 // 22.07.09 Updated to work with V0.111 library
@@ -53,6 +53,7 @@ unit TritonUnit;
 // 11.04.19 Triton_RemoveArtifact() procedure added.
 // 16.04.19 Triton_GetDigitalLeak and Triton_SetDigitalLeak added
 // 23.08.21 Support for 16/32 channel Triton X added
+// 26.08.21 TritonNumChannels() now returns correct no. channels for Triton X 16 channel version
 
 
 interface
@@ -1003,6 +1004,7 @@ var
     FChannelGainIndex : Array[0..127] of Integer ;
     FGainCorrectionFactor : Array[0..127] of Single ; // Gain correction table
     FNumChannels : Integer ;       // No. of channels in sweep
+    FMaxInputChannels : Integer ;  // No. of input channels available in device
     fNumSamples : Integer ;        // No. samples/channel in sweep
     FSamplingInterval : Double ;   // Sampling interval (s)
     FSamplingIntervalMultiplier : Integer ;
@@ -1304,10 +1306,12 @@ begin
                                           else FStreamDACSupported := False ;
 
      // No. of A/D input channels
-     ADCMaxChannels := HardwareProps.nchans + 1 ;
+     FMaxInputChannels := HardwareProps.nchans ;
      // If this is a Triton X with 16 patch clamp amplifiers ('Triton 16' in the model name),
      // limit the max. available channels to 16 rather than the default 32 digitiser channels
-     if ANSIContainsText( Model, 'Triton 16' ) then ADCMaxChannels := Min(ADCMaxChannels,17) ;
+     if ANSIContainsText( Model, 'Triton 16' ) then FMaxInputChannels := Min(FMaxInputChannels,16) ;
+     // Max. A/D channels includes a membrane stimulus voltage channel
+     ADCMaxChannels := FMaxInputChannels + 1 ;
 
      ADCMinSamplingInterval := HardwareProps.sample_period_min ;
      FADCMinSamplingInterval := ADCMinSamplingInterval ;
@@ -1642,14 +1646,16 @@ begin
 
     // Clear any samples in queue
     iBuf := Nil ;
-    for ch := 1 to HardwareProps.nchans do begin
+    for ch := 1 to HardwareProps.nchans do
+        begin
         // Get no. of samples in queue
         Triton_CheckError( 'tecella_acquire_samples_available',
                            tecella_acquire_samples_available( TecHandle,
                                                               ch-1,
                                                               NumSamplesAvailable )) ;
         // Read them to clear
-        if NumSamplesAvailable > 0 then begin
+        if NumSamplesAvailable > 0 then
+           begin
            if iBuf <> Nil then FreeMem( iBuf ) ;
            GetMem( iBuf, NumSamplesAvailable*2 ) ;
            tecella_acquire_read_i( TecHandle,
@@ -1663,7 +1669,8 @@ begin
         end ;
 
     // Enable Triton channels
-    for ch := 0 to HardwareProps.nchans-1 do begin
+    for ch := 0 to HardwareProps.nchans-1 do
+      begin
       if ch < (FNumChannels-1) then Enabled := True
                                else Enabled := False ;
       Triton_CheckError( 'tecella_acquire_enable_channel  : ',
@@ -2992,7 +2999,7 @@ function TritonGetNumChannels : Integer ;
 // Return number of Triton patch clamp channels
 // --------------------------------------------
 begin
-    Result := HardwareProps.nChans ;
+    Result := FMaxInputChannels ;
     end ;
 
 

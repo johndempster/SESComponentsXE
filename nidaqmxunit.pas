@@ -3306,8 +3306,8 @@ begin
 
      T0 := timegettime ;
      NIMX_CheckError( DAQmxClearTask(ADCTaskHandle)) ;
-     if (timegettime - t0) > 1000 then
-        outputdebugstring(pchar(format('NIMX_StopADC: %d ms Delay in DAQmxClearTask call. ',[timegettime - t0])));
+//     if (timegettime - t0) > 1000 then
+//        outputdebugstring(pchar(format('NIMX_StopADC: %d ms Delay in DAQmxClearTask call. ',[timegettime - t0])));
      ADCActive := False ;
 
 {    Pulse task stopped ... used to test A/D timing.
