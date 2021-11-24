@@ -2459,15 +2459,20 @@ begin
              end ;
 
           CED1401_12, CED1401_16, CED1401_10V : begin
-             CED_MemoryToDigitalPort( DIGBuf^,FDACNumSamples,FDACUpdateInterval,
-                                      StartAt,FCEDPower1401DIGTIMCountShift) ;
+             CED_MemoryToDigitalPort( DIGBuf^,
+                                      FDACNumSamples,
+                                      FDACUpdateInterval,
+                                      StartAt,
+                                      FCEDPower1401DIGTIMCountShift,
+                                      FDACRepeatedWaveform
+                                      ) ;
              CED_MemoryToDAC(DACBuf^,
                              FDACNumChannels,
                              FDACNumSamples,
                              FDACUpdateInterval,
                              FADCTriggerMode,
                              FStimulusExtTrigger,
-                             False) ;
+                             FDACRepeatedWaveform) ;
              end ;
 
           Digidata132X : begin

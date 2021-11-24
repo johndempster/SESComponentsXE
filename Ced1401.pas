@@ -81,6 +81,8 @@ unit Ced1401;
  22.11.21 ...  U14Ld now automatically looks for commands in folder c:\1401
                CLIST used to check for presence of Micro1401 MK4 ADCMEM 80.0 which returns Word pointer
                rather than Byte pointer in response to ADCMEM,P. Get_ADCSamples() adapts to this.
+ 24.11.21 ...  RepeatedWaveform argument added to CED_MemoryToDig() Digital pulse pattern can now repeat indefinetely
+               Digital waveforms now work in WinEDR as well as WinWCP
 }
 interface
 
@@ -94,9 +96,9 @@ const
 
      Event0 = 1 ;
      Event1 = 2 ;
-     Event2 = 4 ;
-     Event3 = 8 ;
-     Event4 = 16 ;
+     Event2 = 4 ; // Digital trigger
+     Event3 = 8 ; // D/A trigger
+     Event4 = 16 ;// A/D trigger
 
 
   procedure CED_LoadLibrary  ;
@@ -180,7 +182,8 @@ procedure CED_CheckSamplingInterval(
             nValues : Integer ;
             dt : Double ;
             StartAt : Integer ;
-            CEDPower1401DIGTIMCountShift : Integer
+            CEDPower1401DIGTIMCountShift : Integer ;
+            RepeatedWaveform : Boolean
             ) ;
   procedure CED_StopDIG ;
   function CED_ReadADC( Chan : Integer ) : SmallInt ;
@@ -215,6 +218,7 @@ type
 
     TU14TypeOf1401 = FUNCTION (hand:SmallInt):SmallInt; stdcall;
     TU14DriverVersion = FUNCTION : LongInt; stdcall;
+    TU14DriverName = FUNCTION( cBuf : PANSIChar; BufSize: Word ) : SmallInt ; stdcall;
     TU14Open1401 = FUNCTION (n1401:SmallInt):SmallInt ;stdcall;
     TU14Ld = FUNCTION (hand:SmallInt;vl:PANSIChar;str:PANSIChar):DWORD;stdcall;
     TU14LdCmd = FUNCTION (hand:SmallInt;command:PANSIChar):DWORD;stdcall;
@@ -237,6 +241,7 @@ var
    { Variables for dynamic calls to USE1401.DLL }
    U14TypeOf1401 : TU14TypeOf1401 ;
    U14DriverVersion : TU14DriverVersion ;
+   U14DriverName : TU14DriverName ;
    U14Open1401 :TU14Open1401 ;
    U14Ld :TU14Ld ;
    U14LdCmd :TU14LdCmd ;
@@ -340,6 +345,9 @@ begin
         if @U14TypeOf1401 = Nil then CED_ReportFailure('U14TypeOf1401') ;
         @U14DriverVersion := GetProcAddress(LibraryHnd,'U14DriverVersion') ;
         if @U14DriverVersion = Nil then CED_ReportFailure('U14DriverVersion') ;
+        @U14DriverName := GetProcAddress(LibraryHnd,'U14DriverName') ;
+        if @U14DriverName = Nil then CED_ReportFailure('U14DriverName') ;
+        @U14Open1401 := GetProcAddress(LibraryHnd,'U14Open1401') ;
         @U14Open1401 := GetProcAddress(LibraryHnd,'U14Open1401') ;
         if @U14Open1401 = Nil then CED_ReportFailure('U14Open1401') ;
         @U14Ld := GetProcAddress(LibraryHnd,'U14Ld') ;
@@ -425,7 +433,7 @@ function CED_GetLabInterfaceInfo(
   Determine which type of 1401 is in use
   --------------------------------------}
 var
-   Ver,VerHigh,VerLow : Integer ;
+//   Ver,VerHigh,VerLow : Integer ;
    Buf : Array[0..5000] of AnsiCHar ;
    s : ANSIString ;
    Err : SmallInt ;
@@ -596,10 +604,12 @@ begin
         FADCMaxSamplingInterval := ADCMaxSamplingInterval ;
 
         { Add the CED1401.SYS driver version number }
-        Ver := U14DriverVersion ;
-        VerHigh := Ver div $10000 ;
-        VerLow := Ver and $FFFF ;
-        Model := Model + format('Driver V%d.%d',[VerHigh,VerLow]) ;
+//      24.11.21 Removed because U14DriverVersion causing some sort of stack problem leading
+//      to access violation when CED_GetLabInterfaceInfo exits
+//      Ver := U14DriverVersion ;
+//        VerHigh := Ver div $10000 ;
+//        VerLow := Ver and $FFFF ;
+//        Model := Model + format('Driver V%d.%d',[VerHigh,VerLow]) ;
 
         { Return A/D value range }
         if Use16BitResolution then ADCMinValue := -32768
@@ -802,26 +812,33 @@ begin
      // Clear command settings
      SendCommand('CLEAR;') ;
 
-     if TriggerMode = tmWaveGen then begin
+     if TriggerMode = tmWaveGen then
+        begin
         // Make Event I/Ps 3 & 4 internal
         SendCommand( format('EVENT, D,%d;',[Event3 or Event4])) ;
         // Set Events to 0ff
         SendCommand( format( 'EVENT, I,%d;',[0])) ;
         end
-     else begin
+     else
+        begin
         // Make Event I/Ps 3 & 4 external
         SendCommand( format('EVENT, E,%d;',[Event3 or Event4])) ;
+        // Set Events to 0ff
+        SendCommand( format( 'EVENT, I,%d;',[0])) ;
+
         end ;
 
      // Set events mode to level
      SendCommand( 'EVENT,M,0;') ;
 
      { Make all events inputs ACTIVE-LOW }
-     if ADCExternalTriggerActiveHigh then begin
+     if ADCExternalTriggerActiveHigh then
+        begin
         // Active High TTL external trigger (on event 4)
         SendCommand( 'EVENT,P,47;' ) ;
         end
-     else begin
+     else
+        begin
         // Active Low TTL external trigger (on event 4)
         SendCommand( 'EVENT,P,63;' ) ;
         end ;
@@ -875,7 +892,7 @@ begin
      ADCActive := True ;
      Result := ADCActive ;
 
-//     CED_TestDIGTIM ;
+ //    CED_TestDIGTIM ;
 
      end ;
 
@@ -1081,7 +1098,8 @@ begin
 
      //outputdebugString(PChar(format('%d',[StartOf1401DACBuffer])));
 
-     if TypeOf1401 = U14TYPE1401 then begin
+     if TypeOf1401 = U14TYPE1401 then
+        begin
         { Amount of 1401 memory available }
         SendCommand('MEMTOP;') ;
         U14LongsFrom1401( Device, @Reply, High(Reply) ) ;
@@ -1117,16 +1135,18 @@ begin
      CED_GetError ;
 
      // Trigger A/D and D/A sweeps (if in waveform generation mode)
-     if TriggerMode = tmWaveGen then begin
-         if U14TypeOf1401(Device) = U14TYPE1401 then begin
-            // Standard 1401 = Send 5V step to DAC 2 to trigger Event 3 & 4
-            CED_SetDAC2( 4.9 ) ;
-            CED_SetDAC2( 0.0 ) ;
-            end
-         else begin
-            // All other 1401s - trigger events internally
-            SendCommand( format( 'EVENT, I,%d;',[Event3 or Event4 or DIGTIMStartEvent])) ;
-            end ;
+     if U14TypeOf1401(Device) = U14TYPE1401 then
+        begin
+        // Standard 1401 = Send 5V step to DAC 2 to trigger Event 3 & 4
+        CED_SetDAC2( 4.9 ) ;
+        CED_SetDAC2( 0.0 ) ;
+        end
+     else
+        begin
+        // All other 1401s - trigger events internally
+        // Event4 = A/D Event3 = D/A  DIGTIMStartEvent = Digital
+        SendCommand( format( 'EVENT, I,%d;',[0])) ; // Clear events
+        SendCommand( format( 'EVENT, I,%d;',[Event3 or Event4 or DIGTIMStartEvent])) ; // Set to trigger
         end ;
 
      DIGTIMStartEvent := 0 ;
@@ -1338,7 +1358,8 @@ procedure CED_MemoryToDigitalPort(
           nValues : Integer ;               { No. of pattern values in DigBuf }
           dt : Double ;                      { Output interval }
           StartAt : Integer ;               { Start o/p at StartAt in DigBuf }
-          CEDPower1401DIGTIMCountShift : Integer // DIGSTIM command count offset for Power 1401
+          CEDPower1401DIGTIMCountShift : Integer ; // DIGSTIM command count offset for Power 1401
+          RepeatedWaveform : Boolean               // True = repeat digital pulse pattern
           ) ;
 { --------------------------------------------------------
   Set up a digital output sequence within the 1401 memory
@@ -1360,6 +1381,7 @@ var
    LastChange,i,iDig,iDigShift : Integer ;
    Command : string ;
    PreScale,Ticks : Word ;
+   nRepeat : Integer ;
 begin
 
      if not DeviceInitialised then CED_InitialiseBoard ;
@@ -1400,14 +1422,16 @@ begin
 
      iDig := iDig + 2 ;
      LastChange := iDig ;
-     while (iDig <= nValues) and (nSlices < (MaxDIGTIMSlices-1)) do begin;
+     while (iDig <= nValues) and (nSlices < (MaxDIGTIMSlices-1)) do
+           begin;
            Inc(iDig) ;
-           if (DigBuf[iDig] <> DigBuf[iDig-1]) or (iDig >= nValues) then begin
+           if (DigBuf[iDig] <> DigBuf[iDig-1]) or (iDig >= nValues) then
+              begin
 
               // Set slice count
               nCount := iDig-LastChange ;
               // Extend count beyond end of sweep by 10 seconds
-              if iDig >= nValues then nCount := nCount + round(10.0 /dt) ;
+//              if iDig >= nValues then nCount := nCount + round(10.0 /dt) ;
 
               // Create slices
               repeat
@@ -1459,7 +1483,9 @@ begin
 
      CED_CheckSamplingInterval( dt, PreScale, Ticks, 'C' ) ;
      Ticks := Ticks div 2 ;
-     Command := format('DIGTIM,CT,%d,%d,5;',[PreScale,Ticks] );
+     if RepeatedWaveform then nRepeat := 0
+                         else nRepeat := 1 ;
+     Command := format('DIGTIM,CT,%d,%d,%d;',[PreScale,Ticks,nRepeat] );
      SendCommand( Command ) ;
      CED_GetError ;
 
