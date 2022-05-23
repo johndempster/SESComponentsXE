@@ -447,9 +447,11 @@ TDD1440_ADCtoVolts = Function(
 
    procedure DD1440_FillOutputBufferWithDefaultValues ;
 
+   procedure DD1440_SaveToLog( Msg : string ) ;
+
 implementation
 
-uses seslabio ;
+uses seslabio, system.classes ;
 
 const
     DD1440_MaxADCSamples = 32768*16 ;
@@ -517,6 +519,8 @@ var
 
    DIGDefaultValue : Integer ;
 
+   LogList : TStringList ;
+
   DD1440_CountDevices : TDD1440_CountDevices ;
   DD1440_FindDevices : TDD1440_FindDevices ;
   DD1440_GetErrorText : TDD1440_GetErrorText ;
@@ -579,6 +583,9 @@ var
     ch : Integer ;
     F : TextFile ;
 begin
+
+     LogList := TStringList.Create ;
+
      SettingsDirectory := SettingsDirectoryIn ;
      if not DeviceInitialised then DD1440_InitialiseBoard ;
      if not DeviceInitialised then begin
@@ -605,6 +612,7 @@ begin
      { Get device model and firmware details }
      Model := TrimChar(DeviceInfo[0].Name) + ' V' +
               TrimChar(DeviceInfo[0].FirmwareVersion) + ' firmware)';
+     DD1440_SaveToLog( 'Model: ' + Model ) ;
 
      // Define available A/D voltage range options
      ADCVoltageRanges[0] := 10.0 ;
@@ -751,6 +759,15 @@ begin
      end ;
 
 
+procedure DD1440_SaveToLog( Msg : string ) ;
+begin
+
+      LogList.Add( Msg ) ;
+      LogList.SaveToFile( SettingsDirectory + 'DD1440 Log.txt' );
+
+end ;
+
+
 function  DD1440_CopyAndLoadLibrary(
           DLLName : string ;
           SourcePath : string ;
@@ -760,6 +777,9 @@ function  DD1440_CopyAndLoadLibrary(
 // ---------------------------------------------------------
 begin
      CopyFile( PChar(SourcePath+DLLName), PChar(DestPath+DLLName), false ) ;
+
+     DD1440_SaveToLog( 'DLL used: ' + SourcePath+DLLName ) ;
+
      Result := LoadLibrary(PChar(DestPath+DLLName)) ;
      if Result = 0 then ShowMessage('Unable to load ' + DestPath+DLLName );
      end;
@@ -816,6 +836,7 @@ begin
         ShowMessage('No Digidata 1440 devices available!') ;
         exit ;
         end ;
+     DD1440_SaveToLog( format('No. devices found: %d',[NumDevices]) ) ;
 
      // Get information from DD1440 devices
      DD1440_FindDevices(@DeviceInfo, High(DeviceInfo)+1, Err ) ;
@@ -829,12 +850,14 @@ begin
         DD1440_CheckError(True) ;
         Exit ;
         end ;
+     DD1440_SaveToLog( format('Device Opened: s/n %d',[DeviceInfo[0].SerialNumber]) ) ;
 
      // Get calibration parameters
      DD1440_GetCalibrationParams( Calibration ) ;
      for ch := 0 to High(Calibration.afDACGains) do
          if Calibration.afDACGains[ch] = 0.0 then Calibration.afDACGains[ch] := 1.0 ;
      DACActive := False ;
+     DD1440_SaveToLog( 'DD1440_GetCalibrationParams succeeded' ) ;
 
      // Load A/D offsets (if file exists in settings directory)
      FileName := SettingsDirectory + 'Digidata 1440 adc offsets.txt' ;
@@ -852,6 +875,7 @@ begin
             end;
         CloseFile(F) ;
         DD1440_setCalibrationParams( Calibration ) ;
+        DD1440_SaveToLog( 'DD1440_setCalibrationParams succeeded' ) ;
         end;
 
 
@@ -1054,6 +1078,7 @@ begin
         // Send protocol to device
         AOPointer := 0 ;
         DD1440_CheckError(DD1440_SetProtocol(Protocol)) ;
+        DD1440_SaveToLog( 'DD1440_ADCToMemory DD1440_SetProtocol succeeded' );
 
         // Start A/D conversion
         DD1440_CheckError(DD1440_StartAcquisition) ;
@@ -1078,6 +1103,7 @@ begin
      // Stop A/D input (and D/A output) if in progress
      if DD1440_IsAcquiring then begin
         DD1440_StopAcquisition ;
+        DD1440_SaveToLog( 'DD1440_StopAcquisition succeeded' );
         end ;
 
      // Fill D/A & digital O/P buffers with default values
@@ -1104,6 +1130,8 @@ begin
      // Transfer new A/D samples to host buffer
 
      DD1440_GetAIPosition(  NewAIPosition ) ;
+     DD1440_SaveToLog( format( 'DD1440_GetAIPosition NewPos=%d',[NewAIPosition]) );
+
      NewSamples := (NewAIPosition - AIPosition)*Protocol.uAIChannels ;
      AIPosition := NewAIPosition ;
      if FCircularBuffer then begin
@@ -1131,6 +1159,7 @@ begin
 
      // Update D/A + Dig output buffer
      DD1440_GetAOPosition(  NewAOPosition ) ;
+     DD1440_SaveToLog( format( 'DD1440_GetAOPosition NewPos=%d',[NewAOPosition]) );
      NewPoints := Integer(NewAOPosition - AOPosition) ;
      AOPosition := NewAOPosition ;
 
@@ -1244,8 +1273,12 @@ var
 
     // Load protocol
     DD1440_SetProtocol(  Protocol ) ;
+        DD1440_SaveToLog( 'DD1440_MemoryToDAC DD1440_SetProtocol succeeded ');
+
+
     // Start
     DD1440_StartAcquisition ;
+    DD1440_SaveToLog( 'DD1440_StartAcquisition succeeded') ;
 
     ADCActive := True ;
 
@@ -1297,6 +1330,7 @@ begin
 
      if DD1440_IsAcquiring then begin
         DD1440_StopAcquisition ;
+        DD1440_SaveToLog( 'DD1440_StopAcquisition succeeded') ;
         Protocol.uFlags := 0 ;  // Ensure no wait fot ext. trigger
         DD1440_SetProtocol( Protocol ) ; 
         DD1440_StartAcquisition ;
@@ -1361,9 +1395,13 @@ begin
      // Stop/restart acquisition to flush output buffer
      if DD1440_IsAcquiring then begin
         DD1440_StopAcquisition ;
+        DD1440_SaveToLog( 'DD1440_StopAcquisition succeeded') ;
         Protocol.uFlags := 0 ;
         DD1440_SetProtocol( Protocol ) ;
+        DD1440_SaveToLog( 'DD1440_SetProtocol succeeded') ;
+
         DD1440_StartAcquisition ;
+        DD1440_SaveToLog( 'DD1440_StartAcquisition succeeded') ;
         AIPosition := 0 ;
         AOPosition := 0 ;
         AIPointer := 0 ;
@@ -1389,6 +1427,8 @@ begin
      if not DeviceInitialised then Exit ;
 
      DD1440_GetAIValue( Channel, Value ) ;
+     DD1440_SaveToLog( 'DD1440_GetAIValue succeeded') ;
+
      Result := Value ;
 
      end ;
@@ -1418,6 +1458,7 @@ begin
      if not DeviceInitialised then Exit ;
 
      DD1440_CloseDevice ;
+     DD1440_SaveToLog( 'DD1440_CloseDevice succeeded') ;
 
      // Free DLL libraries
      if DD1440Hnd > 0 then FreeLibrary( DD1440Hnd ) ;
@@ -1444,6 +1485,8 @@ begin
      DeviceInitialised := False ;
      DACActive := False ;
      ADCActive := False ;
+
+     LogList.Free ;
 
      end ;
 

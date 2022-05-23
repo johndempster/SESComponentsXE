@@ -754,7 +754,7 @@ function  DIGD1550_CopyAndLoadLibrary(
 // ---------------------------------------------------------
 begin
      CopyFile( PChar(SourcePath+DLLName), PChar(DestPath+DLLName), false ) ;
-     Result := LoadLibrary(PChar(DestPath+DLLName)) ;
+     Result := LoadLibrary(PChar(DestPath + DLLName)) ;
      if Result = 0 then ShowMessage('Unable to load ' + DestPath+DLLName );
      end;
 

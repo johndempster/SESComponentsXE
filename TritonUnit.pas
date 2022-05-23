@@ -54,6 +54,7 @@ unit TritonUnit;
 // 16.04.19 Triton_GetDigitalLeak and Triton_SetDigitalLeak added
 // 23.08.21 Support for 16/32 channel Triton X added
 // 26.08.21 TritonNumChannels() now returns correct no. channels for Triton X 16 channel version
+// 02.05.22 External start now added to Triton_MemoryToDACAndDigitalOut()
 
 
 interface
@@ -795,7 +796,8 @@ function TECELLA_ACQUIRE_CB(
           var DACValues : Array of SmallInt  ;
           nChannels : Integer ;
           nPoints : Integer ;
-          DACUpdateInterval : Single
+          DACUpdateInterval : Single ;
+          FStimulusExtTrigger : Boolean        // TRUE = Wait for ext trigger befere starting
           ) : ByteBool ;
 
 function  Triton_MemoryToDACAndDigitalOutStream(
@@ -804,7 +806,8 @@ function  Triton_MemoryToDACAndDigitalOutStream(
           nPoints : Integer ;
           DACUpdateInterval : Single ;
           var DigValues : Array of SmallInt  ; // Digital port values
-          DigitalInUse : ByteBool              // Output to digital outs
+          DigitalInUse : ByteBool ;             // Output to digital outs
+          FStimulusExtTrigger : Boolean        // TRUE = Wait for ext trigger befere starting
           ) : ByteBool ;
 
 function  Triton_MemoryToDACAndDigitalOut(
@@ -813,7 +816,8 @@ function  Triton_MemoryToDACAndDigitalOut(
           nPoints : Integer ;
           DACUpdateInterval : Single ;
           var DigValues : Array of SmallInt  ; // Digital port values
-          DigitalInUse : ByteBool              // Output to digital outs
+          DigitalInUse : ByteBool ;             // Output to digital outs
+          FStimulusExtTrigger : Boolean        // TRUE = Wait for ext trigger befere starting
           ) : ByteBool ;
 
 
@@ -1873,7 +1877,8 @@ function  Triton_MemoryToDACAndDigitalOut(
           nPoints : Integer ;
           DACUpdateInterval : Single ;
           var DigValues : Array of SmallInt  ; // Digital port values
-          DigitalInUse : ByteBool              // Output to digital outs
+          DigitalInUse : ByteBool ;             // Output to digital outs
+          FStimulusExtTrigger : Boolean        // TRUE = Wait for ext trigger befere starting
           ) : ByteBool ;
 // ------------------------------------------
 // Start D/A stimulus and A/D recording sweep
@@ -1886,13 +1891,15 @@ begin
                                                         nPoints,
                                                         DACUpdateInterval,
                                                         DigValues,
-                                                        DigitalInUse ) ;
+                                                        DigitalInUse,
+                                                        FStimulusExtTrigger ) ;
        end
     else begin
        Result := Triton_MemoryToDACStimulus( DACValues,
                                              nChannels,
                                              nPoints,
-                                             DACUpdateInterval ) ;
+                                             DACUpdateInterval,
+                                             FStimulusExtTrigger ) ;
        end ;
     end ;
 
@@ -1901,7 +1908,8 @@ function  Triton_MemoryToDACStimulus(
           var DACValues : Array of SmallInt  ;
           nChannels : Integer ;
           nPoints : Integer ;
-          DACUpdateInterval : Single
+          DACUpdateInterval : Single ;
+          FStimulusExtTrigger : Boolean        // TRUE = Wait for ext trigger befere starting
           ) : ByteBool ;
 // ---------------------------------------------------------------------
 // Start D/A stimulus (using stimulus generator) and A/D recording sweep
@@ -2130,7 +2138,8 @@ begin
       ContinuousRecording := True; ;
       start_stimuli := True ;
       continuous_stimuli := True; ;
-      start_on_trigger := False ;
+      if FStimulusExtTrigger then start_on_trigger := True
+                             else start_on_trigger := False ;
 
       FSamplingInterval := DACUpdateInterval ;
       Triton_CheckSamplingInterval( FSamplingInterval ) ;
@@ -2158,7 +2167,8 @@ function  Triton_MemoryToDACAndDigitalOutStream(
           nPoints : Integer ;
           DACUpdateInterval : Single ;
           var DigValues : Array of SmallInt  ; // Digital port values
-          DigitalInUse : ByteBool              // Output to digital outs
+          DigitalInUse : ByteBool ;             // Output to digital outs
+          FStimulusExtTrigger : Boolean        // TRUE = Wait for ext trigger befere starting
           ) : ByteBool ;
 // -------------------------------------------------------------------
 // Start D/A stimulus (using streamed output) and A/D recording sweep
@@ -2251,18 +2261,20 @@ begin
       // Start recording sweep
 
       if FTriggerMode = tmExtTrigger then start_on_trigger := True
-                                    else start_on_trigger := False ;
+                                     else start_on_trigger := False ;
 
       ContinuousRecording := True ;
       start_stimuli := True ;
       continuous_stimuli := True ;
+      if FStimulusExtTrigger then start_on_trigger := True
+                             else start_on_trigger := False ;
       Triton_CheckError( 'tecella_acquire_start  : ',
                           tecella_acquire_start ( TecHandle,
-                                                           SamplingIntervalMultiplier,
-                                                           ContinuousRecording,
-                                                           start_stimuli,
-                                                           continuous_stimuli,
-                                                           start_on_trigger )) ;
+                                                  SamplingIntervalMultiplier,
+                                                  ContinuousRecording,
+                                                  start_stimuli,
+                                                  continuous_stimuli,
+                                                  start_on_trigger )) ;
       ADCActive := True ;
       FreeMem( StreamBuf ) ;
       Result := True ;

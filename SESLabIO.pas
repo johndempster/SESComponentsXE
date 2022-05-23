@@ -145,6 +145,7 @@ unit SESLabIO;
   20.03.19 TritonRegisterValueToPercent() added. Calculates register % value from required value
   21.04.19 THold now set to correct value in TritonAutoCompensate() (rather than set to VHold)
   11.04.19 TritonRemoveArtifact() procedure added.
+  02.05.22 External start now added to Triton_MemoryToDACAndDigitalOut()
   ================================================================================ }
 
 interface
@@ -2377,7 +2378,8 @@ begin
                                  FDACNumSamples,
                                  FDACUpdateInterval,
                                  DigBuf^,
-                                 False ) ;
+                                 False,
+                                 FStimulusExtTrigger ) ;
              end ;
 
        WirelessEEG : begin
@@ -2568,7 +2570,8 @@ begin
                                  FDACNumSamples,
                                  FDACUpdateInterval,
                                  DigBuf^,
-                                 TRue ) ;
+                                 True,
+                                 FStimulusExtTrigger ) ;
              end ;
 
        WirelessEEG : begin

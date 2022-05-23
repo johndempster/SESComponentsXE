@@ -883,8 +883,8 @@ var
    dy,dx : Single ;
    KeepColor : TColor ;
    s : String ;
-   yRange,TickBase,YTick,YTickMin,YTickMax,YScaledMax,YScaledMin : Single ;
-   r,XRange,XTick,XTickSize,XTickMin,XTickMax,XScaledMax,XScaledMin : Single ;
+   yRange,TickBase : Single ;
+   XRange,XTickSize,XTickMin,XTickMax,XScaledMax,XScaledMin : Single ;
    XAxisAt : Integer ;
    iTick, NumTicks : Integer ;
    ChannelXSpacing,ChannelYSpacing : Integer ;

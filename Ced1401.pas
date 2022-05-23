@@ -83,6 +83,8 @@ unit Ced1401;
                rather than Byte pointer in response to ADCMEM,P. Get_ADCSamples() adapts to this.
  24.11.21 ...  RepeatedWaveform argument added to CED_MemoryToDig() Digital pulse pattern can now repeat indefinetely
                Digital waveforms now work in WinEDR as well as WinWCP
+ 08.12.21 ...  MinDacInterval of Power 1401s reduced from 1E-4s to 1E-5s to allow higher frequency sine wave stimuli
+               to be produced/
 }
 interface
 
@@ -479,7 +481,7 @@ begin
                 DACMaxChannels := 4;
                 ADCMinSamplingInterval := 3E-6 ;
                 ADCMaxSamplingInterval := 1000.0 ;
-                DACMinUpdateInterval := 1E-4 ;
+                DACMinUpdateInterval := 1E-5 ;
                 ADC1401BufferSize := 2*131072 ;
                 DAC1401BufferSize := ADC1401BufferSize ;
                 MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
@@ -531,7 +533,7 @@ begin
                 DACMaxChannels := 2;
                 ADCMinSamplingInterval := 2.0E-6 ;
                 ADCMaxSamplingInterval := 1000.0 ;
-                DACMinUpdateInterval := 1E-4 ;
+                DACMinUpdateInterval := 1E-5 ;
                 ADC1401BufferSize := 131072 ;
                 DAC1401BufferSize := ADC1401BufferSize ;
                 MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
@@ -544,7 +546,7 @@ begin
                 DACMaxChannels := 4;
                 ADCMinSamplingInterval := 3E-6 ;
                 ADCMaxSamplingInterval := 1000.0 ;
-                DACMinUpdateInterval := 1E-4 ;
+                DACMinUpdateInterval := 1E-5 ;
                 ADC1401BufferSize := 4*131072 ;
                 DAC1401BufferSize := ADC1401BufferSize ;
                 MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
@@ -557,7 +559,7 @@ begin
                 DACMaxChannels := 2 ;
                 ADCMinSamplingInterval := 3E-6 ;
                 ADCMaxSamplingInterval := 1000.0 ;
-                DACMinUpdateInterval := 1E-4 ;
+                DACMinUpdateInterval := 1E-5 ;
                 ADC1401BufferSize := 4*131072 ;
                 DAC1401BufferSize := ADC1401BufferSize ;
                 MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;

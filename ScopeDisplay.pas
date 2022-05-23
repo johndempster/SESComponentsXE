@@ -132,12 +132,13 @@ unit ScopeDisplay;
   04.11.16 ... JD ADCZero and cursors position properties now single type rather than integer
   03.07.19 ... JD ?yd1 and ?yd2 1 and 2 fixed decimal place cursor readout format added
   25.05.21 ... JD SaveToFile public procedure added
+  17.01.22 ... JD System.IO.TPath function now used to get temporary file name
   }
 
 interface
 
 uses
-  Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
+  System.IOUtils, Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
   Clipbrd, printers, mmsystem, math, strutils, types, uitypes ;
 const
      ScopeChannelLimit = 31 ;
@@ -276,7 +277,7 @@ type
 //    FLinePen : TPen ;
     { Display storage mode internal variables }
     FStorageMode : Boolean ;
-    FStorageFileName : Array[0..255] of char ;
+    FStorageFileName : String ;
     FStorageFile : TFileStream ;
 
     FStorageList : Array[0..MaxStoredRecords-1] of Integer ; // storage mode list
@@ -737,7 +738,8 @@ begin
      FBuf := Nil ;
      FNumBytesPerSample := 2 ;
      FFloatingPointSamples := False ;
-     for ch := 0 to High(Channel) do begin
+     for ch := 0 to High(Channel) do
+         begin
          Channel[ch].InUse := True ;
          Channel[ch].ADCName := format('Ch.%d',[ch]) ;
          Channel[ch].ADCUnits := '' ;
@@ -824,13 +826,15 @@ begin
      FTitle.Free ;
 //     FLinePen.Free ;
 
-     for i := 0 to High(FLines) do begin
+     for i := 0 to High(FLines) do
+        begin
         FLines[i].Pen.Free ;
         if FLines[i].x <> Nil then  Dispose(FLines[i].x) ;
         if FLines[i].y <> Nil then  Dispose(FLines[i].y) ;
         end;
 
-     if FStorageFile <> Nil then begin
+     if FStorageFile <> Nil then
+        begin
         FStorageFile.Destroy ;
         DeleteFile( FStorageFileName ) ;
         FStorageFile := Nil ;
@@ -853,7 +857,6 @@ var
 
    SaveColor : TColor ;
    KeepPen : TPen ;
-   TempPath : Array[0..255] of Char ;
    KeepColor : Array[0..ScopeChannelLimit] of TColor ;
    xy : ^TPointArray ;
    InList : Boolean ;
@@ -873,7 +876,8 @@ begin
 
         // Make bit map same size as control
         if (BackBitmap.Width <> Width) or
-           (BackBitmap.Height <> Height) then begin
+           (BackBitmap.Height <> Height) then
+           begin
            BackBitmap.Width := Width ;
            BackBitmap.Height := Height ;
            ForeBitmap.Width := Width ;
@@ -890,14 +894,13 @@ begin
         ClearDisplay( BackBitmap.Canvas ) ;
 
         { Display records in storage list }
-        if FStorageMode then begin
+        if FStorageMode then
+           begin
 
            { Create a temporary storage file, if one isn't already open }
-           if FStorageFile = Nil then begin
-              { Get path to temporary file directory }
-              GetTempPath( High(TempPath), TempPath ) ;
-              { Create a temp file name }
-              GetTempFileName( TempPath, pFilePrefix, 0, FStorageFileName ) ;
+           if FStorageFile = Nil then
+              begin
+              FStorageFileName := System.IOUtils.TPath.GetTempFileName ;
               FStorageFile := TFileStream.Create( FStorageFileName, fmCreate ) ;
               end ;
 
@@ -908,13 +911,15 @@ begin
            FStorageFile.Write( FBuf^, NumBytesPerRecord ) ;
 
            { Change colour of stored records }
-           for ch := 0 to FNumChannels-1 do begin
+           for ch := 0 to FNumChannels-1 do
+               begin
                KeepColor[Ch] := Channel[Ch].Color ;
                Channel[Ch].Color := clAqua ;
                end ;
 
            { Display old records stored in file }
-           for Rec := 1 to High(FStorageList) do if FStorageList[Rec] <> NoRecord then
+           for Rec := 1 to High(FStorageList) do if FStorageList[Rec] <> NoRecord
+               then
                begin
                FStorageFile.Read( FBuf^, NumBytesPerRecord ) ;
                PlotRecord( BackBitmap.Canvas, Channel, xy^) ;
@@ -947,12 +952,15 @@ begin
         PlotRecord( BackBitmap.Canvas, Channel, xy^ ) ;
 
        { Plot external line on selected channel }
-       for i := 0 to High(FLines) do if (FLines[i].Count > 0) then begin
+       for i := 0 to High(FLines) do if (FLines[i].Count > 0) then
+          begin
           iChan := FLines[i].Channel ;
-          if Channel[iChan].InUse then begin
+          if Channel[iChan].InUse then
+             begin
              KeepPen.Assign(BackBitmap.Canvas.Pen) ;
              BackBitmap.Canvas.Pen.Assign(FLines[i].Pen) ;
-             for j := 0 to FLines[i].Count-1 do begin
+             for j := 0 to FLines[i].Count-1 do
+                  begin
                   xy^[j].x := XToCanvasCoord( Channel[iChan], FLines[i].x^[j] ) ;
                   xy^[j].y := YToCanvasCoord( Channel[iChan], FLines[i].y^[j] ) ;
                   end ;
@@ -975,7 +983,8 @@ begin
         // Draw red box round display to indicate it is selected
 
         SaveColor := Canvas.Brush.Color ;
-        if FDisplaySelected then begin
+        if FDisplaySelected then
+           begin
            Canvas.Brush.Color := clRed ;
            Canvas.FrameRect( DisplayRect );
            Canvas.Brush.Color := SaveColor ;
@@ -1020,7 +1029,8 @@ begin
      iEnd := Min(Round(FXMax),FNumPoints-1) ;
 
      { Plot each active channel }
-     for ch := 0 to FNumChannels-1 do if Channels[ch].InUse then begin
+     for ch := 0 to FNumChannels-1 do if Channels[ch].InUse then
+         begin
          Canv.Pen.Color := Channels[ch].Color ;
          n := 0 ;
 
@@ -1202,7 +1212,8 @@ begin
 
      // Display channel enabled buttons
      Canv.Pen.Color := clBlack ;
-     for ch := 0 to FNumChannels-1 do if not FDisableChannelVisibilityButton then begin
+     for ch := 0 to FNumChannels-1 do if not FDisableChannelVisibilityButton then
+         begin
          YPix := (Channel[ch].Top + Channel[ch].Bottom {- ButtonSize}) div 2 ;
          XPix := 2 ;
          DrawZoomButton( Canv,
@@ -1214,7 +1225,8 @@ begin
          end ;
 
      { Update horizontal cursor limits/scale factors to match channel settings }
-     for i := 0 to High(HorCursors) do if HorCursors[i].InUse then begin
+     for i := 0 to High(HorCursors) do if HorCursors[i].InUse then
+         begin
          HorCursors[i].Left := Channel[HorCursors[i].ChanNum].Left ;
          HorCursors[i].Right := Channel[HorCursors[i].ChanNum].Right ;
          HorCursors[i].Top := Channel[HorCursors[i].ChanNum].Top ;
@@ -1229,7 +1241,8 @@ begin
 
      { Update vertical cursor limits/scale factors  to match channel settings}
      for i := 0 to High(VertCursors) do if VertCursors[i].InUse then begin
-         if VertCursors[i].ChanNum >= 0 then begin
+         if VertCursors[i].ChanNum >= 0 then
+            begin
             { Vertical cursors linked to individual channels }
             VertCursors[i].Left := Channel[VertCursors[i].ChanNum].Left ;
             VertCursors[i].Right := Channel[VertCursors[i].ChanNum].Right ;
@@ -1286,7 +1299,8 @@ begin
          // Plot ticks
          YTick := YTickMin ;
          iTick := 0 ;
-         while iTick < NumTicks do begin
+         while iTick < NumTicks do
+             begin
 
              yPix := YToCanvasCoord( Channel[ch],
                                     (YTick/Channel[ch].ADCScale) + Channel[ch].ADCZero ) ;
@@ -1294,7 +1308,8 @@ begin
              Canv.Pen.Color := clBlack ;
              Canv.MoveTo( Channel[ch].Left, yPix )  ;
              Canv.LineTo( Channel[ch].Left + TickSize, yPix )  ;
-             if FDrawGrid then begin
+             if FDrawGrid then
+                begin
                 Canv.Pen.Color := FGridColor ;
                 Canv.Pen.Style := psDot ;
                 Canv.LineTo( Channel[ch].Right, yPix )  ;

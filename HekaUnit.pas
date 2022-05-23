@@ -32,6 +32,7 @@ unit HekaUnit;
 //          fixing bug which caused holding voltage to be set to zero.
 // 21.09.17 EPC-9 USB option now initialised with IAmplifier := EPC9_Epc9Amp1, pLIH_Options^.UseUSB := 1 rather than IAmplifier := EPC9_Epc10USB
 //          to try to get it to work with the EPC-9 with a USB interface
+// 29.01.22 Heka_SetAmplifier() Amplifier value no longer fixed at 0
 
 interface
 
@@ -2336,7 +2337,7 @@ begin
 
 procedure Heka_SetAmplifier( Value : Integer ) ;
 begin
-     Value := 0 ;
+  //   Value := 0 ;
      if not DeviceInitialised then Exit ;
      EPC9_SetActiveBoard(Value);
      end;
