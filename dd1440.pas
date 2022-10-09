@@ -33,6 +33,7 @@ unit dd1440;
 //          Whatever version number of wdapi????.dll available in folder is now loaded (instead of
 //          only WDAPI1140.dll)
 // 28.08.19 Name of Axoscope folder on Windows 64 bit systems corrected
+// 24.06.22 DD1440_SaveToLog disabled
 
 interface
 
@@ -761,7 +762,7 @@ begin
 
 procedure DD1440_SaveToLog( Msg : string ) ;
 begin
-
+      exit ;
       LogList.Add( Msg ) ;
       LogList.SaveToFile( SettingsDirectory + 'DD1440 Log.txt' );
 

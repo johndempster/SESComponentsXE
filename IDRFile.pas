@@ -58,6 +58,9 @@ unit IDRFile;
 //             reselect existing file as a new data file.)
 // 19.01.15 JD File creation time properties (Hour,mins,seconds) added
 //             .CreateFileFrom() now uses current date/time as creation date
+// 23.09.22 JD IDR and EDR header texts now read/written using StringLists
+// 04.10.22 JD ROIs now saved in <filename>.roi.csv file along with <filename>.idr file
+//             Limit of 100 ROIs stored in IDR file header, 100-1000 stored in <filename>.roi.csv
 
 interface
 
@@ -69,7 +72,8 @@ const
      MaxFrameType = 8 ;              // Upper limit of frame types
      MaxFrameDivideFactor = 100 ; 
      MaxChannel = 7 ;                // Upper limit of A/D channels
-     cMaxROIs = 100 ;                  // Upper limit of ROIs (raised from 50 30/7/12)
+     cMaxROIs = 1000 ;               // Upper limit of ROIs (raised from 100 04/10/22)
+     cMaxROIsInHeader = 100 ;        // Upper limit of ROIs stored in IDR Header
      MaxMarker = 20 ;               // Upper limit of event markers
      cNumIDRHeaderBytes = 32768 ;  // Old size = 4096 ;
      cNumEDRHeaderBytes = 2048 ; //
@@ -273,79 +277,91 @@ TChannel = record
     FAsyncBufferOverflow : Boolean ;
 
     NoPreviousOpenFile : Boolean ;   // No file has been opened yet flag
-    HeaderFull : Boolean ;
-    Header : array[1..cNumIDRHeaderBytes] of ANSIchar ;
-    
+
+    IDRFileHeaderText : string ;     // IDR File header KEY=Value text
+
+ //   HeaderFull : Boolean ;
+ //   Header : array[1..cNumIDRHeaderBytes] of ANSIchar ;
+
     Err : Boolean ;
 
     procedure GetIDRHeader ;
     procedure SaveIDRHeader ;
+    procedure SaveROIsToCSVFile(
+              FileName : String
+              ) ;
+    procedure LoadROIsFromCSVFile(
+              FileName : String
+              ) ;
+    function GetInt( var s : String ) : Integer ;
     function GetNumFramesInFile : Integer ;
     procedure GetEDRHeader ;
     procedure SaveEDRHeader ;
     function GetNumScansInEDRFile : Int64 ;
 
-    procedure AppendFloat(
-              var Dest : array of ANSIchar;
-              Keyword : ANSIstring ;
-              Value : Extended
-              ) ;
-    procedure ReadFloat(
-              const Source : array of ANSIchar;
-              Keyword : ANSIstring ;
-              var Value : Single ) ;
-    procedure AppendInt(
-              var Dest : array of ANSIchar;
-              Keyword : ANSIstring ;
-              Value : LongInt
-              ) ;
-    procedure AppendInt64(
-              var Dest : array of ANSIchar;
-              Keyword : ANSIstring ;
-              Value : Int64
-              ) ;
-    procedure ReadInt(
-              const Source : array of ANSIchar;
-              Keyword : ANSIstring ;
-              var Value : LongInt
-              ) ;
-    procedure ReadInt64(
-              const Source : array of ANSIchar;
-              Keyword : ANSIstring ;
-              var Value : Int64
-              ) ;
-    procedure AppendLogical(
-              var Dest : array of ANSIchar;
-              Keyword : ANSIstring ;
-              Value : Boolean ) ;
-    procedure ReadLogical(
-              const Source : array of ANSIchar;
-              Keyword : ANSIstring ;
-              var Value : Boolean
-              ) ;
-    procedure AppendString(
-              var Dest : Array of ANSIchar;
-              Keyword : ANSIString ;
-              Value : string
-              ) ;
-    procedure ReadString(
-              const Source : Array of ANSIChar;
-              Keyword : ANSIstring ;
-              var Value : string
-              ) ;
+    procedure AddKeyValue( List : TStringList ;  // List for Key=Value pairs
+                           Keyword : string ;    // Key
+                           Value : single        // Value
+                           ) ; Overload ;
 
-    procedure AppendStringToANSIArray( var Dest : array of ANSIChar ; Source : ANSIstring ) ;
+    procedure AddKeyValue( List : TStringList ;  // List for Key=Value pairs
+                           Keyword : string ;    // Key
+                           Value : Integer        // Value
+                           ) ; Overload ;
 
-    procedure FindParameter(
-              const Source : array of ANSIChar ;
-              Keyword : ANSIstring ;
-              var Parameter : ANSIstring ) ;
+    procedure AddKeyValue( List : TStringList ;  // List for Key=Value pairs
+                           Keyword : string ;    // Key
+                           Value : Int64        // Value
+                           ) ; Overload ;
+
+    procedure AddKeyValue( List : TStringList ;  // List for Key=Value pairs
+                           Keyword : string ;    // Key
+                           Value : NativeInt        // Value
+                           ) ; Overload ;
+
+    procedure AddKeyValue( List : TStringList ;  // List for Key=Value pairs
+                           Keyword : string ;    // Key
+                           Value : String        // Value
+                           ) ; Overload ;
+
+    procedure AddKeyValue( List : TStringList ;  // List for Key=Value pairs
+                           Keyword : string ;    // Key
+                           Value : Boolean        // Value
+                           ) ; Overload ;
+
+
+   function GetKeyValue( List : TStringList ;  // List for Key=Value pairs
+                         KeyWord : string ;   // Key
+                         Value : single       // Value
+                         ) : Single ; Overload ;        // Return value
+
+   function GetKeyValue( List : TStringList ;  // List for Key=Value pairs
+                         KeyWord : string ;   // Key
+                         Value : Integer       // Value
+                         ) : Integer ; Overload ;        // Return value
+
+   function GetKeyValue( List : TStringList ;  // List for Key=Value pairs
+                         KeyWord : string ;   // Key
+                         Value : Int64       // Value
+                         ) : Int64 ; Overload ;        // Return value
+
+   function GetKeyValue( List : TStringList ;  // List for Key=Value pairs
+                         KeyWord : string ;   // Key
+                         Value : NativeInt       // Value
+                         ) : NativeInt ; Overload ;        // Return value
+
+   function GetKeyValue( List : TStringList ;  // List for Key=Value pairs
+                         KeyWord : string ;   // Key
+                         Value : string       // Value
+                         ) : string ; Overload ;        // Return value
+
+   function GetKeyValue( List : TStringList ;  // List for Key=Value pairs
+                         KeyWord : string ;   // Key
+                         Value : Boolean       // Value
+                         ) : Boolean ; Overload ;        // Return value
 
     function IntLimitTo( Value, LowerLimit, UpperLimit : Integer ) : Integer ;
     function ExtractFloat ( CBuf : ANSIstring ; Default : Single) : single ;
-
-    function ExtractInt ( CBuf : ANSIstring ) : LongInt ;
-    function ExtractInt64 ( CBuf : ANSIstring ) : Int64 ;
 
     function GetFrameType( i : Integer ) : String ;
 
@@ -398,7 +414,6 @@ TChannel = record
     function IDRGetFileSize : Int64 ;
     procedure IDRFileClose;
 
-
     function IsIDRFileOpen : Boolean ;
 
     function GetNumFramesPerSpectrum : Integer ;
@@ -409,6 +424,12 @@ TChannel = record
 
     function GetMaxROIInUse : Integer ;
 
+    procedure StringListToFile(
+          FileName : string ;        // File name
+          FileHandle : THandle ;     // File Handle
+          List : TStringList ;       // StringList to be written
+          FileOffset : NativeInt ;   // Starting offset in file
+          NumBytes : Integer ) ;     // Bytes to be written
 
 
   protected
@@ -766,6 +787,8 @@ begin
 
      // Create internal frame buffer
      GetMem( PInternalBuf, MaxBytesPerFrame ) ;
+
+     IDRFileHeaderText := '' ;
 
      end ;
 
@@ -1182,45 +1205,56 @@ var
    NumFrameActual : Integer ;
    NumBytesPerFrame : Integer ;
    NumBytesInFile : Int64 ;
+   Header : TStringList ;
+   pANSIBuf : PANSIChar ;
+   ANSIHeader : ANSIString ;
+
 begin
 
-     // Read file header
-     IDRFileRead( @Header, 0, Sizeof(Header) ) ;
+     // Create header parameter list
+     Header := TStringList.Create ;
+
+     // Read ANSI text from file header and load into Header StringList
+     pANSIBuf := AllocMem( cNumIDRHeaderBytes ) ;
+     IDRFileRead( pANSIBuf, 0, cNumIDRHeaderBytes ) ;
+     pANSIBuf[cNumIDRHeaderBytes-1] := #0 ;
+     ANSIHeader := ANSIString( pANSIBuf ) ;
+     Header.Text := String(ANSIHeader) ;
 
      { Get default size of file header }
      FNumIDRHeaderBytes := cNumIDRHeaderBytes ;
      { Get size of file header for this file }
-     ReadInt( Header, 'NBH=', FNumIDRHeaderBytes ) ;
+     FNumIDRHeaderBytes := GetKeyValue( Header, 'NBH', FNumIDRHeaderBytes ) ;
 
      // File creation date
 
      FYearCreated := 0 ;
      FMonthCreated := 0 ;
      FDayCreated := 0 ;
-     ReadInt( Header, 'YEAR=', FYearCreated ) ;
-     ReadInt( Header, 'MONTH=', FMonthCreated ) ;
-     ReadInt( Header, 'DAY=', FDayCreated ) ;
-     ReadInt( Header, 'HOUR=', FHourCreated ) ;
-     ReadInt( Header, 'MINUTE=', FMinuteCreated ) ;
-     ReadInt( Header, 'SECOND=', FSecondCreated ) ;
+     FYearCreated := GetKeyValue( Header, 'YEAR', FYearCreated ) ;
+     FMonthCreated := GetKeyValue( Header, 'MONTH', FMonthCreated ) ;
+     FDayCreated := GetKeyValue( Header, 'DAY', FDayCreated ) ;
+     FHourCreated := GetKeyValue( Header, 'HOUR', FHourCreated ) ;
+     FMinuteCreated := GetKeyValue( Header, 'MINUTE', FMinuteCreated ) ;
+     FSecondCreated := GetKeyValue( Header, 'SECOND', FSecondCreated ) ;
 
      // Frame parameters
-     ReadFloat( Header, 'FI=', FFrameInterval ) ;
+     FFrameInterval := GetKeyValue( Header, 'FI', FFrameInterval ) ;
 
-     ReadInt( Header, 'FW=', FFrameWidth ) ;
+     FFrameWidth := GetKeyValue( Header, 'FW', FFrameWidth ) ;
 
-     ReadInt( Header, 'FH=', FFrameHeight ) ;
+     FFrameHeight := GetKeyValue( Header, 'FH', FFrameHeight ) ;
 
      FNumBytesPerPixel := 2 ;
-     ReadInt( Header, 'NBPP=', FNumBytesPerPixel ) ;
+     FNumBytesPerPixel  := GetKeyValue( Header, 'NBPP', FNumBytesPerPixel ) ;
 
-     ReadInt( Header, 'NF=', FNumFrames ) ;
+     FNumFrames := GetKeyValue( Header, 'NF', FNumFrames ) ;
 
 
-     ReadInt(Header, 'ZNUMS=',FNumZSections) ;
+     FNumZSections := GetKeyValue(Header, 'ZNUMS',FNumZSections) ;
      FNumZSections := Max(FNumZSections,1) ;
-     ReadFloat( Header, 'ZSTART=',FZStart) ;
-     ReadFloat( Header, 'ZSPACING=',FZSpacing) ;
+     FZStart := GetKeyValue( Header, 'ZSTART',FZStart) ;
+     FZSpacing := GetKeyValue( Header, 'ZSPACING',FZSpacing) ;
 
      // Correct number of frames list in file header
      NumBytesPerFrame := FFrameHeight*FFrameWidth*FNumBytesPerPixel ;
@@ -1235,17 +1269,17 @@ begin
         end;
 
      // Line scan flag
-     ReadLogical( Header, 'LINESCAN=', FLineScan ) ;
+     FLineScan := GetKeyValue( Header, 'LINESCAN', FLineScan ) ;
      // Line scan interval correction factor
      FImageStartDelay := 0.0 ;
-     ReadFloat( Header, 'IMGDELAY=', FImageStartDelay ) ;
+     FImageStartDelay := GetKeyValue( Header, 'IMGDELAY', FImageStartDelay ) ;
 
-     ReadInt( Header, 'LSTCPIX=',FLSTimeCoursePixel);               // 5.8.10 JD
-     ReadInt( Header, 'LSTCNAVG=',FLSTimeCourseNumAvg);
-     ReadInt( Header, 'LSTCBKPIX=',FLSTimeCourseBackgroundPixel);
-     ReadLogical( Header, 'LSTCBKSUB=',FLSSubtractBackground) ;
+     FLSTimeCoursePixel := GetKeyValue( Header, 'LSTCPIX',FLSTimeCoursePixel);               // 5.8.10 JD
+     FLSTimeCourseNumAvg := GetKeyValue( Header, 'LSTCNAVG',FLSTimeCourseNumAvg);
+     FLSTimeCourseBackgroundPixel := GetKeyValue( Header, 'LSTCBKPIX',FLSTimeCourseBackgroundPixel);
+     FLSSubtractBackground := GetKeyValue( Header, 'LSTCBKSUB',FLSSubtractBackground) ;
 
-     ReadInt( Header, 'GRMAX=', FGreyMax ) ;
+     FGreyMax := GetKeyValue( Header, 'GRMAX', FGreyMax ) ;
      if FGreyMax = 0 then FGreyMax := 4095 ;
 
      i := 1 ;
@@ -1255,32 +1289,33 @@ begin
         Inc(FPixelDepth) ;
         end ;
 
-     ReadInt( Header, 'PIXDEP=', FPixelDepth ) ;
+     FPixelDepth := GetKeyValue( Header, 'PIXDEP', FPixelDepth ) ;
 
      FIntensityScale := 1.0 ;
-     ReadFloat( Header, 'ISCALE=', FIntensityScale ) ;
+     FIntensityScale := GetKeyValue( Header, 'ISCALE', FIntensityScale ) ;
      FIntensityOffset := 0.0 ;
-     ReadFloat( Header, 'IOFFSET=', FIntensityOffset ) ;
+     FIntensityOffset := GetKeyValue( Header, 'IOFFSET', FIntensityOffset ) ;
 
      // Pixel width
      FXResolution := 1.0 ;
-     ReadFloat( Header, 'XRES=', FXResolution ) ;
+     FXResolution := GetKeyValue( Header, 'XRES', FXResolution ) ;
      if FXResolution = 0.0 then FXResolution := 1.0 ;
 
      // Pixel width units
      FResolutionUnits := '' ;
-     ReadString( Header, 'RESUNITS=', FResolutionUnits ) ;
+     FResolutionUnits := GetKeyValue( Header, 'RESUNITS', FResolutionUnits ) ;
 
      FNumPixelsPerFrame := FFrameWidth*FFrameHeight ;
      FNumBytesPerFrame := FNumPixelsPerFrame*FNumBytesPerPixel ;
 
      // Types of frame
-     ReadInt( Header, 'NFTYP=', FNumFrameTypes ) ;
+     FNumFrameTypes := GetKeyValue( Header, 'NFTYP', FNumFrameTypes ) ;
 
-     for i := 0 to FNumFrameTypes-1 do begin
-         ReadString( Header, format('FTYP%d=',[i]),FFrameTypes[i] ) ;
+     for i := 0 to FNumFrameTypes-1 do
+         begin
+         FFrameTypes[i] := GetKeyValue( Header, format('FTYP%d',[i]),FFrameTypes[i] ) ;
          FFrameTypeDivideFactor[i] := 1 ;
-         ReadInt( Header, format('FTYPDF%d=',[i]),FFrameTypeDivideFactor[i] ) ;
+         FFrameTypeDivideFactor[i] := GetKeyValue( Header, format('FTYPDF%d',[i]),FFrameTypeDivideFactor[i] ) ;
          end ;
 
      if NumFrameTypes <= 0 then begin
@@ -1289,39 +1324,43 @@ begin
         end ;
 
      // Ensure no. of frame types equal to no. frames for line scans
-     if FLineScan and (NumFrameTypes < NumFrames) then begin
+     if FLineScan and (NumFrameTypes < NumFrames) then
+        begin
         NumFrameTypes := NumFrames ;
-        for i := 0 to FNumFrameTypes-1 do begin
+        for i := 0 to FNumFrameTypes-1 do
+            begin
             FFrameTypes[i] := format('Ch.%d',[i+1]) ;
             FFrameTypeDivideFactor[i] := 1 ;
             end ;
         end ;
 
      // A/D channel settings
-     ReadInt( Header, 'ADCNC=', FADCNumChannels ) ;
+     FADCNumChannels := GetKeyValue( Header, 'ADCNC', FADCNumChannels ) ;
 
-     ReadInt( Header, 'ADCNSPF=', FADCNumScansPerFrame ) ;
-     ReadInt64( Header, 'ADCNSC=', FADCNumScansInFile ) ;
+     FADCNumScansPerFrame := GetKeyValue( Header, 'ADCNSPF', FADCNumScansPerFrame ) ;
+     FADCNumScansInFile := GetKeyValue( Header, 'ADCNSC', FADCNumScansInFile ) ;
 
-     ReadInt( Header, 'ADCMAX=', FADCMaxValue ) ;
-     ReadFloat( Header, 'ADCSI=', FADCSCanInterval ) ;
+     FADCMaxValue := GetKeyValue( Header, 'ADCMAX', FADCMaxValue ) ;
+     FADCSCanInterval := GetKeyValue( Header, 'ADCSI', FADCSCanInterval ) ;
 
-     if FADCSCanInterval = 0.0 then begin
+     if FADCSCanInterval = 0.0 then
+        begin
         if FADCNumScansPerFrame > 0 then
            FADCSCanInterval := FFrameInterval/FADCNumScansPerFrame
         else FADCSCanInterval := 1.0 ;
         FADCSCanInterval := Trunc(FADCSCanInterval/0.0001)*0.0001 ;
         end ;
 
-     ReadFloat( Header, 'ADCVR=', FADCVoltageRange ) ;
+     FADCVoltageRange := GetKeyValue( Header, 'ADCVR', FADCVoltageRange ) ;
      if Abs(FADCVoltageRange) < 1E-3 then FADCVoltageRange := 10.0 ;
-     for ch := 0 to FADCNumChannels-1 do begin
-         ReadInt(    Header, format('CIN%d=',[ch]), Channels[ch].ChannelOffset) ;
-         ReadString( Header, format('CU%d=',[ch]), Channels[ch].ADCUnits ) ;
-         ReadString( Header, format('CN%d=',[ch]), Channels[ch].ADCName ) ;
-         ReadFloat( Header, format('CCF%d=',[ch]), Channels[ch].ADCCalibrationFactor ) ;
-         ReadFloat( Header, format('CAG%d=',[ch]), Channels[ch].ADCAmplifierGain ) ;
-         ReadFloat( Header, format('CSC%d=',[ch]), Channels[ch].ADCScale) ;
+     for ch := 0 to FADCNumChannels-1 do
+         begin
+         Channels[ch].ChannelOffset := GetKeyValue(    Header, format('CIN%d',[ch]), Channels[ch].ChannelOffset) ;
+         Channels[ch].ADCUnits := GetKeyValue( Header, format('CU%d',[ch]), Channels[ch].ADCUnits ) ;
+         Channels[ch].ADCName := GetKeyValue( Header, format('CN%d',[ch]), Channels[ch].ADCName ) ;
+         Channels[ch].ADCCalibrationFactor := GetKeyValue( Header, format('CCF%d',[ch]), Channels[ch].ADCCalibrationFactor ) ;
+         Channels[ch].ADCAmplifierGain := GetKeyValue( Header, format('CAG%d',[ch]), Channels[ch].ADCAmplifierGain ) ;
+         Channels[ch].ADCScale := GetKeyValue( Header, format('CSC%d',[ch]), Channels[ch].ADCScale) ;
          end ;
 
      // Update A/D channel scaling factors
@@ -1331,14 +1370,15 @@ begin
                                   FADCMaxValue )  ;
 
      // Fluophore binding equation table
-     for i := 0 to High(FEquations) do begin
-         ReadLogical( Header, format('EQNUSE%d=',[i]), FEquations[i].InUse) ;
-         ReadString( Header, format('EQNNAM%d=',[i]), FEquations[i].Name) ;
-         ReadString( Header, format('EQNION%d=',[i]), FEquations[i].Ion) ;
-         ReadString( Header, format('EQNUN%d=',[i]), FEquations[i].Units) ;
-         ReadFloat( Header, format('EQNRMAX%d=',[i]), FEquations[i].RMax) ;
-         ReadFloat( Header, format('EQNRMIN%d=',[i]), FEquations[i].RMin) ;
-         ReadFloat( Header, format('EQNKEFF%d=',[i]), FEquations[i].KEff) ;
+     for i := 0 to High(FEquations) do
+         begin
+         FEquations[i].InUse := GetKeyValue( Header, format('EQNUSE%d',[i]), FEquations[i].InUse) ;
+         FEquations[i].Name := GetKeyValue( Header, format('EQNNAM%d',[i]), FEquations[i].Name) ;
+         FEquations[i].Ion := GetKeyValue( Header, format('EQNION%d',[i]), FEquations[i].Ion) ;
+         FEquations[i].Units := GetKeyValue( Header, format('EQNUN%d',[i]), FEquations[i].Units) ;
+         FEquations[i].RMax := GetKeyValue( Header, format('EQNRMAX%d',[i]), FEquations[i].RMax) ;
+         FEquations[i].RMin := GetKeyValue( Header, format('EQNRMIN%d',[i]), FEquations[i].RMin) ;
+         FEquations[i].KEff := GetKeyValue( Header, format('EQNKEFF%d',[i]), FEquations[i].KEff) ;
          end ;
 
      // Regions of Interest
@@ -1347,75 +1387,85 @@ begin
      if FNumIDRHeaderBytes = cNumIDRHeaderBytes then FMaxROI := cMaxROIs
                                                 else FMaxROI := 10 ;
 
-     for i := 0 to FMaxROI do begin
+     for i := 0 to Min(FMaxROI,cMaxROIsInHeader) do
+         begin
          FROIs[i].InUse := False ;
-         ReadLogical( Header, format('ROIUSE%d=',[i]),FROIs[i].InUse ) ;
-         if FROIs[i].InUse then begin
-            ReadInt( Header, format('ROISHP%d=',[i]), iValue ) ;
-            FROIs[i].Shape := iValue ;
-            ReadInt( Header, format('ROITLX%d=',[i]), FROIs[i].TopLeft.x ) ;
-            ReadInt( Header, format('ROITLY%d=',[i]), FROIs[i].TopLeft.y ) ;
-            ReadInt( Header, format('ROIBRX%d=',[i]), FROIs[i].BottomRight.x ) ;
-            ReadInt( Header, format('ROIBRY%d=',[i]), FROIs[i].BottomRight.y ) ;
+         FROIs[i].InUse := GetKeyValue( Header, format('ROIUSE%d',[i]),FROIs[i].InUse ) ;
+         if FROIs[i].InUse then
+            begin
+            FROIs[i].Shape := GetKeyValue( Header, format('ROISHP%d',[i]), FROIs[i].Shape ) ;
+            FROIs[i].TopLeft.x := GetKeyValue( Header, format('ROITLX%d',[i]), FROIs[i].TopLeft.x ) ;
+            FROIs[i].TopLeft.y := GetKeyValue( Header, format('ROITLY%d',[i]), FROIs[i].TopLeft.y ) ;
+            FROIs[i].BottomRight.x := GetKeyValue( Header, format('ROIBRX%d',[i]), FROIs[i].BottomRight.x ) ;
+            FROIs[i].BottomRight.y := GetKeyValue( Header, format('ROIBRY%d',[i]), FROIs[i].BottomRight.y ) ;
             FROIs[i].Centre.x := (FROIs[i].TopLeft.x + FROIs[i].BottomRight.x) div 2 ;
             FROIs[i].Centre.y := (FROIs[i].TopLeft.y + FROIs[i].BottomRight.y) div 2 ;
             FROIs[i].Width := Abs(FROIs[i].BottomRight.x - FROIs[i].TopLeft.x ) ;
             FROIs[i].Height := Abs(FROIs[i].BottomRight.y - FROIs[i].TopLeft.y ) ;
-            ReadInt( Header, format('ROINP%d=',[i]), FROIs[i].NumPoints ) ;
-            for j := 0 to FROIs[i].NumPoints-1 do begin
-                ReadInt( Header, format('ROI%dX%d=',[i,j]), FROIs[i].XY[j].X ) ;
-                ReadInt( Header, format('ROI%dY%d=',[i,j]), FROIs[i].XY[j].Y ) ;
+            FROIs[i].NumPoints := GetKeyValue( Header, format('ROINP%d',[i]), FROIs[i].NumPoints ) ;
+            for j := 0 to FROIs[i].NumPoints-1 do
+                begin
+                FROIs[i].XY[j].X := GetKeyValue( Header, format('ROI%dX%d',[i,j]), FROIs[i].XY[j].X ) ;
+                FROIs[i].XY[j].Y := GetKeyValue( Header, format('ROI%dY%d',[i,j]), FROIs[i].XY[j].Y ) ;
                 end ;
             end ;
          end ;
 
+     // ROIs loaded from external csv file (if it exists)
+     LoadROIsFromCSVFile( FileName ) ;
+
      // Read experiment comment line
      FIdent := '' ;
-     ReadString( Header, 'ID=', FIdent ) ;
+     FIdent := GetKeyValue( Header, 'ID', FIdent ) ;
 
      // Spectrum data
-     ReadLogical( Header, 'SPECDATAFILE=',FSpectralDataFile ) ;
-     ReadFloat( Header, 'SPECSTARTW=',FSpectrumStartWavelength)  ;
-     ReadFloat( Header, 'SPECENDW',FSpectrumEndWavelength) ;
-     ReadFloat( Header, 'SPECBW=',FSpectrumBandwidth) ;
-     ReadFloat( Header, 'SPECSTEP=',FSpectrumStepSize) ;
+     FSpectralDataFile := GetKeyValue( Header, 'SPECDATAFILE',FSpectralDataFile ) ;
+     FSpectrumStartWavelength := GetKeyValue( Header, 'SPECSTARTW',FSpectrumStartWavelength)  ;
+     FSpectrumEndWavelength := GetKeyValue( Header, 'SPECENDW',FSpectrumEndWavelength) ;
+     FSpectrumBandwidth := GetKeyValue( Header, 'SPECBW',FSpectrumBandwidth) ;
+     FSpectrumStepSize := GetKeyValue( Header, 'SPECSTEP',FSpectrumStepSize) ;
 
      // Event data
-    ReadFloat( Header, 'EVDISPD=',FEventDisplayDuration ) ;
+     FEventDisplayDuration := GetKeyValue( Header, 'EVDISPD',FEventDisplayDuration ) ;
 
-    ReadInt(Header, 'EVREXCLT=',FEventRatioExclusionThreshold) ; // 5.8.10 JD
-    ReadFloat( Header, 'EVDEADT=',FEventDeadTime) ;
-    ReadFloat(Header, 'EVTHRESH=',FEventDetectionThreshold) ;
-    ReadFloat( Header, 'EVTHRDUR=',FEventThresholdDuration) ;
-    ReadInt(Header, 'EVTHRPOL=',FEventDetectionThresholdPolarity)  ;
-    ReadInt(Header, 'EVDETSRC=',FEventDetectionSource) ;
-    ReadInt(Header, 'EVROI=',FEventROI) ;
-    ReadInt(Header, 'EVBACKGROI=',FEventBackgROI) ;
-    ReadLogical(Header,'EVBASEFX=',FEventFixedBaseline) ;
-    ReadInt(Header, 'EVBASELEV=',FEventBaselineLevel) ;
-    ReadFloat( Header, 'EVBASRL=',FEventRollingBaselinePeriod) ;
+     FEventRatioExclusionThreshold := GetKeyValue(Header, 'EVREXCLT',FEventRatioExclusionThreshold) ; // 5.8.10 JD
+     FEventDeadTime := GetKeyValue( Header, 'EVDEADT',FEventDeadTime) ;
+     FEventDetectionThreshold := GetKeyValue(Header, 'EVTHRESH',FEventDetectionThreshold) ;
+     FEventThresholdDuration := GetKeyValue( Header, 'EVTHRDUR',FEventThresholdDuration) ;
+     FEventDetectionThresholdPolarity := GetKeyValue(Header, 'EVTHRPOL',FEventDetectionThresholdPolarity)  ;
+     FEventDetectionSource := GetKeyValue(Header, 'EVDETSRC',FEventDetectionSource) ;
+     FEventROI := GetKeyValue(Header, 'EVROI',FEventROI) ;
+     FEventBackgROI := GetKeyValue(Header, 'EVBACKGROI',FEventBackgROI) ;
+     FEventFixedBaseline := GetKeyValue(Header,'EVBASEFX',FEventFixedBaseline) ;
+     FEventBaselineLevel := GetKeyValue(Header, 'EVBASELEV',FEventBaselineLevel) ;
+     FEventRollingBaselinePeriod := GetKeyValue( Header, 'EVBASRL',FEventRollingBaselinePeriod) ;
 
-    ReadInt(Header, 'EVRTOP=',FEventRatioTop) ;                  // Event detector settings
-    ReadInt(Header, 'EVRBOT=',FEventRatioBottom) ;
-    ReadFloat( Header, 'EVRDMAX=',FEventRatioDisplayMax) ;
-    ReadFloat( Header, 'EVRMAX=',FEventRatioRMax) ; ;
-    ReadInt(Header, 'EVFLWAVE=',FEventFLWave) ;
-    ReadInt(Header, 'EVF0WAVE=',FEventF0Wave) ;
-    ReadInt(Header, 'EVF0STA=',FEventF0Start) ;
-    ReadInt(Header, 'EVF0END=',FEventF0End) ;
-    ReadFloat( Header, 'EVF0CONS=',FEventF0Constant) ;
-    ReadLogical(Header,'EVF0USEC=',FEventF0UseConstant) ;
-    ReadFloat( Header, 'EVF0DMAX=',FEventF0DisplayMax) ;
-    ReadLogical(Header,'EVF0SUBF0=',FEventF0SubtractF0)  ;
-
+     FEventRatioTop := GetKeyValue(Header, 'EVRTOP',FEventRatioTop) ;                  // Event detector settings
+     FEventRatioBottom := GetKeyValue(Header, 'EVRBOT',FEventRatioBottom) ;
+     FEventRatioDisplayMax := GetKeyValue( Header, 'EVRDMAX',FEventRatioDisplayMax) ;
+     FEventRatioRMax := GetKeyValue( Header, 'EVRMAX',FEventRatioRMax) ; ;
+     FEventFLWave := GetKeyValue(Header, 'EVFLWAVE',FEventFLWave) ;
+     FEventF0Wave := GetKeyValue(Header, 'EVF0WAVE',FEventF0Wave) ;
+     FEventF0Start := GetKeyValue(Header, 'EVF0STA',FEventF0Start) ;
+     FEventF0End := GetKeyValue(Header, 'EVF0END',FEventF0End) ;
+     FEventF0Constant := GetKeyValue( Header, 'EVF0CONS',FEventF0Constant) ;
+     FEventF0UseConstant := GetKeyValue(Header,'EVF0USEC',FEventF0UseConstant) ;
+     FEventF0DisplayMax := GetKeyValue( Header, 'EVF0DMAX',FEventF0DisplayMax) ;
+     FEventF0SubtractF0 := GetKeyValue(Header,'EVF0SUBF0',FEventF0SubtractF0)  ;
 
      { Read Markers }
      FNumMarkers := 0 ;
-     ReadInt( Header, 'MKN=', FNumMarkers ) ;
-     for i := 0 to FNumMarkers-1 do begin
-         ReadFloat( Header, format('MKTIM%d=',[i]), FMarkerTime[i] ) ;
-         ReadString( Header, format('MKTXT%d=',[i]), FMarkerText[i] ) ;
+     FNumMarkers := GetKeyValue( Header, 'MKN', FNumMarkers ) ;
+     for i := 0 to FNumMarkers-1 do
+         begin
+         FMarkerTime[i] := GetKeyValue( Header, format('MKTIM%d',[i]), FMarkerTime[i] ) ;
+         FMarkerText[i] := GetKeyValue( Header, format('MKTXT%d',[i]), FMarkerText[i] ) ;
          end ;
+
+     // Save file header text
+     IDRFileHeaderText := Header.Text ;
+
+     Header.Free ;
 
      end ;
 
@@ -1425,162 +1475,299 @@ procedure TIDRFile.SaveIDRHeader ;
 // Save IDR data file header
 // ------------------------
 var
+   Header : TStringList ;
+   pANSIBuf : pANSIChar ;
    i,j,ch : Integer ;
 begin
 
      if FIDRFileHandle = INVALID_HANDLE_VALUE then Exit ;
-     HeaderFull := False ;
 
      if not FWriteEnabled then SetWriteEnabled(True) ;
 
-     // Initialise empty header buffer with zero bytes
-     for i := 1 to sizeof(Header) do Header[i] := chr(0) ;
+     // Create empty header string list
+     Header := TStringList.Create ;
 
      // File creation date
-     AppendInt( Header, 'YEAR=', FYearCreated ) ;
-     AppendInt( Header, 'MONTH=', FMonthCreated ) ;
-     AppendInt( Header, 'DAY=', FDayCreated ) ;
-     AppendInt( Header, 'HOUR=', FHourCreated ) ;
-     AppendInt( Header, 'MINUTE=', FMinuteCreated ) ;
-     AppendInt( Header, 'SECOND=', FSecondCreated ) ;
+     AddKeyValue( Header, 'YEAR', FYearCreated ) ;
+     AddKeyValue( Header, 'MONTH', FMonthCreated ) ;
+     AddKeyValue( Header, 'DAY', FDayCreated ) ;
+     AddKeyValue( Header, 'HOUR', FHourCreated ) ;
+     AddKeyValue( Header, 'MINUTE', FMinuteCreated ) ;
+     AddKeyValue( Header, 'SECOND', FSecondCreated ) ;
 
      { Get size of file header for this file }
-     AppendInt( Header, 'NBH=', FNumIDRHeaderBytes ) ;
+     AddKeyValue( Header, 'NBH', FNumIDRHeaderBytes ) ;
 
      // Frame parameters
-     AppendFloat( Header, 'FI=', FFrameInterval ) ;
-     AppendInt( Header, 'FW=', FFrameWidth ) ;
-     AppendInt( Header, 'FH=', FFrameHeight ) ;
-     AppendInt( Header, 'NBPP=', FNumBytesPerPixel ) ;
-     AppendInt( Header, 'PIXDEP=', FPixelDepth ) ;
+     AddKeyValue( Header, 'FI', FFrameInterval ) ;
+     AddKeyValue( Header, 'FW', FFrameWidth ) ;
+     AddKeyValue( Header, 'FH', FFrameHeight ) ;
+     AddKeyValue( Header, 'NBPP', FNumBytesPerPixel ) ;
+     AddKeyValue( Header, 'PIXDEP', FPixelDepth ) ;
 
-     AppendInt(Header, 'ZNUMS=',FNumZSections) ;
-     AppendFloat( Header, 'ZSTART=',FZStart) ;
-     AppendFloat( Header, 'ZSPACING=',FZSpacing) ;
+     AddKeyValue(Header, 'ZNUMS',FNumZSections) ;
+     AddKeyValue( Header, 'ZSTART',FZStart) ;
+     AddKeyValue( Header, 'ZSPACING',FZSpacing) ;
 
      // Line scan flag
-     AppendLogical( Header, 'LINESCAN=', FLineScan ) ;
-     AppendFloat( Header, 'IMGDELAY=', FImageStartDelay ) ;
+     AddKeyValue( Header, 'LINESCAN', FLineScan ) ;
+     AddKeyValue( Header, 'IMGDELAY', FImageStartDelay ) ;
 
-     AppendInt( Header, 'LSTCPIX=',FLSTimeCoursePixel);               // 5.8.10 JD
-     AppendInt( Header, 'LSTCNAVG=',FLSTimeCourseNumAvg);
-     AppendInt( Header, 'LSTCBKPIX=',FLSTimeCourseBackgroundPixel);
-     AppendLogical( Header, 'LSTCBKSUB=',FLSSubtractBackground) ;
+     AddKeyValue( Header, 'LSTCPIX',FLSTimeCoursePixel);               // 5.8.10 JD
+     AddKeyValue( Header, 'LSTCNAVG',FLSTimeCourseNumAvg);
+     AddKeyValue( Header, 'LSTCBKPIX',FLSTimeCourseBackgroundPixel);
+     AddKeyValue( Header, 'LSTCBKSUB',FLSSubtractBackground) ;
 
-     AppendFloat( Header, 'ISCALE=', FIntensityScale ) ;
-     AppendFloat( Header, 'IOFFSET=', FIntensityOffset ) ;
+     AddKeyValue( Header, 'ISCALE', FIntensityScale ) ;
+     AddKeyValue( Header, 'IOFFSET', FIntensityOffset ) ;
 
      // Get number of frames in file ;
      //FNumFrames := GetNumFramesInFile ;
-     AppendInt( Header, 'NF=', FNumFrames ) ;
+     AddKeyValue( Header, 'NF', FNumFrames ) ;
 
-     AppendInt( Header, 'GRMAX=', FGreyMax ) ;
+     AddKeyValue( Header, 'GRMAX', FGreyMax ) ;
 
-     AppendFloat( Header, 'XRES=', FXResolution ) ;
+     AddKeyValue( Header, 'XRES', FXResolution ) ;
 
-     AppendString( Header, 'RESUNITS=', FResolutionUnits ) ;
+     AddKeyValue( Header, 'RESUNITS', FResolutionUnits ) ;
 
      // Types of frame
-     AppendInt( Header, 'NFTYP=', FNumFrameTypes ) ;
+     AddKeyValue( Header, 'NFTYP', FNumFrameTypes ) ;
      for i := 0 to FNumFrameTypes-1 do begin
-         AppendString( Header, format('FTYP%d=',[i]),FFrameTypes[i] ) ;
-         AppendInt( Header, format('FTYPDF%d=',[i]),FFrameTypeDivideFactor[i] ) ;
+         AddKeyValue( Header, format('FTYP%d',[i]),FFrameTypes[i] ) ;
+         AddKeyValue( Header, format('FTYPDF%d',[i]),FFrameTypeDivideFactor[i] ) ;
          end ;
 
      // A/D channel settings
-     AppendInt( Header, 'ADCNC=', FADCNumChannels ) ;
-     AppendInt( Header, 'ADCNSPF=', FADCNumScansPerFrame ) ;
-     AppendInt( Header, 'ADCNSC=', FADCNumScansInFile ) ;
-     AppendInt( Header, 'ADCMAX=', FADCMaxValue ) ;
-     AppendFloat( Header, 'ADCSI=', FADCSCanInterval ) ;
+     AddKeyValue( Header, 'ADCNC', FADCNumChannels ) ;
+     AddKeyValue( Header, 'ADCNSPF', FADCNumScansPerFrame ) ;
+     AddKeyValue( Header, 'ADCNSC', FADCNumScansInFile ) ;
+     AddKeyValue( Header, 'ADCMAX', FADCMaxValue ) ;
+     AddKeyValue( Header, 'ADCSI', FADCSCanInterval ) ;
 
-     AppendFloat( Header, 'ADCVR=', FADCVoltageRange ) ;
+     AddKeyValue( Header, 'ADCVR', FADCVoltageRange ) ;
      for ch := 0 to FADCNumChannels-1 do begin
-        AppendInt(    Header, format('CIN%d=',[ch]), Channels[ch].ChannelOffset) ;
-        AppendString( Header, format('CU%d=',[ch]), Channels[ch].ADCUnits ) ;
-        AppendString( Header, format('CN%d=',[ch]), Channels[ch].ADCName ) ;
-        AppendFloat( Header, format('CCF%d=',[ch]), Channels[ch].ADCCalibrationFactor ) ;
-        AppendFloat( Header, format('CAG%d=',[ch]), Channels[ch].ADCAmplifierGain ) ;
-        AppendFloat( Header, format('CSC%d=',[ch]), Channels[ch].ADCScale) ;
+        AddKeyValue(    Header, format('CIN%d',[ch]), Channels[ch].ChannelOffset) ;
+        AddKeyValue( Header, format('CU%d',[ch]), Channels[ch].ADCUnits ) ;
+        AddKeyValue( Header, format('CN%d',[ch]), Channels[ch].ADCName ) ;
+        AddKeyValue( Header, format('CCF%d',[ch]), Channels[ch].ADCCalibrationFactor ) ;
+        AddKeyValue( Header, format('CAG%d',[ch]), Channels[ch].ADCAmplifierGain ) ;
+        AddKeyValue( Header, format('CSC%d',[ch]), Channels[ch].ADCScale) ;
         end ;
 
      // Fluophore binding equation table
      for i := 0 to High(FEquations) do begin
-         AppendLogical( Header, format('EQNUSE%d=',[i]), FEquations[i].InUse) ;
-         AppendString( Header, format('EQNNAM%d=',[i]), FEquations[i].Name) ;
-         AppendString( Header, format('EQNION%d=',[i]), FEquations[i].Ion) ;
-         AppendString( Header, format('EQNUN%d=',[i]), FEquations[i].Units) ;
-         AppendFloat( Header, format('EQNRMAX%d=',[i]), FEquations[i].RMax) ;
-         AppendFloat( Header, format('EQNRMIN%d=',[i]), FEquations[i].RMin) ;
-         AppendFloat( Header, format('EQNKEFF%d=',[i]), FEquations[i].KEff) ;
+         AddKeyValue( Header, format('EQNUSE%d',[i]), FEquations[i].InUse) ;
+         AddKeyValue( Header, format('EQNNAM%d',[i]), FEquations[i].Name) ;
+         AddKeyValue( Header, format('EQNION%d',[i]), FEquations[i].Ion) ;
+         AddKeyValue( Header, format('EQNUN%d',[i]), FEquations[i].Units) ;
+         AddKeyValue( Header, format('EQNRMAX%d',[i]), FEquations[i].RMax) ;
+         AddKeyValue( Header, format('EQNRMIN%d',[i]), FEquations[i].RMin) ;
+         AddKeyValue( Header, format('EQNKEFF%d',[i]), FEquations[i].KEff) ;
          end ;
 
      // Regions of Interest
-     for i := 0 to FMaxROI do if FROIs[i].InUse then begin
-         AppendLogical( Header, format('ROIUSE%d=',[i]),FROIs[i].InUse ) ;
-         AppendInt( Header, format('ROISHP%d=',[i]), Integer(FROIs[i].Shape) ) ;
-         AppendInt( Header, format('ROITLX%d=',[i]), FROIs[i].TopLeft.x ) ;
-         AppendInt( Header, format('ROITLY%d=',[i]), FROIs[i].TopLeft.y ) ;
-         AppendInt( Header, format('ROIBRX%d=',[i]), FROIs[i].BottomRight.x ) ;
-         AppendInt( Header, format('ROIBRY%d=',[i]), FROIs[i].BottomRight.y ) ;
-         AppendInt( Header, format('ROINP%d=',[i]), FROIs[i].NumPoints ) ;
-         for j := 0 to FROIs[i].NumPoints-1 do begin
-             AppendInt( Header, format('ROI%dX%d=',[i,j]), FROIs[i].XY[j].X ) ;
-             AppendInt( Header, format('ROI%dY%d=',[i,j]), FROIs[i].XY[j].Y ) ;
+     for i := 0 to Min(FMaxROI,cMaxROIsInHeader) do if FROIs[i].InUse then
+         begin
+         AddKeyValue( Header, format('ROIUSE%d',[i]),FROIs[i].InUse ) ;
+         AddKeyValue( Header, format('ROISHP%d',[i]), Integer(FROIs[i].Shape) ) ;
+         AddKeyValue( Header, format('ROITLX%d',[i]), FROIs[i].TopLeft.x ) ;
+         AddKeyValue( Header, format('ROITLY%d',[i]), FROIs[i].TopLeft.y ) ;
+         AddKeyValue( Header, format('ROIBRX%d',[i]), FROIs[i].BottomRight.x ) ;
+         AddKeyValue( Header, format('ROIBRY%d',[i]), FROIs[i].BottomRight.y ) ;
+         AddKeyValue( Header, format('ROINP%d',[i]), FROIs[i].NumPoints ) ;
+         for j := 0 to FROIs[i].NumPoints-1 do
+             begin
+             AddKeyValue( Header, format('ROI%dX%d',[i,j]), FROIs[i].XY[j].X ) ;
+             AddKeyValue( Header, format('ROI%dY%d',[i,j]), FROIs[i].XY[j].Y ) ;
              end ;
          end ;
 
+     // ROIs saved to external csv file
+     SaveROIsToCSVFile( FileName ) ;
+
      // Spectrum data
-     AppendLogical( Header, 'SPECDATAFILE=',FSpectralDataFile ) ;
-     AppendFloat( Header, 'SPECSTARTW=',FSpectrumStartWavelength)  ;
-     AppendFloat( Header, 'SPECENDW',FSpectrumEndWavelength) ;
-     AppendFloat( Header, 'SPECBW=',FSpectrumBandwidth) ;
-     AppendFloat( Header, 'SPECSTEP=',FSpectrumStepSize) ;
+     AddKeyValue( Header, 'SPECDATAFILE',FSpectralDataFile ) ;
+     AddKeyValue( Header, 'SPECSTARTW',FSpectrumStartWavelength)  ;
+     AddKeyValue( Header, 'SPECENDW',FSpectrumEndWavelength) ;
+     AddKeyValue( Header, 'SPECBW',FSpectrumBandwidth) ;
+     AddKeyValue( Header, 'SPECSTEP',FSpectrumStepSize) ;
 
      // Event data
-     AppendFloat( Header, 'EVDISPD=',FEventDisplayDuration ) ;
-    AppendFloat( Header, 'EVDEADT=',FEventDeadTime) ;            // 6.8.10 JD
-    AppendFloat(Header, 'EVTHRESH=',FEventDetectionThreshold) ;
-    AppendFloat( Header, 'EVTHRDUR=',FEventThresholdDuration) ;
-    AppendInt(Header, 'EVTHRPOL=',FEventDetectionThresholdPolarity)  ;
-    AppendInt(Header, 'EVDETSRC=',FEventDetectionSource) ;
-    AppendInt(Header, 'EVROI=',FEventROI) ;
-    AppendInt(Header, 'EVBACKGROI=',FEventBackgROI) ;
-    AppendLogical(Header,'EVBASEFX=',FEventFixedBaseline) ;
-    AppendInt(Header, 'EVBASELEV=',FEventBaselineLevel) ;
-    AppendFloat( Header, 'EVBASRL=',FEventRollingBaselinePeriod) ;
+     AddKeyValue( Header, 'EVDISPD',FEventDisplayDuration ) ;
+    AddKeyValue( Header, 'EVDEADT',FEventDeadTime) ;            // 6.8.10 JD
+    AddKeyValue(Header, 'EVTHRESH',FEventDetectionThreshold) ;
+    AddKeyValue( Header, 'EVTHRDUR',FEventThresholdDuration) ;
+    AddKeyValue(Header, 'EVTHRPOL',FEventDetectionThresholdPolarity)  ;
+    AddKeyValue(Header, 'EVDETSRC',FEventDetectionSource) ;
+    AddKeyValue(Header, 'EVROI',FEventROI) ;
+    AddKeyValue(Header, 'EVBACKGROI',FEventBackgROI) ;
+    AddKeyValue(Header,'EVBASEFX',FEventFixedBaseline) ;
+    AddKeyValue(Header, 'EVBASELEV',FEventBaselineLevel) ;
+    AddKeyValue( Header, 'EVBASRL',FEventRollingBaselinePeriod) ;
 
-    AppendInt(Header, 'EVREXCLT=',FEventRatioExclusionThreshold) ;
-    AppendInt(Header, 'EVRTOP=',FEventRatioTop) ;                  // Event detector settings
-    AppendInt(Header, 'EVRBOT=',FEventRatioBottom) ;
-    AppendFloat( Header, 'EVRDMAX=',FEventRatioDisplayMax) ;
-    AppendFloat( Header, 'EVRMAX=',FEventRatioRMax) ; ;
-    AppendInt(Header, 'EVFLWAVE=',FEventFLWave) ;
-    AppendInt(Header, 'EVF0WAVE=',FEventF0Wave) ;
-    AppendInt(Header, 'EVF0STA=',FEventF0Start) ;
-    AppendInt(Header, 'EVF0END=',FEventF0End) ;
-    AppendFloat( Header, 'EVF0CONS=',EventF0Constant) ;
-    AppendLogical(Header,'EVF0USEC=',FEventF0UseConstant) ;
-    AppendFloat( Header, 'EVF0DMAX=',FEventF0DisplayMax) ;
-    AppendLogical(Header,'EVF0SUBF0=',FEventF0SubtractF0)  ;
+    AddKeyValue(Header, 'EVREXCLT',FEventRatioExclusionThreshold) ;
+    AddKeyValue(Header, 'EVRTOP',FEventRatioTop) ;                  // Event detector settings
+    AddKeyValue(Header, 'EVRBOT',FEventRatioBottom) ;
+    AddKeyValue( Header, 'EVRDMAX',FEventRatioDisplayMax) ;
+    AddKeyValue( Header, 'EVRMAX',FEventRatioRMax) ; ;
+    AddKeyValue(Header, 'EVFLWAVE',FEventFLWave) ;
+    AddKeyValue(Header, 'EVF0WAVE',FEventF0Wave) ;
+    AddKeyValue(Header, 'EVF0STA',FEventF0Start) ;
+    AddKeyValue(Header, 'EVF0END',FEventF0End) ;
+    AddKeyValue( Header, 'EVF0CONS',EventF0Constant) ;
+    AddKeyValue(Header,'EVF0USEC',FEventF0UseConstant) ;
+    AddKeyValue( Header, 'EVF0DMAX',FEventF0DisplayMax) ;
+    AddKeyValue(Header,'EVF0SUBF0',FEventF0SubtractF0)  ;
 
      // Append experiment comment line
-     AppendString( Header, 'ID=', FIdent ) ;
+     AddKeyValue( Header, 'ID', FIdent ) ;
 
      // Save markers to header
-     AppendInt( Header, 'MKN=', FNumMarkers ) ;
+     AddKeyValue( Header, 'MKN', FNumMarkers ) ;
      for i := 0 to FNumMarkers-1 do begin
-         AppendFloat( Header, format('MKTIM%d=',[i]),FMarkerTime[i]) ;
-         AppendString( Header, format('MKTXT%d=',[i]), FMarkerText[i] ) ;
+         AddKeyValue( Header, format('MKTIM%d',[i]),FMarkerTime[i]) ;
+         AddKeyValue( Header, format('MKTXT%d',[i]), FMarkerText[i] ) ;
          end ;
 
-     // Write header at start of data file
-     if IDRFileWrite( @Header, 0, FNumIDRHeaderBytes ) <> FNumIDRHeaderBytes then
-        ShowMessage( 'WinFluor data file header write failed ' ) ;
+     // Get ANSIstring copy of header text and write to file
 
-     if HeaderFull then ShowMessage('WinFluor data file header capacity exceeded') ;
+     pANSIBuf := AllocMem( FNumIDRHeaderBytes ) ;
+     for i := 1 to Min(Length(Header.Text),FNumIDRHeaderBytes-1) do
+         begin
+         pAnsiBuf[i-1] := ANSIChar(Header.Text[i]);
+         end;
+
+     if IDRFileWrite( pAnsiBuf, 0, FNumIDRHeaderBytes ) <> FNumIDRHeaderBytes then
+        ShowMessage( FFileName + ' : File header write error!' );
+
+     FreeMem( pANSIBuf ) ;
+
+
+     // Free file header list
+     Header.Free ;
 
      end ;
+
+
+procedure TIDRFile.SaveROIsToCSVFile(
+          FileName : String
+          ) ;
+// ------------------------------------
+// Save regions of interest to CSV file
+// ------------------------------------
+var
+     i,j : Integer ;
+     s : String ;
+     ROIList : TStringList ;
+begin
+
+    // Create empty list
+    ROIList := TStringList.Create ;
+
+    for i := 0 to FMaxROI do
+        begin
+        if FROIs[i].InUse then
+           begin
+           s := format('%d',[FROIs[i].Shape]) ;
+           s := s + format(',%d',[FROIs[i].Centre.X]) ;
+           s := s + format(',%d',[FROIs[i].Centre.Y]) ;
+           s := s + format(',%d',[FROIs[i].Width]) ;
+           s := s + format(',%d',[FROIs[i].Height]) ;
+           for j := 0 to FROIs[i].NumPoints-1 do
+               begin
+               s := s + format(',%d',[FROIs[i].XY[j].X]);
+               s := s + format(',%d',[FROIs[i].XY[j].Y]);
+               end ;
+           ROIList.Add(s) ;
+           end;
+        end ;
+
+     ROIList.SaveToFile( ReplaceText( FileName, '.idr', '.roi.csv' )) ;
+     ROIList.Free ;
+
+     end ;
+
+
+procedure TIDRFile.LoadROIsFromCSVFile(
+          FileName : String
+          ) ;
+// ---------------------------------------
+// Load regions of interest from CSV file
+// ---------------------------------------
+var
+    FileHandle : THandle ;
+    i : Integer ;
+    ROIs : Array[0..cMaxROIs] of TROI ;         // Regions of interest list (scaled by zoom)
+    InF : TextFile ;
+    s : String ;
+    ROIList : TStringList ;
+begin
+
+    FileName := ReplaceText( FileName, '.idr', '.roi.csv' ) ;
+    if not FileExists(FileName) then Exit ;
+
+    // Get ROI list from CSV file
+    ROIList := TStringList.Create ;
+    ROIList.LoadFromFile( FileName ) ;
+
+    // Clear existing ROIs
+    for i := 0 to High(ROIs) do ROIs[i].InUse := False ;
+
+    // Read ROIs
+
+    for i := 0 to ROIList.Count-1
+        do begin
+
+        FROIs[i].InUse := True ;
+        s := ROIList[i] ;
+        FROIs[i].Shape := GetInt(s) ;
+        FROIs[i].Centre.X := GetInt(s) ;
+        FROIs[i].Centre.Y := GetInt(s) ;
+        FROIs[i].Width := GetInt(s) ;
+        FROIs[i].Height := GetInt(s) ;
+        FROIs[i].TopLeft.X := FROIs[i].Centre.X - FROIs[i].Width div 2 ;
+        FROIs[i].TopLeft.Y := FROIs[i].Centre.Y - FROIs[i].Height div 2 ;
+        FROIs[i].BottomRight.X := FROIs[i].TopLeft.X + FROIs[i].Width - 1 ;
+        FROIs[i].BottomRight.Y := FROIs[i].TopLeft.Y + FROIs[i].Height - 1 ;
+        FROIs[i].ZoomFactor := 1 ;
+
+        FROIs[i].NumPoints := 0 ;
+        while Length(s) > 0 do
+              begin
+              FROIs[i].XY[FROIs[i].NumPoints].X := GetInt(s) ;
+              FROIs[i].XY[FROIs[i].NumPoints].Y := GetInt(s) ;
+              Inc(FROIs[i].NumPoints) ;
+              end;
+        end;
+
+    end ;
+
+
+function TIDRFile.GetInt( var s : String ) : Integer ;
+// -------------------------------------------------------
+// Extract and return a comma-delimited integer value from s
+// -------------------------------------------------------
+var
+    sNum : String ;
+    i,iNum, iErr : Integer ;
+begin
+
+    sNum := '' ;
+    i := 1 ;
+    while (i <= Length(s)) and (s[i] <>',') do
+        begin
+        sNum := sNum + s[i] ;
+        Inc(i) ;
+        end ;
+    s := RightStr(s,Max(Length(s)-i,0)) ;
+    if Length(sNum) > 0 then
+       begin
+       Val( sNum, iNum, iErr ) ;
+       Result := iNum ;
+       end
+    else Result := 0 ;
+    end;
 
 
 function TIDRFile.LoadFrame(
@@ -1836,7 +2023,9 @@ procedure TIDRFile.SaveEDRHeader ;
   Save file header data to EDR data file
   ---------------------------------------}
 var
-   Header : array[1..cNumEDRHeaderBytes] of ANSIChar ;
+   Header : TStringList ;
+   pANSIBuf : pANSIChar ;
+
    i : Integer ;
    ch : Integer ;
 begin
@@ -1846,21 +2035,21 @@ begin
      // Ensure files are write enabled
      if not FWriteEnabled then SetWriteEnabled(True) ;
 
-     { Initialise empty header buffer with zero bytes }
-     for i := 1 to sizeof(Header) do Header[i] := chr(0) ;
+     // Create file header Name=Value string list
+     Header := TStringList.Create ;
 
-     AppendFloat( Header, 'VER=',1.0 );
+     AddKeyValue( Header, 'VER',1.0 );
 
      // 13/2/02 Added to distinguish between 12 and 16 bit data files
-     AppendInt( Header, 'ADCMAX=', FADCMaxValue ) ;
+     AddKeyValue( Header, 'ADCMAX', FADCMaxValue ) ;
 
      { Number of bytes in file header }
-     AppendInt( Header, 'NBH=', FNumEDRHeaderBytes ) ;
+     AddKeyValue( Header, 'NBH', FNumEDRHeaderBytes ) ;
 
-     AppendInt( Header, 'NC=', FADCNumChannels ) ;
+     AddKeyValue( Header, 'NC', FADCNumChannels ) ;
 
      // A/D converter input voltage range
-     AppendFloat( Header, 'AD=', FADCVoltageRange ) ;
+     AddKeyValue( Header, 'AD', FADCVoltageRange ) ;
 
      FADCNumSamplesInFile := (FileSeek(EDRFileHandle,0,2)
                              + 1 - FNumEDRHeaderBytes) div 2 ;
@@ -1870,31 +2059,74 @@ begin
         end
      else FADCNumScansInFile := 1 ;
 
-     AppendInt64( Header, 'NP=', FADCNumSamplesInFile ) ;
+     AddKeyValue( Header, 'NP', FADCNumSamplesInFile ) ;
 
-     AppendFloat( Header, 'DT=',FADCScanInterval );
+     AddKeyValue( Header, 'DT',FADCScanInterval );
 
-     for ch := 0 to FADCNumChannels-1 do begin
-         AppendInt( Header, format('YO%d=',[ch]), Channels[ch].ChannelOffset) ;
-         AppendString( Header, format('YU%d=',[ch]), Channels[ch].ADCUnits ) ;
-         AppendString( Header, format('YN%d=',[ch]), Channels[ch].ADCName ) ;
-         AppendFloat(Header,format('YCF%d=',[ch]),Channels[ch].ADCCalibrationFactor) ;
-         AppendFloat( Header, format('YAG%d=',[ch]), Channels[ch].ADCAmplifierGain) ;
-         AppendFloat( Header, format('YZ%d=',[ch]), Channels[ch].ADCZero) ;
-         AppendInt( Header, format('YR%d=',[ch]), Channels[ch].ADCZeroAt) ;
+     for ch := 0 to FADCNumChannels-1 do
+         begin
+         AddKeyValue( Header, format('YO%d',[ch]), Channels[ch].ChannelOffset) ;
+         AddKeyValue( Header, format('YU%d',[ch]), Channels[ch].ADCUnits ) ;
+         AddKeyValue( Header, format('YN%d',[ch]), Channels[ch].ADCName ) ;
+         AddKeyValue(Header,format('YCF%d',[ch]),Channels[ch].ADCCalibrationFactor) ;
+         AddKeyValue( Header, format('YAG%d',[ch]), Channels[ch].ADCAmplifierGain) ;
+         AddKeyValue( Header, format('YZ%d',[ch]), Channels[ch].ADCZero) ;
+         AddKeyValue( Header, format('YR%d',[ch]), Channels[ch].ADCZeroAt) ;
          end ;
 
      { Experiment identification line }
-     //AppendString( Header, 'ID=', fHDR.IdentLine ) ;
+     //AddKeyValue( Header, 'ID', fHDR.IdentLine ) ;
 
      { Save the original file backed up flag }
-     AppendLogical( Header, 'BAK=', False ) ;
+     AddKeyValue( Header, 'BAK', False ) ;
 
-     FileSeek( EDRFileHandle, 0, 0 ) ;
-     if FileWrite(EDRFileHandle,Header,Sizeof(Header)) <> Sizeof(Header) then
-        ShowMessage( 'EDR File Header Write Failed ' ) ;
+     StringListToFile( ReplaceText(FFileName,'.idr','.edr'),
+                       FEDRFileHandle,
+                       Header,
+                       0,
+                       FNumEDRHeaderBytes ) ;
+
+     // Free allocated variables
+     Header.Free ;
 
      end ;
+
+
+procedure TIDRFile.StringListToFile(
+          FileName : string ;        // File name
+          FileHandle : THandle ;     // File Handle
+          List : TStringList ;       // StringList to be written
+          FileOffset : NativeInt ;   // Starting offset in file
+          NumBytes : Integer ) ;     // Bytes to be written
+// ------------------------
+// Write List text to file
+// ------------------------
+var
+    pANSIBuf : PANSIChar ;
+    i,nWritten : Integer ;
+begin
+
+     // Get ANSIstring copy of header text and write to file
+     pANSIBuf := AllocMem( NumBytes ) ;
+     for i := 1 to Min(Length(List.Text),NumBytes-1) do
+         begin
+         pAnsiBuf[i-1] := ANSIChar(List.Text[i]);
+         end;
+
+     if Length(List.Text) >= (NumBytes-1) then
+        begin
+        ShowMessage( FileName + ' : File header full!' ) ;
+        end;
+
+     // Write header to start of EDR data file
+     nWritten := FileSeek( FileHandle, FileOffset, 0 ) ;
+     nWritten := FileWrite( FileHandle, pANSIBuf^, NumBytes ) ;
+     if nWritten <> NumBytes then
+        ShowMessage( FileName + ': File Header Write Failed! ' ) ;
+
+     FreeMem( pANSIBuf ) ;
+
+end;
 
 
 procedure TIDRFile.GetEDRHeader ;
@@ -1902,29 +2134,40 @@ procedure TIDRFile.GetEDRHeader ;
 // Load EDR data file header
 // ------------------------
 var
-   Header : array[1..cNumEDRHeaderBytes] of ANSIChar ;
    ch : Integer ;
+   Header : TStringList ;
+   pANSIBuf : PANSIChar ;
+   ANSIHeader : ANSIString ;
+
 begin
 
      if FEDRFileHandle  = INVALID_HANDLE_VALUE then Exit ;
 
+     // Create header parameter list
+     Header := TStringList.Create ;
+
+     // Read ANSI text from file header and load into Header StringList
+     pANSIBuf := AllocMem( cNumIDRHeaderBytes ) ;
      FileSeek( FEDRFileHandle, 0, 0 ) ;
-     if FileRead( FEDRFileHandle, Header, Sizeof(Header) ) < Sizeof(Header) then Exit ;
+     if FileRead( FEDRFileHandle, pANSIBuf^, cNumEDRHeaderBytes ) < cNumEDRHeaderBytes then Exit ;
+     pANSIBuf[cNumEDRHeaderBytes-1] := #0 ;
+     ANSIHeader := ANSIString( pANSIBuf ) ;
+     Header.Text := String(ANSIHeader) ;
 
      // 13/2/02 Added to distinguish between 12 and 16 bit data files
-     ReadInt( Header, 'ADCMAX=', FADCMaxValue ) ;
+     FADCMaxValue := GetKeyValue( Header, 'ADCMAX', FADCMaxValue ) ;
 
      FNumEDRHeaderBytes := cNumEDRHeaderBytes ;
-     ReadInt( Header, 'NBH=', FNumEDRHeaderBytes ) ;
+     FNumEDRHeaderBytes := GetKeyValue( Header, 'NBH', FNumEDRHeaderBytes ) ;
      FNumEDRHeaderBytes := cNumEDRHeaderBytes  ;
 
-     ReadInt( Header, 'NC=', FADCNumChannels ) ;
+     FADCNumChannels := GetKeyValue( Header, 'NC', FADCNumChannels ) ;
      if FADCNumChannels <= 0 then Exit ;
 
      // A/D converter input voltage range
-     ReadFloat( Header, 'AD=', FADCVoltageRange ) ;
+     FADCVoltageRange := GetKeyValue( Header, 'AD', FADCVoltageRange ) ;
 
-     ReadInt64( Header, 'NP=', FADCNumSamplesInFile ) ;
+     FADCNumSamplesInFile := GetKeyValue( Header, 'NP', FADCNumSamplesInFile ) ;
      if FADCNumSamplesInFile <= 0 then begin
         FADCNumScansInFile := GetNumScansInEDRFile ;
         FADCNumSamplesInFile := FADCNumChannels*FADCNumScansInFile ;
@@ -1933,16 +2176,17 @@ begin
         FADCNumScansInFile := FADCNumSamplesInFile div Max(FADCNumChannels,1) ;
         end;
 
-     ReadFloat( Header, 'DT=',FADCScanInterval );
+     FADCScanInterval := GetKeyValue( Header, 'DT',FADCScanInterval );
 
-     for ch := 0 to FADCNumChannels-1 do begin
-         ReadInt( Header, format('YO%d=',[ch]), Channels[ch].ChannelOffset) ;
-         ReadString( Header, format('YU%d=',[ch]), Channels[ch].ADCUnits ) ;
-         ReadString( Header, format('YN%d=',[ch]), Channels[ch].ADCName ) ;
-         ReadFloat(Header,format('YCF%d=',[ch]),Channels[ch].ADCCalibrationFactor) ;
-         ReadFloat( Header, format('YAG%d=',[ch]), Channels[ch].ADCAmplifierGain) ;
-         ReadFloat( Header, format('YZ%d=',[ch]), Channels[ch].ADCZero) ;
-         ReadInt( Header, format('YR%d=',[ch]), Channels[ch].ADCZeroAt) ;
+     for ch := 0 to FADCNumChannels-1 do
+         begin
+         Channels[ch].ChannelOffset := GetKeyValue( Header, format('YO%d',[ch]), Channels[ch].ChannelOffset) ;
+         Channels[ch].ADCUnits := GetKeyValue( Header, format('YU%d',[ch]), Channels[ch].ADCUnits ) ;
+         Channels[ch].ADCName := GetKeyValue( Header, format('YN%d',[ch]), Channels[ch].ADCName ) ;
+         Channels[ch].ADCCalibrationFactor := GetKeyValue(Header,format('YCF%d',[ch]),Channels[ch].ADCCalibrationFactor) ;
+         Channels[ch].ADCAmplifierGain := GetKeyValue( Header, format('YAG%d',[ch]), Channels[ch].ADCAmplifierGain) ;
+         Channels[ch].ADCZero := GetKeyValue( Header, format('YZ%d',[ch]), Channels[ch].ADCZero) ;
+         Channels[ch].ADCZeroAt := GetKeyValue( Header, format('YR%d',[ch]), Channels[ch].ADCZeroAt) ;
          end ;
 
      // Update A/D channel scaling factors
@@ -1950,6 +2194,10 @@ begin
                                   FADCNumChannels,
                                   FADCVoltageRange,
                                   FADCMaxValue )  ;
+
+     // Release allocated memory
+     Header.Free ;
+     FreeMem(pANSIBuf) ;
 
      end ;
 
@@ -2296,20 +2544,11 @@ begin
 
 
 function TIDRFile.GetFileHeader : string ;
-// ---------------
-// Get file header
-// ---------------
-var
-    s : string ;
-    i : Integer ;
+// --------------------
+// Get file header text
+// --------------------
 begin
-    s := '' ;
-    i := 1 ;
-    while (Header[i] <> #0) and (i <= High(Header)) do begin
-       s := s + Header[i] ;
-       Inc(i) ;
-       end ;
-    Result := s ;
+    Result := IDRFileHeaderText ;
     end ;
 
 
@@ -2326,203 +2565,235 @@ begin
         end ;
         end ;
 
-procedure TIDRFile.AppendFloat(
-          var Dest : Array of ANSIChar;
-          Keyword : ANSIstring ;
-          Value : Extended ) ;
-{ --------------------------------------------------------
-  Append a floating point parameter line
-  'Keyword' = 'Value' on to end of the header text array
-  --------------------------------------------------------}
+procedure TIDRFile.AddKeyValue( List : TStringList ;  // List for Key=Value pairs
+                                KeyWord : string ;    // Key
+                                Value : single        // Value
+                                 ) ;
+// ---------------------
+// Add Key=Single Value to List
+// ---------------------
 begin
-     AppendStringToANSIArray( Dest, Keyword ) ;
-     AppendStringToANSIArray( Dest, format( '%.6g',[Value] ) ) ;
-     AppendStringToANSIArray( Dest, #13 + #10 ) ;
-     end ;
+
+     List.Add( ReplaceText(Keyword + format('=%.4g',[Value]),'==','=') ) ;
+end;
 
 
-procedure TIDRFile.ReadFloat(
-          const Source : Array of ANSIChar;
-          Keyword : ANSIstring ;
-          var Value : Single ) ;
+procedure TIDRFile.AddKeyValue( List : TStringList ;  // List for Key=Value pairs
+                                KeyWord : string ;    // Key
+                                Value : Integer        // Value
+                                 ) ;
+// ---------------------
+// Add Key=Integer Value to List
+// ---------------------
+begin
+     List.Add( ReplaceText( Keyword + format('=%d',[Value]),'==','=') ) ;
+end;
+
+procedure TIDRFile.AddKeyValue( List : TStringList ;  // List for Key=Value pairs
+                                KeyWord : string ;    // Key
+                                Value : Int64        // Value
+                                 ) ;
+// ---------------------
+// Add Key=Int64 Value to List
+// ---------------------
+begin
+     List.Add( ReplaceText( Keyword + format('=%d',[Value]),'==','=') ) ;
+end;
+
+
+procedure TIDRFile.AddKeyValue( List : TStringList ;  // List for Key=Value pairs
+                                KeyWord : string ;    // Key
+                                Value : NativeInt        // Value
+                                 ) ;
+// ---------------------
+// Add Key=NativeInt Value to List
+// ---------------------
+begin
+     List.Add( ReplaceText(Keyword + format('=%d',[Value] ),'==','=') ) ;
+end;
+
+
+procedure TIDRFile.AddKeyValue( List : TStringList ;  // List for Key=Value pairs
+                                KeyWord : string ;    // Key
+                                Value : string        // Value
+                                 ) ;
+// ---------------------
+// Add Key=string Value to List
+// ---------------------
+begin
+     List.Add( ReplaceText( Keyword + '=' + Value,'==','=') ) ;
+end;
+
+
+procedure TIDRFile.AddKeyValue( List : TStringList ;  // List for Key=Value pairs
+                                KeyWord : string ;    // Key
+                                Value : Boolean        // Value
+                                 ) ;
+// ---------------------
+// Add Key=boolean Value to List
+// ---------------------
+begin
+     if Value then List.Add(  ReplaceText( Keyword + '= T','==','=') )
+              else List.Add(  ReplaceText( Keyword + '= F','==','=') ) ;
+end;
+
+
+function TIDRFile.GetKeyValue( List : TStringList ;  // List for Key=Value pairs
+                               KeyWord : string ;   // Key
+                               Value : single       // Value
+                               ) : Single ;         // Return value
+// ------------------------------
+// Get Key=Single Value from List
+// ------------------------------
 var
-   Parameter : ANSIstring ;
-begin
-     FindParameter( Source, Keyword, Parameter ) ;
-     if Parameter <> '' then Value := ExtractFloat( Parameter, 1. ) ;
-     end ;
-
-
-procedure TIDRFile.AppendInt(
-          var Dest : Array of ANSIChar;
-          Keyword : ANSIstring ;
-          Value : LongInt ) ;
-{ -------------------------------------------------------
-  Append a long integer point parameter line
-  'Keyword' = 'Value' on to end of the header text array
-  ------------------------------------------------------ }
-begin
-     AppendStringToANSIArray( Dest, Keyword ) ;
-     AppendStringToANSIArray( Dest, InttoStr( Value ) ) ;
-     AppendStringToANSIArray( Dest, #13 + #10 ) ;
-     end ;
-
-
-procedure TIDRFile.AppendInt64(
-          var Dest : Array of ANSIChar;
-          Keyword : ANSIstring ;
-          Value : Int64 ) ;
-{ -------------------------------------------------------
-  Append a long integer point parameter line
-  'Keyword' = 'Value' on to end of the header text array
-  ------------------------------------------------------ }
-begin
-     AppendStringToANSIArray( Dest, Keyword ) ;
-     AppendStringToANSIArray( Dest, InttoStr( Value ) ) ;
-     AppendStringToANSIArray( Dest, #13 + #10 ) ;
-     end ;
-
-
-procedure TIDRFile.ReadInt(
-          const Source : Array of ANSIChar;
-          Keyword : ANSIstring ;
-          var Value : LongInt ) ;
-var
-   Parameter : ANSIstring ;
-begin
-     FindParameter( Source, Keyword, Parameter ) ;
-     if Parameter <> '' then Value := ExtractInt( Parameter ) ;
-     end ;
-
-
-procedure TIDRFile.ReadInt64(
-          const Source : Array of ANSIChar;
-          Keyword : ANSIstring ;
-          var Value : Int64 ) ;
-var
-   Parameter : ANSIstring ;
-begin
-     FindParameter( Source, Keyword, Parameter ) ;
-     if Parameter <> '' then Value := ExtractInt64( Parameter ) ;
-     end ;
-
-
-
-{ Append a text string parameter line
-  'Keyword' = 'Value' on to end of the header text array}
-
-procedure TIDRFile.AppendString(
-          var Dest : Array of ANSIChar;
-          Keyword : ANSIString ;
-          Value : string ) ;
-begin
-  AppendStringToANSIArray( Dest, Keyword ) ;
-  AppendStringToANSIArray( Dest, ANSIString(Value) ) ;
-  AppendStringToANSIArray( Dest, #13 + #10 ) ;
-  end ;
-
-procedure TIDRFile.ReadString(
-          const Source : Array of ANSIChar;
-          Keyword : ANSIstring ;
-          var Value : string ) ;
-var
-   Parameter : ANSIstring ;
-begin
-     FindParameter( Source, Keyword, Parameter ) ;
-     if Parameter <> '' then Value := String(Parameter)  ;
-     end ;
-
-{ Append a boolean True/False parameter line
-  'Keyword' = 'Value' on to end of the header text array}
-
-procedure TIDRFile.AppendLogical(
-          var Dest : Array of ANSIChar;
-          Keyword : ANSIstring ;
-          Value : Boolean ) ;
-begin
-     AppendStringToANSIArray( Dest, Keyword ) ;
-     if Value = True then AppendStringToANSIArray( Dest, 'T' )
-                     else AppendStringToANSIArray( Dest, 'F' )  ;
-     AppendStringToANSIArray( Dest, #13 + #10 ) ;
-     end ;
-
-procedure TIDRFile.ReadLogical(
-          const Source : Array of ANSIChar;
-          Keyword : ANSIstring ;
-          var Value : Boolean ) ;
-var
-   Parameter : ANSIstring ;
-begin
-     FindParameter( Source, Keyword, Parameter ) ;
-     if pos('T',Parameter) > 0 then Value := True
-                               else Value := False ;
-     end ;
-
-
-procedure TIDRFile.AppendStringToANSIArray(
-          var Dest : array of ANSIChar ;
-          Source : ANSIstring ) ;
-var
-   i,j : Integer ;
+    istart,idx : Integer ;
+    s : string ;
 begin
 
-     { Find end of character array }
-     j := 0 ;
-     while (Dest[j] <> chr(0)) and (j < High(Dest) ) do j := j + 1 ;
-
-     if (j + length(Source)) < High(Dest) then
-     begin
-          for i := 1 to length(Source) do
-          begin
-               Dest[j] := ANSIChar(Source[i]) ;
-               j := j + 1 ;
-               end ;
-          end
-     else HeaderFull := True ;
-
-     end ;
-
-
-procedure TIDRFile.FindParameter(
-          const Source : array of ANSIChar ;
-          Keyword : ANSIstring ;
-          var Parameter : ANSIstring ) ;
-var
-s,k : integer ;
-Found : boolean ;
-begin
-
-     { Search for the string 'keyword' within the
-       array 'Source' }
-
-     s := 0 ;
-     k := 1 ;
-     Found := False ;
-     while (not Found) and (s < High(Source)) do
-     begin
-          if Source[s] = ANSIChar(Keyword[k]) then
-          begin
-               k := k + 1 ;
-               if k > length(Keyword) then Found := True
-               end
-               else k := 1;
-         s := s + 1;
-         end ;
-
-
-    { Copy parameter value into string 'Parameter'
-      to be returned to calling routine }
-
-    Parameter := '' ;
-    if Found then
-    begin
-        while (Source[s] <> #13) and (s < High(Source)) do
+     idx := List.IndexOfName( Keyword ) ;
+     if idx >= 0 then
         begin
-             Parameter := Parameter + Source[s] ;
-             s := s + 1
-             end ;
-        end ;
-    end ;
+        s := List[idx] ;
+        // Find key=value separator and remove key
+        istart := Pos( '=', s ) ;
+        if istart > 0 then Delete( s, 1, istart ) ;
+        Result := ExtractFloat( s, Value ) ;
+        end
+     else Result := Value ;
+
+end;
+
+
+function TIDRFile.GetKeyValue( List : TStringList ;  // List for Key=Value pairs
+                               KeyWord : string ;   // Key
+                               Value : Integer       // Value
+                               ) : Integer ;        // Return value
+// ------------------------------
+// Get Key=Integer Value from List
+// ------------------------------
+var
+    istart,idx : Integer ;
+    s : string ;
+begin
+
+     idx := List.IndexOfName( Keyword ) ;
+     if idx >= 0 then
+        begin
+        s := List[idx] ;
+        // Find key=value separator and remove key
+        istart := Pos( '=', s ) ;
+        if istart > 0 then Delete( s, 1, istart ) ;
+        Result := STrToInt( s ) ;
+        end
+     else Result := Value ;
+
+end;
+
+
+function TIDRFile.GetKeyValue( List : TStringList ;  // List for Key=Value pairs
+                               KeyWord : string ;   // Key
+                               Value : Int64       // Value
+                               ) : Int64 ;        // Return value
+// ------------------------------
+// Get Key=Int64 Value from List
+// ------------------------------
+var
+    istart,idx : Integer ;
+    s : string ;
+begin
+
+     idx := List.IndexOfName( Keyword ) ;
+     if idx >= 0 then
+        begin
+        s := List[idx] ;
+        // Find key=value separator and remove key
+        istart := Pos( '=', s ) ;
+        if istart > 0 then Delete( s, 1, istart ) ;
+        Result := STrToInt( s ) ;
+        end
+     else Result := Value ;
+
+end;
+
+
+
+function TIDRFile.GetKeyValue( List : TStringList ;  // List for Key=Value pairs
+                               KeyWord : string ;   // Key
+                               Value : NativeInt       // Value
+                               ) : NativeInt ;        // Return value
+// ------------------------------
+// Get Key=Integer Value from List
+// ------------------------------
+var
+    istart,idx : Integer ;
+    s : string ;
+begin
+
+     idx := List.IndexOfName( Keyword ) ;
+     if idx >= 0 then
+        begin
+        s := List[idx] ;
+        // Find key=value separator and remove key
+        istart := Pos( '=', s ) ;
+        if istart > 0 then Delete( s, 1, istart ) ;
+        Result := STrToInt( s ) ;
+        end
+     else Result := Value ;
+
+end;
+
+
+function TIDRFile.GetKeyValue( List : TStringList ;  // List for Key=Value pairs
+                               KeyWord : string ;   // Key
+                               Value : string       // Value
+                               ) : string ;        // Return value
+// ------------------------------
+// Get Key=Integer Value from List
+// ------------------------------
+var
+    istart,idx : Integer ;
+    s : string ;
+begin
+
+      idx := List.IndexOfName( Keyword ) ;
+     if idx >= 0 then
+        begin
+        s := List[idx] ;
+        // Find key=value separator and remove key
+        istart := Pos( '=', s ) ;
+        if istart > 0 then Delete( s, 1, istart ) ;
+        Result := s ;
+        end
+     else Result := Value ;
+
+end;
+
+
+function TIDRFile.GetKeyValue( List : TStringList ;  // List for Key=Value pairs
+                               KeyWord : string ;   // Key
+                               Value : Boolean       // Value
+                               ) : Boolean ;        // Return value
+// ------------------------------
+// Get Key=Boolean Value from List
+// ------------------------------
+var
+    istart,idx : Integer ;
+    s : string ;
+begin
+
+     idx := List.IndexOfName( Keyword ) ;
+     if idx >= 0 then
+        begin
+        s := List[idx] ;
+        // Find key=value separator and remove key
+        istart := Pos( '=', s ) ;
+        if istart > 0 then Delete( s, 1, istart ) ;
+        if ContainsText(s,'T') then Result := True
+                               else Result := False ;
+        end
+     else Result := Value ;
+
+end;
 
 
 function TIDRFile.IntLimitTo(
@@ -2587,110 +2858,6 @@ begin
         on E : EConvertError do ExtractFloat := Default ;
         end ;
      end ;
-
-
-function TIDRFile.ExtractInt ( CBuf : ANSIstring ) : longint ;
-{ ---------------------------------------------------
-  Extract a 32 bit integer number from a string which
-  may contain additional non-numeric text
-  ---------------------------------------------------}
-
-Type
-    TState = (RemoveLeadingWhiteSpace, ReadNumber) ;
-var CNum : string ;
-    i : integer ;
-    Quit : Boolean ;
-    State : TState ;
-
-begin
-     CNum := '' ;
-     i := 1;
-     Quit := False ;
-     State := RemoveLeadingWhiteSpace ;
-     while not Quit do begin
-
-           case State of
-
-                { Ignore all non-numeric characters before number }
-                RemoveLeadingWhiteSpace : begin
-                   if CBuf[i] in ['0'..'9','+','-'] then State := ReadNumber
-                                                    else i := i + 1 ;
-                   end ;
-
-                { Copy number into string CNum }
-                ReadNumber : begin
-                    {End copying when a non-numeric character
-                    or the end of the string is encountered }
-                    if CBuf[i] in ['0'..'9','E','e','+','-','.'] then begin
-                       CNum := CNum + CBuf[i] ;
-                       i := i + 1 ;
-                       end
-                    else Quit := True ;
-                    end ;
-                else end ;
-
-           if i > Length(CBuf) then Quit := True ;
-           end ;
-     try
-
-
-        Result := StrToInt( CNum ) ;
-     except
-        Result := 1 ;
-        end ;
-     end ;
-
-
-function TIDRFile.ExtractInt64 ( CBuf : ANSIstring ) : Int64 ;
-{ ---------------------------------------------------
-  Extract a 64 bit integer number from a string which
-  may contain additional non-numeric text
-  ---------------------------------------------------}
-
-Type
-    TState = (RemoveLeadingWhiteSpace, ReadNumber) ;
-var CNum : string ;
-    i : integer ;
-    Quit : Boolean ;
-    State : TState ;
-
-begin
-     CNum := '' ;
-     i := 1;
-     Quit := False ;
-     State := RemoveLeadingWhiteSpace ;
-     while not Quit do begin
-
-           case State of
-
-                { Ignore all non-numeric characters before number }
-                RemoveLeadingWhiteSpace : begin
-                   if CBuf[i] in ['0'..'9','+','-'] then State := ReadNumber
-                                                    else i := i + 1 ;
-                   end ;
-
-                { Copy number into string CNum }
-                ReadNumber : begin
-                    {End copying when a non-numeric character
-                    or the end of the string is encountered }
-                    if CBuf[i] in ['0'..'9','E','e','+','-','.'] then begin
-                       CNum := CNum + CBuf[i] ;
-                       i := i + 1 ;
-                       end
-                    else Quit := True ;
-                    end ;
-                else end ;
-
-           if i > Length(CBuf) then Quit := True ;
-           end ;
-     try
-
-        Result := StrToInt64( CNum ) ;
-     except
-        Result := 1 ;
-        end ;
-     end ;
-
 
 
 function TIDRFile.DiskSpaceAvailable(
@@ -2812,7 +2979,8 @@ var
 begin
 
     // Wait for any existing asynchronous writes to complete
-    if FAsyncWriteInProgess then begin
+    if FAsyncWriteInProgess then
+       begin
        GetOverlappedResult( FIDRFileHandle,
                             AsyncWriteOverlap,
                             NumBytesWritten,
@@ -2963,11 +3131,11 @@ begin
 
     // Request read of data from file
     Err := ReadFile( FIDRFileHandle,
-              PByteArray(pDataBuf)^,
-              NumBytesToRead,
-              NumBytesRead,
-              @Overlap
-              ) ;
+                     PByteArray(pDataBuf)^,
+                     NumBytesToRead,
+                     NumBytesRead,
+                     @Overlap
+                     ) ;
 
     // Wait for read to complete
     Done := False ;

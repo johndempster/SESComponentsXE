@@ -30,7 +30,7 @@ unit Maths;
 
 interface
 
-uses classes, comctrls, graphics, math, strutils, system.ioutils ;
+uses classes, comctrls, graphics, math, strutils, system.ioutils, Printers, windows, VCL.grids ;
 
 const
      ChannelLimit = 15 ;
@@ -40,6 +40,35 @@ const
 
 type
     TWorkArray = Array[0..MaxWork] of Single ;
+
+    TBin = record
+         Lo : Single ;
+         Mid : Single ;
+         Hi :  Single ;
+         y : Single ;
+         end ;
+
+THistogram = class(TObject)
+              StartAt : LongInt ;
+              EndAt : LongInt ;
+              RecordStart : LongInt ;
+              RangeLo : single ;
+              RangeHi : Single ;
+              NumBins : Integer ;
+              NumLogBinsPerDecade : Integer ;
+              MaxBin : Integer ;
+              Bins : Array[0..2048] of TBin ;
+              TotalCount : single ;
+              Available : Boolean ;
+            {  Equation : TEquation ;}
+{              UnitCursor : THistCursorPos ;}
+              yHi : Single ;
+              BinWidth : single ;
+              BinScale : single ;
+              TMin : single ;
+              NewPlot : Boolean ;
+              end ;
+
 
     TEqnType = ( None,
                  Lorentzian,
@@ -367,6 +396,28 @@ procedure Splint(
 function RoundToNearestMultiple(
          Value : Double ;
          Factor : Double ) : Double ;
+
+  function ExtractListOfFloats (
+           const CBuf : string ;
+           var Values : Array of Single ;
+           PositiveOnly : Boolean
+           ) : Integer ;
+  function ExtractInt (
+           CBuf : string
+           ) : LongInt ;
+  function VerifyInt(
+           text : string ;
+           LoLimit,HiLimit : LongInt
+           ) : string ;
+
+function PrinterPointsToPixels(
+         PointSize : Integer
+         ) : Integer ;
+function PrinterCmToPixels(
+         const Axis : string ;
+         cm : single
+         ) : Integer ;
+
 
 implementation
 
@@ -4016,5 +4067,180 @@ begin
    Result := int(Value/Factor)*Factor ;
    if Frac(Value/Factor) >= 0.5 then Result := Result + Factor ;
    end;
+
+function ExtractInt ( CBuf : string ) : longint ;
+{ ---------------------------------------------------
+  Extract a 32 bit integer number from a string which
+  may contain additional non-numeric text
+  ---------------------------------------------------}
+
+Type
+    TState = (RemoveLeadingWhiteSpace, ReadNumber) ;
+var
+    CNum : string ;
+    i : integer ;
+    Quit : Boolean ;
+    State : TState ;
+
+begin
+
+     if CBuf = '' then begin
+        Result := 0 ;
+        Exit ;
+        end ;
+
+     CNum := '' ;
+     i := 1;
+     Quit := False ;
+     State := RemoveLeadingWhiteSpace ;
+     while not Quit do begin
+
+           case State of
+
+                { Ignore all non-numeric characters before number }
+                RemoveLeadingWhiteSpace : begin
+                   if CBuf[i] in ['0'..'9','+','-'] then State := ReadNumber
+                                                    else i := i + 1 ;
+                   end ;
+
+                { Copy number into string CNum }
+                ReadNumber : begin
+                    {End copying when a non-numeric character
+                    or the end of the string is encountered }
+                    if CBuf[i] in ['0'..'9','E','e','+','-','.'] then begin
+                       CNum := CNum + CBuf[i] ;
+                       i := i + 1 ;
+                       end
+                    else Quit := True ;
+                    end ;
+                else end ;
+
+           if i > Length(CBuf) then Quit := True ;
+           end ;
+     try
+
+
+        ExtractInt := StrToInt( CNum ) ;
+     except
+        ExtractInt := 1 ;
+        end ;
+     end ;
+
+
+function VerifyInt( text : string ; LoLimit,HiLimit : LongInt ) : string ;
+{ -------------------------------------------------------------
+  Ensure an ASCII edit field contains a value within set limits
+  -------------------------------------------------------------}
+var
+   Value : LongInt ;
+begin
+     Value := ExtractInt( text ) ;
+     if Value < LoLimit then Value := LoLimit ;
+     If Value > HiLimit then Value := HiLimit ;
+     VerifyInt := IntToStr( Value ) ;
+     end ;
+
+
+function ExtractListOfFloats ( const CBuf : string ;
+                                var Values : Array of Single ;
+                                PositiveOnly : Boolean ) : Integer ;
+{ -------------------------------------------------------------
+  Extract a series of floating point number from a string which
+  may contain additional non-numeric text
+  ---------------------------------------}
+
+var
+   CNum,dsep : string ;
+   i,nValues : integer ;
+   EndOfNumber : Boolean ;
+begin
+     nValues := 0 ;
+     CNum := '' ;
+     for i := 1 to length(CBuf) do begin
+
+         { If character is numeric ... add it to number string }
+         if PositiveOnly then begin
+            { Minus sign is treated as a number separator }
+            if CBuf[i] in ['0'..'9', 'E', 'e', '.','+',',' ] then begin
+               CNum := CNum + CBuf[i] ;
+               EndOfNumber := False ;
+               end
+            else EndOfNumber := True ;
+            end
+         else begin
+            { Positive or negative numbers }
+            if CBuf[i] in ['0'..'9', 'E', 'e', '.', '-','+',',' ] then begin
+               CNum := CNum + CBuf[i] ;
+               EndOfNumber := False ;
+               end
+            else EndOfNumber := True ;
+            end ;
+
+         { Correct for use of comma/period as decimal separator }
+         {$IF CompilerVersion > 7.0} dsep := formatsettings.DECIMALSEPARATOR ;
+         {$ELSE} dsep := DECIMALSEPARATOR ;
+         {$IFEND}
+         if dsep = '.' then CNum := ANSIReplaceText(CNum ,',',dsep);
+         if dsep = ',' then CNum := ANSIReplaceText(CNum, '.',dsep);
+
+         { If all characters are finished ... check number }
+         if i = length(CBuf) then EndOfNumber := True ;
+
+         if (EndOfNumber) and (Length(CNum) > 0)
+            and (nValues <= High(Values)) then begin
+              try
+                 Values[nValues] := StrToFloat( CNum ) ;
+                 CNum := '' ;
+                 Inc(nValues) ;
+              except
+                    on E : EConvertError do CNum := '' ;
+                    end ;
+              end ;
+         end ;
+     { Return number of values extracted }
+     Result := nValues ;
+     end ;
+
+function PrinterPointsToPixels(
+         PointSize : Integer
+         ) : Integer ;
+var
+   PixelsPerInch : single ;
+begin
+
+     { Get height and width of page (in mm) and calculate
+       the size of a pixel (in cm) }
+     PixelsPerInch := GetDeviceCaps( printer.handle, LOGPIXELSX ) ;
+     PrinterPointsToPixels := Trunc( (PointSize*PixelsPerInch) / 72. ) ;
+     end ;
+
+
+function PrinterCmToPixels(
+         const Axis : string;
+         cm : single
+         ) : Integer ;
+{ -------------------------------------------
+  Convert from cm (on printer page) to pixels
+  -------------------------------------------}
+var
+   PixelWidth,PixelHeight : single ;
+begin
+     { Get height and width of page (in mm) and calculate
+       the size of a pixel (in cm) }
+     if UpperCase(Axis) = 'H' then begin
+        { Printer pixel width (mm) }
+        PixelWidth := GetDeviceCaps( printer.handle, HORZSIZE ) ;
+        Result := Trunc( ( 10. * cm * printer.pagewidth) / PixelWidth );
+        end
+     else begin
+        { Printer pixel height (mm) }
+        PixelHeight := GetDeviceCaps( printer.handle, VERTSIZE ) ;
+        Result := Trunc( ( printer.pageheight * 10. * cm )/ PixelHeight ) ;
+        end ;
+     end ;
+
+
+
+
 
 end.
