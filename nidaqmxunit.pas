@@ -65,6 +65,7 @@ unit NidaqMXUnit;
 // 25.11.17 Change in special DAQmxSetAIUsbXferReqCount setting for USB06008/9 no longer reset for other devices by NIMX_ADCToMemory to avoid
 //          unsupported function error.
 // 04.08.21 NIMX_CheckMaxADCChannels() Now much faster, <1ms vs 600ms by using device property
+// 09.11.22 Min. AO update interval for USB-600X now reduced from  2ms to 1ms.
 
 
 interface
@@ -2317,7 +2318,7 @@ begin
           ANSIContainsText(FBoardModel,'6004') or
           ANSIContainsText(FBoardModel,'6005') then begin
           FNoTriggerOnSampleClock := True ;
-          FDACMinUpdateInterval := 2E-3 ;
+          FDACMinUpdateInterval := 1E-3 ;
           end
        else FNoTriggerOnSampleClock := False ;
 
@@ -3306,8 +3307,8 @@ begin
 
      T0 := timegettime ;
      NIMX_CheckError( DAQmxClearTask(ADCTaskHandle)) ;
-//     if (timegettime - t0) > 1000 then
-//        outputdebugstring(pchar(format('NIMX_StopADC: %d ms Delay in DAQmxClearTask call. ',[timegettime - t0])));
+     if (timegettime - t0) > 1000 then
+        outputdebugstring(pchar(format('NIMX_StopADC: %d ms Delay in DAQmxClearTask call. ',[timegettime - t0])));
      ADCActive := False ;
 
 {    Pulse task stopped ... used to test A/D timing.
