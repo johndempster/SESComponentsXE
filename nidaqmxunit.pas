@@ -66,7 +66,8 @@ unit NidaqMXUnit;
 //          unsupported function error.
 // 04.08.21 NIMX_CheckMaxADCChannels() Now much faster, <1ms vs 600ms by using device property
 // 09.11.22 Min. AO update interval for USB-600X now reduced from  2ms to 1ms.
-
+// 03.04.23 Digital clock support temporarily disabled for 6353 devices to determine
+//          if there is a programming incompatibility with 32 bit Port0
 
 interface
 
@@ -2394,6 +2395,10 @@ begin
        end ;
 
     FDigMaxUpdateInterval := 1000.0 ;
+
+    // 03.04.23 Digital clock support temporarily disabled for 6353 devices to determine
+    // if there is a programming incompatibility with 32 bit Port0
+    if ANSIContainsText(FBoardModel,'6353') then FDigClockSupported := False ;
 
     // Calibrate device
     //NIMX_CheckError( DAQmxSelfCal( PANSIChar(DeviceName) )) ;

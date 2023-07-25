@@ -29,7 +29,7 @@ interface
 
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
-  Clipbrd, printers ;
+  Clipbrd, printers, System.UITypes, System.Types ;
 const
      ChannelLimit = 15 ;
 type

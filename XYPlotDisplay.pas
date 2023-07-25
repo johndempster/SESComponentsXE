@@ -31,31 +31,42 @@ unit XYPlotDisplay;
               Integer() -> NativeInt()
  17.11.16 ... Axis tick numbers now display up 99999 before switching to powers of 10.
  31.05.21 ...
+ 17.05.23 ... Fitted functions and cursoe readout now scaled correctly on cumulative and % total histograms
+              XY and Histogram arrays now accessed using pXYArray and pHistArray
  }
 
 interface
 
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
-  Clipbrd, printers, math, strutils, Types ;
+  Clipbrd, printers, math, strutils, Types, System.UITypes ;
 
 const
      MaxLines = 100 ;
      XYPlotGraphMaxLines = MaxLines ;
      MaxSingle = 3.4E38 ;
      MaxVerticalCursorLinks = 32 ;
+     ArrayMax = 1000000 ;
 type
     TXY = record
         x : single ;
         y : single ;
+        yPlot : single ;
         end ;
+    TXYArray = Array[0..ArrayMax] of TXY ;
+    pXYArray = ^TXYArray ;
     TXYPointer = ^TXY ;
+
     THist = record
           Lo : Single ;
           Mid : single ;
           Hi : single ;
           y : single ;
+         yPlot : single ;
           end ;
+    THistArray = Array[0..ArrayMax] of THist ;
+    pHistArray = ^THistArray ;
+
     THistPointer = ^THist ;
     TLineType = ( ltNone, ltLine, ltHistogram ) ;
     TMarkerStyle = ( msNone,
@@ -122,29 +133,31 @@ type
   TXYPlotDisplay = class(TGraphicControl)
   private
     { Private declarations }
-    FLinesAvailable : Boolean ;
-    FMaxPointsPerLine : Integer ;
-    FLines : Array[0..MaxLines] of TLine ;
-    FXAxis : TAxis ;
-    FYAxis : TAxis ;
-    FYAxisLabelAtTop : Boolean ;
-    FLeft : Integer ;
-    FRight : Integer ;
-    FTop : Integer ;
-    FBottom : Integer ;
-    FLineWidth : Integer ;
-    FMarkerSize : Integer ;
-    FShowLines : Boolean ;
-    FShowMarkers : Boolean ;
-    FHistogramFullBorders : Boolean ;
-    FHistogramFillColor : TColor ;
-    FHistogramFillStyle : TBrushStyle ;
-    FHistogramCumulative : Boolean ;
-    FHistogramPercentage : Boolean ;
+    FLinesAvailable : Boolean ;                    // TRUE = Lines available on plot
+    FMaxPointsPerLine : Integer ;                  // Max. no. points per line
+    FLines : Array[0..MaxLines] of TLine ;         // Lines array
+    FXAxis : TAxis ;                               // X axis
+    FYAxis : TAxis ;                               // Y axis
+    FYAxisLabelAtTop : Boolean ;                   // Place Y axis label at top
+    FLeft : Integer ;                              // Left edge of plot  (pixels)
+    FRight : Integer ;                             // Right edge of plot
+    FTop : Integer ;                               // Top of plot
+    FBottom : Integer ;                            // Bottom of plot
+    FLineWidth : Integer ;                         // Line width (pixels)
+    FMarkerSize : Integer ;                        // Size if markers
+    FShowLines : Boolean ;                         // TRUE = show lines on plot
+    FShowMarkers : Boolean ;                       // TRUE = show markers on plot
+    FHistogramFullBorders : Boolean ;              // TRUE = draw all borders of histogram bins
+    FHistogramFillColor : TColor ;                 // Bin fill colour
+    FHistogramFillStyle : TBrushStyle ;            // Bin fill style
+    FHistogramCumulative : Boolean ;                 // Cumulative histogram flag
+    FHistogramPercentage : Boolean ;                  // Percentage histogram flag
+//    YPercentageScale : single ;                      // Y percentage scale factor
+    HistogramSum : single ;                          // Sum total of histogram bin counts
     FScreenFontName : string ;
     FScreenFontSize : Integer ;
     FOutputToScreen : Boolean ;
-    FTitle : TStringList ;
+    FTitle : TStringList ;                          // Plot title
     { Vertical cursors }
     VertCursors : Array[0..6] of TCursorPos ;
     FNumVerticalCursorLinks : Integer ;
@@ -232,14 +245,14 @@ type
     procedure DrawAxes( Canv : TCanvas ) ;
     procedure CheckAxis( var Axis : TAxis ) ;
     procedure DefineAxis( var Axis : TAxis ; AxisType : char ) ;
-    procedure DrawMarkers( Canv : TCanvas ; MarkerSize : Integer ) ;
+    procedure DrawMarkers( Canv : TCanvas ; MarkerSize : Integer  ) ;
     procedure DrawMarkerShape(
               Canv : TCanvas ;
               xPix,yPix : Integer ;
               const LineInfo : TLine ;
               MarkerSize : Integer
               ) ;
-    procedure DrawLines( Canv : TCanvas ) ;
+    procedure DrawLines( Canv : TCanvas  ) ;
     procedure DrawHistograms( Canv : TCanvas ) ;
 
     procedure TextOutRotated(
@@ -792,12 +805,15 @@ begin
      { Clear display area }
      Bitmap.Canvas.fillrect(Bitmap.Canvas.ClipRect);
 
+
+
      { Determine if there are any lines to be plotted }
      FLinesAvailable := False ;
      for L := 0 to High(FLines) do if (FLines[L].XYBuf <> Nil)
          and (FLines[L].NumPoints > 0) then FLinesAvailable := True ;
 
-     if FLinesAvailable then begin
+     if FLinesAvailable then
+        begin
         FOutputToScreen := True ;
         DrawAxes( Bitmap.Canvas ) ;
         DrawHistograms( Bitmap.Canvas ) ;
@@ -805,9 +821,7 @@ begin
         if FShowLines then DrawLines( Bitmap.Canvas ) ;
 
         // Copy from internal bitmap to control
-        Canvas.CopyRect( Canvas.ClipRect,
-                         Bitmap.Canvas,
-                         Canvas.ClipRect) ;
+        Canvas.CopyRect( Canvas.ClipRect, Bitmap.Canvas, Canvas.ClipRect) ;
 
         // Draw link between selected pair of vertical cursors
         DrawVerticalCursorLink(Canvas) ;
@@ -819,18 +833,16 @@ begin
         { Horizontal Cursors }
         for i := 0 to High(HorCursors) do if HorCursors[i].InUse then
             DrawHorizontalCursor(i) ;
-            
+
         { Notify a change in cursors }
         if Assigned(OnCursorChange) then OnCursorChange(Self) ;
 
         end
      else begin
         // Copy from internal bitmap to control
-        Canvas.CopyRect( Canvas.ClipRect,
-                         Bitmap.Canvas,
-                         Canvas.ClipRect) ;
+        Canvas.CopyRect( Canvas.ClipRect, Bitmap.Canvas, Canvas.ClipRect) ;
         end ;
-        
+
      end ;
 
 
@@ -1199,7 +1211,8 @@ begin
         Lo := THistPointer(pXY)^.Lo ;
         Mid := THistPointer(pXY)^.Mid ;
         Hi := THistPointer(pXY)^.Hi ;
-        y := THistPointer(pXY)^.y ;
+        // Return current bin plot y value (count, % or cumulative
+        y := THistPointer(pXY)^.yPlot ;
         end
      else begin
         Lo := 0.0 ;
@@ -1383,13 +1396,12 @@ procedure TXYPlotDisplay.CopyDataToClipboard ;
   Copy plot data points to clipboard as table of Tab text
   ------------------------------------------------------- }
 var
-   L,i,NumPointsMax,BufSize,NumLines : Integer ;
-   x,y,BinLo,BinMid,BinHi,Sum : Single ;
+   L,i,NumPointsMax : Integer ;
+   x,y,BinLo,BinMid,BinHi : Single ;
    BinY : Array[0..MaxLines] of Single ;
-   YScale : Array[0..MaxLines] of Single ;
-   pXY : Pointer ;
-   CopyBuf : PChar ;
-   First,Histogram : Boolean ;
+   First : Boolean ;
+   Table : TStringList ;
+   s : String ;
 begin
 
      // Exit if no lines
@@ -1397,95 +1409,74 @@ begin
 
      Screen.Cursor := crHourglass ;
 
-     // Open clipboard preventing others acceessing it
+     // Open clipboard preventing others accessing it
      Clipboard.Open ;
 
-        // Find maximum number of points in any line
-        NumPointsMax := 0 ;
-        NumLines := 0 ;
-        Histogram := False ;
-        for L := 0 to High(FLines) do if (FLines[L].XYBuf <> Nil) then begin
-            if FLines[L].NumPoints > NumPointsMax then NumPointsMax := FLines[L].NumPoints ;
-            if FLines[L].LineType = ltHistogram then Histogram := True ;
-            Inc(NumLines) ;
-            end ;
-
-        // Allocate a suitable text buffer
-        BufSize := 10*2*(NumPointsMax*NumLines) ;
-        // Double allocation if this is a histogram (to inclide BinLo and BinHi values)
-        if Histogram then BufSize := BufSize*2 ;
-
-        CopyBuf := StrAlloc( BufSize ) ;
+     // Create empty table
+     Table := TStringList.Create ;
 
      try
-        StrCopy(CopyBuf, PChar('')) ;
-        { Initialisations for cumulative and/or percentage histograms }
-        for L := 0 to High(FLines) do if FLines[L].XYBuf <> Nil then begin
-            // Initialise cumulative Y value
-            BinY[L] := 0.0 ;
-            // Calculate percentage scale factor }
-            if FHistogramPercentage then begin
-               Sum := 0.0 ;
-               for i := 0 to FLines[L].NumPoints-1 do begin
-                   pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(THist)) )  ;
-                   Sum := Sum + THistPointer(pXY)^.y ;
-                   end ;
-               YScale[L] := 100.0 / Sum ;
-               end
-            else YScale[L] := 1.0 ;
-            end ;
+
+        // Determine maximum number of points in any line
+
+        NumPointsMax := 0 ;
+        for L := 0 to High(FLines) do if (FLines[L].XYBuf <> Nil) then
+            begin
+            NumPointsMax := Max(GetNumPointsInLine(L),NumPointsMax);
+            end;
 
         { Create tab-text table of data values }
-        for i := 0 to NumPointsMax-1 do begin
+        for i := 0 to NumPointsMax-1 do
+            begin
 
             { Create a line of data values }
             First := True ;
-            for L := 0 to High(FLines) do if (FLines[L].XYBuf <> Nil) then begin
+            s := '' ;
+            for L := 0 to High(FLines) do if (FLines[L].XYBuf <> Nil) then
+                begin
 
                 { Add tab separator between X,Y and/or histogram bin data points }
-                if not First then StrCat( CopyBuf, #9 ) ;
+                if not First then s := s + #9 ;
                 First := False ;
 
-                if FLines[L].LineType = ltLine then begin
+                if FLines[L].LineType = ltLine then
+                   begin
                    { Add an X,Y line point }
-                   if (i < FLines[L].NumPoints) then begin
+                   if (i < FLines[L].NumPoints) then
+                      begin
                       { Get x,y point from buffer }
-                      pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(TXY)) ) ;
-                      x := TXYPointer(pXY)^.x ;
-                      y := TXYPointer(pXY)^.y ;
-                      StrCat( CopyBuf, PChar(format('%.5g'#9'%.5g',[x,y]))) ;
+                      x := pXYArray(FLines[L].XYBuf)[i].x ;
+                      y := pXYArray(FLines[L].XYBuf)[i].yPlot ;
+                      s := s + format('%.5g'#9'%.5g',[x,y]) ;
                       end
-                   else StrCat( CopyBuf, #9 ) ;
+                   else s := s + #9 ;
                    end
                 else begin
                    { Add a histogram bin }
-                   if (i < FLines[L].NumPoints) then begin
-                      pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(THist)))  ;
-                      BinLo := THistPointer(pXY)^.Lo ;
-                      BinMid := THistPointer(pXY)^.Mid ;
-                      BinHi := THistPointer(pXY)^.Hi ;
-                      if FHistogramCumulative then
-                         BinY[L] := BinY[L] + THistPointer(pXY)^.y*YScale[L]
-                      else
-                         BinY[L] :=THistPointer(pXY)^.y*YScale[L] ;
-                      StrCat( CopyBuf, PChar(format('%.5g'#9'%.5g'#9'%.5g'#9'%.5g',
-                              [BinLo,BinMid,BinHi,BinY[L]]))) ;
+                   if (i < FLines[L].NumPoints) then
+                      begin
+                      BinLo := pHistArray(FLines[L].XYBuf)[i].Lo ;
+                      BinMid := pHistArray(FLines[L].XYBuf)[i].Mid ;
+                      BinHi := pHistArray(FLines[L].XYBuf)[i].Hi ;
+                      BinY[L] :=pHistArray(FLines[L].XYBuf)[i].yPlot ;
+                      s := s + format('%.5g'#9'%.5g'#9'%.5g'#9'%.5g',[BinLo,BinMid,BinHi,BinY[L]]) ;
                       end
-                   else StrCat( CopyBuf, #9#9#9 ) ;
+                   else s := s + #9 + #9 + #9 ;
                    end ;
                 end ;
 
-            StrCat( CopyBuf, #13#10 ) ;
+            // Add line to table
+            Table.Add(s) ;
+
             end ;
 
         // Copy data table to clipboard
-        ClipBoard.SetTextBuf( CopyBuf ) ;
+        ClipBoard.SetTextBuf( PChar(Table.Text) ) ;
 
      finally
-
        Screen.Cursor := crDefault ;
        // Free buffer
-       StrDispose(CopyBuf) ;
+       Table.Free ;
        // Release clipboard
        Clipboard.Close ;
        end ;
@@ -1502,11 +1493,9 @@ procedure TXYPlotDisplay.SaveDataToFile(
   --------------------------------------------------------------- }
 var
    L,i,NumPoints,NumLines : Integer ;
-   x,y,BinLo,BinMid,BinHi,Sum : Single ;
+   x,y,BinLo,BinMid,BinHi : Single ;
    BinY : Array[0..MaxLines] of Single ;
-   YScale : Array[0..MaxLines] of Single ;
-   pXY : Pointer ;
-   First,Histogram : Boolean ;
+   First : Boolean ;
    s : string ;
    Table : TStringList ;
 begin
@@ -1528,26 +1517,6 @@ begin
          Inc(NumLines) ;
          end;
 
-     { Initialisations for cumulative and/or percentage histograms }
-     for L := 0 to High(FLines) do
-         if FLines[L].XYBuf <> Nil then
-         begin
-         // Initialise cumulative Y value
-         BinY[L] := 0.0 ;
-         // Calculate percentage scale factor }
-         if FHistogramPercentage then
-            begin
-            Sum := 0.0 ;
-            for i := 0 to FLines[L].NumPoints-1 do
-                begin
-                pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(THist)) )  ;
-                Sum := Sum + THistPointer(pXY)^.y ;
-                end ;
-            YScale[L] := 100.0 / Sum ;
-            end
-         else YScale[L] := 1.0 ;
-         end ;
-
      { Create CSV table of data values }
 
      // Create column titles
@@ -1564,8 +1533,7 @@ begin
          s := '' ;
          { Create a line of data values }
          First := True ;
-         for L := 0 to High(FLines) do
-             if (FLines[L].XYBuf <> Nil) then
+         for L := 0 to High(FLines) do if (FLines[L].XYBuf <> Nil) then
              begin
              { Add comma separator between X,Y and/or histogram bin data points }
              if not First then s := s + ',' ;
@@ -1577,9 +1545,8 @@ begin
                 if (i < FLines[L].NumPoints) then
                    begin
                    { Get x,y point from buffer }
-                   pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(TXY)) ) ;
-                   x := TXYPointer(pXY)^.x ;
-                   y := TXYPointer(pXY)^.y ;
+                   x := pXYArray(FLines[L].XYBuf)[i].x ;
+                   y := pXYArray(FLines[L].XYBuf)[i].yPlot ;
                    s := s + format('"%.5g","%.5g"',[x,y]) ;
                    end
                 else s := s + '"",""' ;
@@ -1589,17 +1556,14 @@ begin
                 { Add a histogram bin }
                 if (i < FLines[L].NumPoints) then
                     begin
-                    pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(THist)))  ;
-                    BinLo := THistPointer(pXY)^.Lo ;
-                    BinMid := THistPointer(pXY)^.Mid ;
-                    BinHi := THistPointer(pXY)^.Hi ;
-                    if FHistogramCumulative then BinY[L] := BinY[L] + THistPointer(pXY)^.y*YScale[L]
-                                            else BinY[L] :=THistPointer(pXY)^.y*YScale[L] ;
+                    BinLo := pHistArray(FLines[L].XYBuf)[i].Lo ;
+                    BinMid := pHistArray(FLines[L].XYBuf)[i].Mid ;
+                    BinHi := pHistArray(FLines[L].XYBuf)[i].Hi ;
+                    BinY[L] := pHistArray(FLines[L].XYBuf)[i].yPlot ;
                     s := s + format('"%.5g","%.5g","%.5g","%.5g"',[BinLo,BinMid,BinHi,BinY[L]]) ;
                     end
                 else s := s + '"","",""' ;
                 end ;
-
 
              end ;
 
@@ -1649,13 +1613,13 @@ begin
 
         { Make space for Y Axis label }
         if FYAxisLabelAtTop then begin
-           YLabelYPos := FTop ;
            FTop := FTop + Canv.TextHeight( FYAxis.Lab ) ;
            end
         else begin
-           YLabelXPos := FLeft ;
            FLeft := FLeft + Canv.TextHeight( FYAxis.Lab ) ;
            end ;
+        YLabelYPos := FTop ;
+        YLabelXPos := FLeft ;
 
         { Create Y axis tick list }
         CreateTickList( YTickList, Canv, FYAxis ) ;
@@ -1873,11 +1837,10 @@ procedure TXYPlotDisplay.DrawMarkers(
   ----------------------}
 var
    xPix,yPix,i,L : Integer ;
-   x,y : single ;
+   x,y,yScale,SUm : single ;
    SavePen : TPen ;
    SaveBrush : TBrush ;
    MarkerColor : TColor ;
-   pXY : Pointer ;
 begin
 
      { Create  objects }
@@ -1917,11 +1880,37 @@ begin
                      end ;
                  end ;
 
-            if FLines[L].MarkerStyle <> msNone then begin
-               for i := 0 to FLines[L].NumPoints-1 do begin
-                   pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(TXY)))  ;
-                   x := TXYPointer(pXY)^.x ;
-                   y := TXYPointer(pXY)^.y ;
+            // Calculate sum total of y values
+            Sum := 0.0 ;
+            for i := 0 to FLines[L].NumPoints-1 do
+                begin
+                Sum := Sum + pXYArray(FLines[L].XYBuf)[i].y ;
+                end ;
+            Sum := Max(Sum,1.0) ;
+
+            if FHistogramCumulative and FHistogramPercentage then YScale := 100.0/Sum
+            else if FHistogramCumulative then YScale := HistogramSum/Sum
+            else if FHistogramPercentage then YScale := 100.0/HistogramSum
+            else YScale := 1.0 ;
+
+            // Create % or cumulative scaled y value for plotting
+            y := 0.0 ;
+            for i := 0 to FLines[L].NumPoints-1 do
+                begin
+                if FHistogramCumulative then y := y + pXYArray(FLines[L].XYBuf)[i].y*YScale
+                                        else y := pXYArray(FLines[L].XYBuf)[i].y*YScale ;
+                pXYArray(FLines[L].XYBuf)[i].yPlot := y ;
+                end;
+
+
+            if FLines[L].MarkerStyle <> msNone then
+               begin
+               for i := 0 to FLines[L].NumPoints-1 do
+                   begin
+
+                   x := pXYArray(FLines[L].XYBuf)[i].x ;
+                   y := pXYArray(FLines[L].XYBuf)[i].yPlot ;
+
                    if (FXAxis.Lo <= x) and (x <= FXAxis.Hi) and
                       (FYAxis.Lo <= y) and (y <= FYAxis.Hi) then begin
                       xPix := XToCanvasCoord( x ) ;
@@ -1994,16 +1983,16 @@ begin
 
 procedure TXYPlotDisplay.DrawLines(
           Canv : TCanvas  { Canvas on which line is to be drawn (OUT) }
-          ) ;
+           ) ;
 { -------------------
    Draw lines on plot
   -------------------}
 var
    xPix,yPix,i,L : Integer ;
-   x, y : single ;
+   x, y, yScale : single ;
    OutOfRange, LineBreak : Boolean ;
    SavePen : TPen ;
-   pXY : Pointer ;
+   Sum : Single ;
 begin
      { Create objects }
      SavePen := TPen.Create ;
@@ -2016,7 +2005,8 @@ begin
 
         for L := 0 to High(FLines) do
             if  (FLines[L].XYBuf <> Nil)
-            and (FLines[L].LineType = ltLine) then begin
+            and (FLines[L].LineType = ltLine) then
+            begin
 
             { Set line colour }
             if (FOutputToScreen = False) and FPrinterDisableColor then
@@ -2024,22 +2014,49 @@ begin
             else Canv.Pen.Color := FLines[L].Color ;
 
             { Plot line, if it is visible }
-            if FLines[L].LineStyle <> psClear then begin
+            if FLines[L].LineStyle <> psClear then
+               begin
                { Set line style }
                Canv.Pen.Style := FLines[L].LineStyle ;
                LineBreak := True ;
+
+               // Calculate sum total of y values
+               Sum := 0.0 ;
+               for i := 0 to FLines[L].NumPoints-1 do
+                   begin
+                   Sum := Sum + pXYArray(FLines[L].XYBuf)[i].y ;
+                  end ;
+               Sum := Max(Sum,1.0) ;
+
+               if FHistogramCumulative and FHistogramPercentage then YScale := 100.0/Sum
+               else if FHistogramCumulative then YScale := HistogramSum/Sum
+               else if FHistogramPercentage then YScale := 100.0/HistogramSum
+               else YScale := 1.0 ;
+
+               // Create % or cumulative scaled y value for plotting
+               y := 0.0 ;
+               for i := 0 to FLines[L].NumPoints-1 do
+                   begin
+                   if FHistogramCumulative then y := y + pXYArray(FLines[L].XYBuf)[i].y*YScale
+                                           else y := pXYArray(FLines[L].XYBuf)[i].y*YScale ;
+                   pXYArray(FLines[L].XYBuf)[i].yPlot := y ;
+                   end;
+
                { Plot line }
-               for i := 0 to FLines[L].NumPoints-1 do begin
+               for i := 0 to FLines[L].NumPoints-1 do
+                   begin
+
                    { Get point from buffer }
-                   pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(TXY)))  ;
-                   x := TXYPointer(pXY)^.x ;
-                   y := TXYPointer(pXY)^.y ;
+                   x := pXYArray(FLines[L].XYBuf)[i].x ;
+                   y := pXYArray(FLines[L].XYBuf)[i].yPlot ;
+
                    { Check that point is on plot }
                    if (x < FXAxis.Lo ) or (x > FXAxis.Hi) or
                       (y < FYAxis.Lo ) or (y > FYAxis.Hi) then OutOfRange := True
                                                           else OutOfRange := False ;
                    { Plot point if within axes range }
-                   if not OutOfRange then begin
+                   if not OutOfRange then
+                      begin
                       xPix := XToCanvasCoord( x ) ;
                       yPix := YToCanvasCoord( y ) ;
                       if LineBreak then Canv.MoveTo( xPix, yPix ) ;
@@ -2060,35 +2077,33 @@ begin
 
 
 procedure TXYPlotDisplay.DrawHistograms(
-          Canv : TCanvas  { Canvas on which line is to be drawn (OUT) }
-          ) ;
+         Canv : TCanvas  { Canvas on which line is to be drawn (OUT) }
+          )  ;
 { ----------------------------------
    Draw histogram bars lines on plot
   ----------------------------------}
 var
    xPixLo,xPixHi,yPix,yPix0, i,L : Integer ;
-   BinLo,BinHi,BinY,YScale,Sum : single ;
+   BinLo,BinHi,BinY,y,yScale : single ;
    SavePen : TPen ;
    SaveBrush : TBrush ;
-   pXY : Pointer ;
    FirstBin, OffYAxis : boolean ;
 begin
      { Create objects }
      SavePen := TPen.Create ;
      SaveBrush := TBrush.Create ;
 
-        { Save current pen/brush settings }
-        SavePen.Assign(Canv.Pen) ;
-        SaveBrush.Assign(Canv.Brush) ;
+     { Save current pen/brush settings }
+     SavePen.Assign(Canv.Pen) ;
+     SaveBrush.Assign(Canv.Brush) ;
 
-        for L := 0 to High(FLines) do
-            if  (FLines[L].XYBuf <> Nil)
-            and (FLines[L].LineType = ltHistogram) then begin
+     for L := 0 to High(FLines) do
+        if  (FLines[L].XYBuf <> Nil) and (FLines[L].LineType = ltHistogram) then
+            begin
 
             { Set bin fill style }
-            if (FOutputToScreen = False) and FPrinterDisableColor then
-               Canv.Brush.Color := clBlack
-            else Canv.Brush.Color := FHistogramFillColor ;
+            if (FOutputToScreen = False) and FPrinterDisableColor then Canv.Brush.Color := clBlack
+                                                                  else Canv.Brush.Color := FHistogramFillColor ;
 
             Canv.Brush.Color := FHistogramFillColor ;
             Canv.Brush.Style := FHistogramFillStyle ;
@@ -2100,30 +2115,37 @@ begin
             if FYAxis.Law = axLog then yPix0 := FBottom
                                   else yPix0 := YToCanvasCoord( 0.0 ) ;
 
-            { If a percentage histogram is required,
-              calculate scaling factor to convert to % }
-            if FHistogramPercentage then begin
-               Sum := 0.0 ;
-               for i := 0 to FLines[L].NumPoints-1 do begin
-                   pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(THist)))  ;
-                   Sum := Sum + THistPointer(pXY)^.y ;
-                   end ;
-               YScale := 100.0 / Sum ;
-               end
-            else YScale := 1.0 ;
+            // Calculate total histogram bin count
+            HistogramSum := 0.0 ;
+            for i := 0 to FLines[L].NumPoints-1 do
+                begin
+                HistogramSum := HistogramSum + pHistArray(FLines[L].XYBuf)[i].y ;
+                end ;
+            HistogramSum := Max(HistogramSum,1.0) ;
+
+            // Scale bin Y to count or % total
+            if FHistogramPercentage then YScale := 100.0 / HistogramSum
+                                    else YScale := 1.0 ;
+
+            y := 0.0 ;
+            for i := 0 to FLines[L].NumPoints-1 do
+                begin
+                pHistArray(FLines[L].XYBuf)[i].yPlot := y ;
+                if FHistogramCumulative then y := y + pHistArray(FLines[L].XYBuf)[i].y*YScale
+                                        else y :=pHistArray(FLines[L].XYBuf)[i].y*YScale ;
+                pHistArray(FLines[L].XYBuf)[i].yPlot := y ;
+                end;
 
             FirstBin := True ;
-            BinY := 0.0 ;
-            for i := 0 to FLines[L].NumPoints-1 do begin
+            for i := 0 to FLines[L].NumPoints-1 do
+                begin
 
-                pXY := Pointer( NativeInt(FLines[L].XYBuf) + (i*SizeOf(THist)))  ;
-                BinLo := THistPointer(pXY)^.Lo ;
-                BinHi := THistPointer(pXY)^.Hi ;
+                BinLo := pHistArray(FLines[L].XYBuf)[i].Lo ;
+                BinHi := pHistArray(FLines[L].XYBuf)[i].Hi ;
+                BinY := pHistArray(FLines[L].XYBuf)[i].yPlot ;
 
-                if FHistogramCumulative then BinY := BinY + THistPointer(pXY)^.y*YScale
-                                        else BinY :=THistPointer(pXY)^.y*YScale ;
-
-                if (BinLo >= FXAxis.Lo) and (BinHi <= FXAxis.Hi) then begin
+                if (BinLo >= FXAxis.Lo) and (BinHi <= FXAxis.Hi) then
+                   begin
 
                    { Keep bin Y value to limits of plot, but determine
                      whether it has gone off scale }
@@ -2159,14 +2181,12 @@ begin
                    if OffYAxis then Canv.MoveTo( xPixHi,yPix )
                                else Canv.LineTo( xPixHi,yPix ) ;
 
-                   { Plot right hand edge of bin if all edges of bin are to
-                     be displayed }
-                   if FHistogramFullBorders then Canv.LineTo( xPixHi,yPix0 ) ;
+                   { Plot right hand edge of bin if all edges of bin are to be displayed }
+                   if FHistogramFullBorders or (i = FLines[L].NumPoints-1) then
+                      Canv.LineTo( xPixHi,yPix0 ) ;
+
                    end ;
                 end ;
-
-            { Make sure right hand edge of last bin is drawn }
-            if (BinHi <= FXAxis.Hi) then Canv.LineTo( xPixHi,yPix0 ) ;
 
             end ;
 
@@ -2174,12 +2194,11 @@ begin
         Canv.Pen.Assign(SavePen) ;
         Canv.Brush.Assign(SaveBrush) ;
 
-            { Dispose of objects }
-            SavePen.Free ;
-            SaveBrush.Free ;
-            end ;
+        { Dispose of objects }
+        SavePen.Free ;
+        SaveBrush.Free ;
 
-
+        end ;
 
 
 procedure TXYPlotDisplay.Print ;
@@ -2201,12 +2220,12 @@ begin
      Printer.BeginDoc ;
      Cursor := crHourglass ;
 
+     Printer.Canvas.Pen.Color := clBlack ;
+     Printer.Canvas.Font.Name := FPrinterFontName ;
+     Printer.Canvas.font.size := FPrinterFontSize ;
+     KeepLineWidth := FLineWidth ;
+     FLineWidth := PrinterPointsToPixels(FPrinterLineWidth) ;
 
-        Printer.Canvas.Pen.Color := clBlack ;
-        Printer.Canvas.Font.Name := FPrinterFontName ;
-        Printer.Canvas.font.size := FPrinterFontSize ;
-        KeepLineWidth := FLineWidth ;
-        FLineWidth := PrinterPointsToPixels(FPrinterLineWidth) ;
      try
         { Set bounding rectangle of plot on printed page }
         FLeft := FPrinterLeftMargin ;
@@ -2236,6 +2255,7 @@ begin
         end ;
 
      end ;
+
 
 procedure TXYPlotDisplay.CodedTextOut(
           Canvas : TCanvas ;
@@ -2387,8 +2407,6 @@ procedure TXYPlotDisplay.AddPrinterTitleLine(
 begin
      FTitle.Add( Line ) ;
      end ;
-
-
 
 
 function TXYPlotDisplay.XToCanvasCoord(
@@ -2736,14 +2754,14 @@ begin
                { Zero value }
                Mantissa.Add('0') ;
                Exponent.Add('') ;
-               PowerofTen := False ;
+//               PowerofTen := False ;
                end
             Else If (Abs(TickValue) <= 99999. )
                And  (Abs(TickValue) >= 0.01 )
                And  (PowerofTen = False) Then begin
                { Print values }
                Mantissa.Add(TidyNumber(Format('%10.5g',[TickValue]))) ;
-               PowerofTen := False ;
+ //              PowerofTen := False ;
                Exponent.Add( '' ) ;
                end
             Else begin
@@ -2765,7 +2783,7 @@ begin
                  TempString := Copy(TickString, i, Length(TickString)-i+1 ) ;
                  TempString := IntToStr( ExtractInt( TempString ) );
                  Exponent.Add( TempString ) ;
-                 PowerofTen := True ;
+  //               PowerofTen := True ;
                  end ;
               end ;
             end
