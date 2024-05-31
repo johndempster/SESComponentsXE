@@ -61,6 +61,8 @@ unit IDRFile;
 // 23.09.22 JD IDR and EDR header texts now read/written using StringLists
 // 04.10.22 JD ROIs now saved in <filename>.roi.csv file along with <filename>.idr file
 //             Limit of 100 ROIs stored in IDR file header, 100-1000 stored in <filename>.roi.csv
+// 30.05.24 JD IDRGetHeader() User now warned when a file with corrupt header data loaded. Bad values substituted
+//             with default values to allow file to load. IDRSaveHeader() attempts to avoid saving bad data
 
 interface
 
@@ -287,6 +289,8 @@ TChannel = record
 
     procedure GetIDRHeader ;
     procedure SaveIDRHeader ;
+    procedure UpdateIDRFileHeaderText( NewText : string ) ;
+
     procedure SaveROIsToCSVFile(
               FileName : String
               ) ;
@@ -421,6 +425,7 @@ TChannel = record
     procedure SetNumFrameTypes( Value : Integer ) ;
 
     function GetFileHeader : string ;
+    procedure SetFileHeader( NewText : string ) ;
 
     function GetMaxROIInUse : Integer ;
 
@@ -635,7 +640,7 @@ TChannel = record
 
     Property FrameTypeCycleLength : Integer read FFrameTypeCycleLength ;
 
-    Property FileHeader : string read GetFileHeader ;
+    Property FileHeader : string read GetFileHeader write SetFileHeader ;
     Property AsyncWriteInProgress : Boolean read GetAsyncWriteInProgress ;
 
   end;
@@ -1240,16 +1245,40 @@ begin
 
      // Frame parameters
      FFrameInterval := GetKeyValue( Header, 'FI', FFrameInterval ) ;
-
      FFrameWidth := GetKeyValue( Header, 'FW', FFrameWidth ) ;
-
      FFrameHeight := GetKeyValue( Header, 'FH', FFrameHeight ) ;
 
+     // If file header data appears to be corrupted warn user
+     if (FNumIDRHeaderBytes = 0) or
+        (FFrameWidth = 0) or (FFrameHeight = 0) or
+        (FFrameInterval = 0.0) then
+        begin
+        ShowMessage( FFileName + ' : Invalid header settings. File may be damaged!' );
+        end;
+
+     // Ensure valid values
+     if FrameWidth = 0 then FrameWidth := 1024 ;
+     if FrameHeight = 0 then FrameHeight := 1024 ;
+     if FFrameInterval = 0.0 then FFrameInterval := 1.0 ;
+
      FNumBytesPerPixel := 2 ;
-     FNumBytesPerPixel  := GetKeyValue( Header, 'NBPP', FNumBytesPerPixel ) ;
+     FNumBytesPerPixel  := Max(GetKeyValue( Header, 'NBPP', FNumBytesPerPixel ),1) ;
 
      FNumFrames := GetKeyValue( Header, 'NF', FNumFrames ) ;
 
+     // If no. of frames is zero, try to determine number of frames from file size
+     if FNumFrames <= 0 then
+        begin
+        NumBytesInFile := IDRGetFileSize ;
+        if NumBytesInFile > cNumIDRHeaderBytes then
+           begin
+           if FNumIDRHeaderBytes = 0 then FNumIDRHeaderBytes := cNumIDRHeaderBytes ;
+           NumBytesPerFrame := FFrameHeight*FFrameWidth*FNumBytesPerPixel ;
+           NumFrameActual := Integer( (NumBytesInFile - Int64(FNumIDRHeaderBytes))
+                                       div Int64(NumBytesPerFrame) ) ;
+           FNumFrames := NumFrameActual ;
+           end ;
+        end;
 
      FNumZSections := GetKeyValue(Header, 'ZNUMS',FNumZSections) ;
      FNumZSections := Max(FNumZSections,1) ;
@@ -1280,7 +1309,7 @@ begin
      FLSSubtractBackground := GetKeyValue( Header, 'LSTCBKSUB',FLSSubtractBackground) ;
 
      FGreyMax := GetKeyValue( Header, 'GRMAX', FGreyMax ) ;
-     if FGreyMax = 0 then FGreyMax := 4095 ;
+     if FGreyMax < 255 then FGreyMax := 32767 ;
 
      i := 1 ;
      FPixelDepth := 0 ;
@@ -1290,9 +1319,12 @@ begin
         end ;
 
      FPixelDepth := GetKeyValue( Header, 'PIXDEP', FPixelDepth ) ;
+     if FPixelDepth < 8 then FPixelDepth := 16 ;
 
      FIntensityScale := 1.0 ;
      FIntensityScale := GetKeyValue( Header, 'ISCALE', FIntensityScale ) ;
+     if FIntensityScale = 0.0 then FIntensityScale := 1.0 ;
+
      FIntensityOffset := 0.0 ;
      FIntensityOffset := GetKeyValue( Header, 'IOFFSET', FIntensityOffset ) ;
 
@@ -1318,7 +1350,8 @@ begin
          FFrameTypeDivideFactor[i] := GetKeyValue( Header, format('FTYPDF%d',[i]),FFrameTypeDivideFactor[i] ) ;
          end ;
 
-     if NumFrameTypes <= 0 then begin
+     if NumFrameTypes <= 0 then
+        begin
         FNumFrameTypes := 1 ;
         FFrameTypes[0] := 'Unknown' ;
         end ;
@@ -1341,6 +1374,8 @@ begin
      FADCNumScansInFile := GetKeyValue( Header, 'ADCNSC', FADCNumScansInFile ) ;
 
      FADCMaxValue := GetKeyValue( Header, 'ADCMAX', FADCMaxValue ) ;
+     if FADCMaxValue = 0 then FADCMaxValue := 32767 ;
+
      FADCSCanInterval := GetKeyValue( Header, 'ADCSI', FADCSCanInterval ) ;
 
      if FADCSCanInterval = 0.0 then
@@ -1483,6 +1518,14 @@ begin
      if FIDRFileHandle = INVALID_HANDLE_VALUE then Exit ;
 
      if not FWriteEnabled then SetWriteEnabled(True) ;
+
+     // If file header data appears to be corrupted (all zero) prevent save
+
+     if (FNumIDRHeaderBytes = 0) or (FFrameWidth = 0) or (FFrameHeight = 0) then
+        begin
+        ShowMessage( FFileName + ' : Invalid header settings. Header not saved!' );
+        Exit ;
+        end;
 
      // Create empty header string list
      Header := TStringList.Create ;
@@ -1643,11 +1686,40 @@ begin
 
      FreeMem( pANSIBuf ) ;
 
-
      // Free file header list
      Header.Free ;
 
      end ;
+
+procedure TIDRFile.UpdateIDRFileHeaderText( NewText : string ) ;
+// -----------------------------------------
+// Update IDR filer header text with NewText
+// -----------------------------------------
+var
+   Header : TStringList ;
+   pANSIBuf : pANSIChar ;
+   i,j,ch : Integer ;
+begin
+
+     // Create empty header string list
+     Header := TStringList.Create ;
+     Header.Text := NewText ;
+
+     // Get ANSIstring copy of header text and write to file
+
+     pANSIBuf := AllocMem( cNumIDRHeaderBytes ) ;
+     for i := 1 to Min(Length(Header.Text),cNumIDRHeaderBytes-1) do
+         begin
+         pAnsiBuf[i-1] := ANSIChar(Header.Text[i]);
+         end;
+
+     if IDRFileWrite( pAnsiBuf, 0, cNumIDRHeaderBytes ) <> cNumIDRHeaderBytes then
+        ShowMessage( FFileName + ' : File header write error!' );
+
+     FreeMem( pANSIBuf ) ;
+     Header.Free
+
+end ;
 
 
 procedure TIDRFile.SaveROIsToCSVFile(
@@ -2549,6 +2621,26 @@ function TIDRFile.GetFileHeader : string ;
 // --------------------
 begin
     Result := IDRFileHeaderText ;
+    end ;
+
+
+procedure TIDRFile.SetFileHeader( NewText : String ) ;
+// --------------------
+// Set file header text
+// --------------------
+begin
+
+    // Enable writing to file
+    SetWriteEnabled( True ) ;
+
+    // Update file header text on currently open IDR file
+    UpdateIDRFileHeaderText(NewText) ;
+
+    // Close and re-open IDR file to read new header file settings
+    // and restore read-only
+    IDRFileClose ;
+    OpenFile( FFileName ) ;
+
     end ;
 
 

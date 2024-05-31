@@ -451,11 +451,13 @@ type
     procedure MouseUp(Button: TMouseButton;Shift: TShiftState;X, Y: Integer ); override ;
     procedure DblClick ; override ;
     procedure Click ; override ;
-    procedure Invalidate ; override ;
+
+
   public
     { Public declarations }
     Constructor Create(AOwner : TComponent) ; override ;
     Destructor Destroy ; override ;
+    procedure Invalidate ; override ;
     procedure ClearHorizontalCursors ;
     function AddHorizontalCursor( iChannel : Integer ;
                                   Color : TColor ;
@@ -2770,6 +2772,7 @@ procedure TScopeDisplay.MouseUp(
 begin
      Inherited MouseUp( Button, Shift, X, Y ) ;
 
+
      FHorCursorActive := false ;
      FVertCursorActive := false ;
 
@@ -2914,7 +2917,6 @@ procedure TScopeDisplay.Click ;
   ----------------------------------------}
 begin
 
-     // Check state of display zoom buttons
      CheckZoomButtons ;
 
      end ;
@@ -3125,11 +3127,12 @@ begin
     VertCursors[FLastVertCursorSelected].Position := Max(FXMin,Min(FXMax,
                         VertCursors[FLastVertCursorSelected].Position + Step ));
 
-     { Notify a change in cursors }
+
+    //  Notify a change in cursors
      if Assigned(OnCursorChange) and
         (not FCursorChangeInProgress) then OnCursorChange(Self) ;
 
-    Invalidate ;
+    Self.Invalidate ;
 
     end ;
 

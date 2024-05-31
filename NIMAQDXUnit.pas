@@ -2814,6 +2814,8 @@ begin
 
     // Copy all new frames to output buffer
 
+//    outputdebugstring(pchar(format('Session.FrameCounter: ',[Session.FrameCounter])));
+
     NumCopied := 0 ;
     while (LatestFrameTransferred > Session.FrameCounter) and
           (NumCopied < Session.NumFramesInBuffer) do begin
