@@ -133,6 +133,8 @@ unit ScopeDisplay;
   03.07.19 ... JD ?yd1 and ?yd2 1 and 2 fixed decimal place cursor readout format added
   25.05.21 ... JD SaveToFile public procedure added
   17.01.22 ... JD System.IO.TPath function now used to get temporary file name
+  16.06.24 ... JD .CopyDataToClipboard. Skewing of compressed channels with unchanging Min/Max signal levels fixed
+                   Two points always saved even though Min=Max. Uncompressed channels saved as single data point per value.
   }
 
 interface
@@ -3355,32 +3357,38 @@ begin
          YMin := 1E30 ;
          YMax := -YMin ;
 
-         for iPoint := Max(FXMin,0) to Min(FXMax,FNumPoints-1) do begin
+         for iPoint := Max(FXMin,0) to Min(FXMax,FNumPoints-1) do
+             begin
 
              // Get data point
              y := GetSample( FBuf, jPoint, FNumBytesPerSample, FFloatingPointSamples ) ;
 
              // Update min/max limits
-             if y < Ymin then begin
+             if y < Ymin then
+                begin
                 iYMin := iPoint ;
                 YMin := y ;
                 end;
-             if y > Ymax then begin
+             if y > Ymax then
+                begin
                 iYMax := iPoint ;
                 YMax := y ;
                 end;
 
              // Add to compressed data table
              Inc(iBlock) ;
-             if iBlock >= NumPointsPerBlock then begin
-                if iYMin = iYMax then begin
+             if iBlock >= NumPointsPerBlock then
+                begin
+                if NumPointsPerBlock = 1 then
+                   begin
                    CompBuf^[RowStart] := (iYMin-FXMin) ;
                    InUse[RowStart] := 1 ;
                    CompBuf^[RowStart + ColOffset] := (YMin - Channel[ch].ADCZero)*Channel[ch].ADCScale ;
                    InUse[RowStart + ColOffset] := 1 ;
                    RowStart := RowStart + NumColumns ;
                    end
-                else if iYMin < iYMax then begin
+                else if iYMin < iYMax then
+                   begin
                    CompBuf^[RowStart] := (iYMin-FXMin) ;
                    InUse[RowStart] := 1 ;
                    CompBuf^[RowStart + ColOffset] := (YMin - Channel[ch].ADCZero)*Channel[ch].ADCScale ;
@@ -3392,7 +3400,8 @@ begin
                    InUse[RowStart + ColOffset] := 1 ;
                    RowStart := RowStart + NumColumns ;
                    end
-                else begin
+                else
+                   begin
                    CompBuf^[RowStart] := (iYMax-FXMin) ;
                    InUse[RowStart] := 1 ;
                    CompBuf^[RowStart + ColOffset] := (YMax - Channel[ch].ADCZero)*Channel[ch].ADCScale ;

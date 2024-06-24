@@ -33,6 +33,7 @@ unit XYPlotDisplay;
  31.05.21 ...
  17.05.23 ... Fitted functions and cursoe readout now scaled correctly on cumulative and % total histograms
               XY and Histogram arrays now accessed using pXYArray and pHistArray
+ 16.06.24 ... Space now allocated correctly for Y axis label. No longer overlaps tick numbers.
  }
 
 interface
@@ -1619,12 +1620,12 @@ begin
            FLeft := FLeft + Canv.TextHeight( FYAxis.Lab ) ;
            end ;
         YLabelYPos := FTop ;
-        YLabelXPos := FLeft ;
 
         { Create Y axis tick list }
         CreateTickList( YTickList, Canv, FYAxis ) ;
         { Shift left margin to leave space for Y axis tick values }
-        FLeft := FLeft + YTickList.MaxWidth + Canv.TextWidth('X')*2 ;
+        FLeft := FLeft + YTickList.MaxWidth + (Canv.TextHeight('X'{FYAxis.Lab})*4) div 3 ; ;
+        YLabelXPos := FLeft - YTickList.MaxWidth - (Canv.TextHeight('X'{FYAxis.Lab})*4) div 3 ;
 
         { Create X axis tick list }
         CreateTickList( XTickList, Canv, FXAxis ) ;
@@ -1634,9 +1635,7 @@ begin
         FBottom := FBottom - 2*Canv.TextHeight(FxAxis.Lab) ;
 
         xPix := ( FLeft + FRight - Canv.TextWidth(FXAxis.Lab) ) div 2 ;
-        Canv.TextOut( xPix,
-                      FBottom
-                      + (Canv.TextHeight(FxAxis.Lab)), FXAxis.Lab ) ;
+        Canv.TextOut( xPix,FBottom + (Canv.TextHeight(FxAxis.Lab)), FXAxis.Lab ) ;
 
         { Shift bottom margin to leave space for X axis tick values }
         FBottom := FBottom - XTickList.MaxHeight - (Canv.TextHeight('X') div 2) ;
@@ -1649,15 +1648,13 @@ begin
                               Else Temp := FloatLimitTo( 0.0, FYAxis.Lo, FYAxis.Hi ) ;
 
         FXAxis.Position := YToCanvasCoord( Temp ) ;
-        Canv.polyline( [ Point( FLeft, FXAxis.Position ),
-                         Point( FRight,FXAxis.Position ) ] ) ;
+        Canv.polyline( [ Point( FLeft, FXAxis.Position ),Point( FRight,FXAxis.Position ) ] ) ;
 
         { Draw Y axis }
         If FxAxis.Law <> axLinear Then Temp := FXAxis.Lo
                                   Else Temp := FloatLimitTo( 0.0, FXAxis.Lo, FXAxis.Hi ) ;
         FYAxis.Position := XToCanvasCoord( Temp ) ;
-        Canv.polyline( [point(FYAxis.Position, FTop),
-                        point(FYAxis.Position, FBottom)]) ;
+        Canv.polyline( [point(FYAxis.Position, FTop),point(FYAxis.Position, FBottom)]) ;
 
         { Draw calibration ticks on X and Y Axes }
         DrawTicks( XTickList, Canv, FXAxis, FXAxis.Position, 'X') ;
@@ -1670,8 +1667,7 @@ begin
            end
         else begin
            { Plot label along Y axis, rotated 90 degrees }
-           yPix := ((FBottom - FTop) div 2) + FTop
-                   + Canv.TextWidth( FYAxis.Lab ) div 2 ;
+           yPix := ((FBottom - FTop) div 2) + FTop + Canv.TextWidth( FYAxis.Lab ) div 2 ;
            TextOutRotated( Canv, YLabelXPos, yPix, FYAxis.Lab, 90 ) ;
            end ;
      finally
@@ -2638,10 +2634,12 @@ procedure TXYPlotDisplay.CalculateTicksWidth(
 var
    i, TickWidth : Integer ;
 begin
-     with TickList do begin
+     with TickList do
+          begin
           MaxWidth := 0 ;
-          for i := 0 to NumTicks-1 do begin
-              TickWidth := Canv.TextWidth(Mantissa[i]) + Canv.TextWidth(Exponent[i]) ;
+          for i := 0 to NumTicks-1 do
+              begin
+              TickWidth := Canv.TextWidth(Mantissa[i]) + Canv.TextWidth(Exponent[i] + 'XX') ;
               if TickWidth > MaxWidth then MaxWidth := TickWidth ;
               end ;
           end ;
@@ -2680,7 +2678,6 @@ procedure TXYPlotDisplay.DrawTicks(
 { ----------------------------------------------------------------
   Draw ticks contained in TickList object on selected axis of plot
   ----------------------------------------------------------------}
-
 var
    TickSize,i,xPixLabel,yPixLabel,xPix,yPix : Integer ;
 begin
@@ -2705,8 +2702,7 @@ begin
                 Canv.polyline( [ Point(xPix,yPix), Point(xPix-TickSize,yPix)]) ;
                 { Calculate starting position of label }
                 xPixLabel := xPix - TickSize
-                             - Canv.TextWidth(Mantissa.Strings[i]
-                             + Exponent.Strings[i] + ' ') ;
+                             - Canv.TextWidth(Mantissa.Strings[i] + Exponent.Strings[i] + ' ') ;
                 yPixLabel := yPix - (Canv.TextHeight(Mantissa.Strings[i]) div 2);
                 end ;
 

@@ -2561,24 +2561,30 @@ begin
 
            Exponential : begin
                   Guess[0] := Data.y[0] - Data.y[iEnd] ;
+                  if Guess[0] = 0.0 then Guess[0] := 1.0 ;
                   Guess[1] := (Data.x[iEnd] - Data.x[0]) / 4.0 ;
                   Guess[2] := Data.y[iEnd] ;
                   end ;
 
            Exponential2 : begin
-                  Guess[0] := Data.y[0] - Data.y[iEnd]*0.5 ;
+                  Guess[0] := (Data.y[0] - Data.y[iEnd])*0.5 ;
+                  if Guess[0] = 0.0 then Guess[0] := 1.0 ;
                   Guess[1] := (Data.x[iEnd] - Data.x[0]) / 20.0 ;
-                  Guess[2] := Data.y[0] - Data.y[iEnd]*0.5 ;
+                  Guess[2] := (Data.y[0] - Data.y[iEnd])*0.5 ;
+                  if Guess[2] = 0.0 then Guess[0] := 1.0 ;
                   Guess[3] := (Data.x[iEnd] - Data.x[0]) / 2.0 ;
                   Guess[4] := Data.y[iEnd] ;
                   end ;
 
            Exponential3 : begin
-                  Guess[0] := Data.y[0] - Data.y[iEnd]*0.33 ;
+                  Guess[0] := (Data.y[0] - Data.y[iEnd])*0.33 ;
+                  if Guess[0] = 0.0 then Guess[0] := 1.0 ;
                   Guess[1] := (Data.x[iEnd] - Data.x[0]) / 20.0 ;
                   Guess[2] := Data.y[0] - Data.y[iEnd]*0.33 ;
+                  if Guess[2] = 0.0 then Guess[0] := 1.0 ;
                   Guess[3] := (Data.x[iEnd] - Data.x[0]) / 5.0 ;
-                  Guess[4] := Data.y[0] - Data.y[iEnd]*0.33 ;
+                  Guess[4] := (Data.y[0] - Data.y[iEnd])*0.33 ;
+                  if Guess[4] = 0.0 then Guess[0] := 1.0 ;
                   Guess[5] := (Data.x[iEnd] - Data.x[0]) / 1.0 ;
                   Guess[6] := Data.y[iEnd] ;
                   end ;
@@ -2593,6 +2599,7 @@ begin
                      Guess[0] := yMin ;
                      Guess[1] := XAtYmin ;
                      end ;
+                  if Guess[0] = 0.0 then Guess[0] := 1.0 ;
                   { Set initial latency to time of signal peak }
                   { Rising time constant }
                   Guess[2] := (Data.x[1] - Data.x[0])*5.0 ;
@@ -2613,7 +2620,6 @@ begin
                      Guess[4] := yMin*0.5 ;
                      Guess[0] := XAtYmin ;
                      end ;
-
                   { Set initial latency to time of signal peak }
                   { Rising time constant }
                   Guess[1] := (Data.x[1] - Data.x[0])*2.0 ;
@@ -2627,6 +2633,7 @@ begin
            HHK : begin
                   if Abs(yMax) > Abs(yMin) then Guess[0] := yMax
                                            else Guess[0] := yMin ;
+                  if Guess[0] = 0.0 then Guess[0] := 1.0 ;
                   Guess[1] := (Data.x[iEnd] - Data.x[0]) / 6. ;
                   Guess[2] := 2. ;
                   end ;
@@ -2634,6 +2641,7 @@ begin
            HHNa : begin
                   if Abs(yMax) > Abs(yMin) then Guess[0] := yMax
                                            else Guess[0] := yMin ;
+                  if Guess[0] = 0.0 then Guess[0] := 1.0 ;
                   Guess[1] := (Data.x[iEnd] - Data.x[0]) / 30. ;
                   Guess[2] := 3. ;
                   Guess[3] := Abs( Data.y[iEnd]/Guess[0] ) ;
