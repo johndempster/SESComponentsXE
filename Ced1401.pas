@@ -85,30 +85,26 @@ unit Ced1401;
                Digital waveforms now work in WinEDR as well as WinWCP
  08.12.21 ...  MinDacInterval of Power 1401s reduced from 1E-4s to 1E-5s to allow higher frequency sine wave stimuli
                to be produced/
+ 25.08.21 ...  DIGTIMSlicesBufLimit increased to 5000 (previously 500) for Micro & Power 1401's
 }
 interface
-
 uses WinTypes,Dialogs, SysUtils, WinProcs, Classes,use1401, math, strutils, System.UITypes ;
-
 const
      MaxADCChannel = 15 ;
-     DIGTIMSlicesBufLimit = 500 ;
+     DIGTIMSlicesBufLimit = 5000 ;
      MaxPointsinBlock = 32000 ;
      MaxBytesinBlock = MaxPointsinBlock*2 ;
-
      Event0 = 1 ;
      Event1 = 2 ;
      Event2 = 4 ; // Digital trigger
      Event3 = 8 ; // D/A trigger
      Event4 = 16 ;// A/D trigger
 
-
   procedure CED_LoadLibrary  ;
   procedure CED_InitialiseBoard ;
   procedure CED_ConfigureHardware( Resolution : Integer ;
                                    EmptyFlagIn : Integer ;
                                    DACVoltageRange : Single ) ;
-
   procedure SendCommand(
             const CommandString : string
             ) ;
@@ -123,12 +119,10 @@ const
             CircularBuffer : Boolean ;
             ADCChannelInputMap : Array of Integer
             ) : Boolean ;
-
 procedure CED_GetADCSamples(
           var ADCBuf : Array of SmallInt  ;
           var OutPointer : Integer
           ) ;
-
   function CED_StopADC : Boolean ;
   function CED_MemoryToDAC(
             var DACBufIn : Array of SmallInt ;
@@ -139,11 +133,8 @@ procedure CED_GetADCSamples(
             ExternalTrigger : Boolean ;
             DACRepeatedWaveformIn : Boolean
             ) : Boolean ;
-
   procedure CED_SetDAC2( Volts : Single ) ;
-
   function CED_StopDAC : Boolean ;
-
   function CED_GetLabInterfaceInfo(
           var Model : string ; { Laboratory interface model name/number }
           var ADCMaxChannels : Integer ;
@@ -159,26 +150,20 @@ procedure CED_GetADCSamples(
           var DACMaxVolts : Single ; { Positive limit of bipolar D/A voltage range }
           var DACMinUpdateInterval : Double {Min. D/A update interval }
           ) : Boolean ;
-
 procedure CED_CheckSamplingInterval(
           var dt : Double ;            // Sampling Interval (returns valid value)
           var PreScale,Ticks : Word ;  // Returns clock prescale and ticks
           ClockSource : string         // H=hardware clock C=standard 1MHz
           ) ;
-
   procedure CED_CheckError(
             Err : Integer
             ) ;
-
   procedure CED_WriteToDigitalOutPutPort(
             Pattern : Integer
             ) ;
-
   function CED_ReadDigitalInPutPort : Integer ;
-
   procedure CED_ArmStimulusTriggerInput ;
   function CED_StimulusTriggerInputState : Boolean ;
-
   procedure CED_MemoryToDigitalPort(
             var DigBuf : Array of SmallInt ;
             nValues : Integer ;
@@ -203,21 +188,14 @@ procedure CED_CheckSamplingInterval(
   procedure CED_CloseLaboratoryInterface ;
   procedure CED_GetError ;
   function CED_GetType : Integer ;
-
   procedure CED_WriteToDACBuffer ;
-
   function ExtractInt ( CBuf : string ) : longint ;
   procedure CED_TestDIGTIM ;
-
 implementation
-
 uses SESLabIO ;
-
 type
-
     TADCBuf = Array[0..MaxADCSamples-1] of SmallInt ;
     PADCBuf = ^TADCBuf ;
-
     TU14TypeOf1401 = FUNCTION (hand:SmallInt):SmallInt; stdcall;
     TU14DriverVersion = FUNCTION : LongInt; stdcall;
     TU14DriverName = FUNCTION( cBuf : PANSIChar; BufSize: Word ) : SmallInt ; stdcall;
@@ -238,7 +216,6 @@ type
     TU14GetUserMemorySize = function(hand:SmallInt; var MemoryAvailable : DWORD ) : SmallInt; stdcall;
     TU14GetString = function(hand:SmallInt; Reply : pANSIChar ; Size :WORD  ) : SmallInt; stdcall;
 
-
 var
    { Variables for dynamic calls to USE1401.DLL }
    U14TypeOf1401 : TU14TypeOf1401 ;
@@ -255,13 +232,10 @@ var
    U14KillIO1401 : TU14KillIO1401 ;
    U14GetUserMemorySize : TU14GetUserMemorySize ;
    U14GetString : TU14GetString ;
-
    LibraryHnd : THandle ; { DLL library handle }
    LibraryLoaded : boolean ;      { True if CED 1401 procedures loaded }
-
    Device : SmallInt ;
    DeviceInitialised : boolean ; { True if hardware has been initialised }
-
    FADCVoltageRangeMax : single ;  { Max. positive A/D input voltage range}
    FDACVoltageRangeMax : single ;
    DACScale : Integer ;           { D/A value scaling factor (16/12 conversion) }
@@ -272,10 +246,8 @@ var
    ADC1401BufferSize : Integer ;
    ADC1401BufferNumBytes : Integer ;
    //FDACBufferLimit : Integer ;
-
    CEDVRange : Single ;
    ClockPeriod : Double ; // Clock period used for timing A/D and D/A
-
    StartOf1401ADCBuffer : DWORD ;
    EndOf1401ADCBuffer : DWORD ;
    StartOf1401Digbuffer : DWORD ;
@@ -294,26 +266,22 @@ var
    DACBuf : PADCBuf ;
    EndofADCBuf : Integer ;
    ADCBufPointer : Integer ;
-
    //EndofDACBuf : Integer ;
    DACNumChannels : Integer ;
    DACBufPointer : Integer ;
    DACBufNumPoints : Integer ;
    DAC1401BufferSize : Integer ;
    DACNumPointsIn1401Buf : Integer ;
-
    DACNumPointsInBlock : Integer ;
    DACNumBytesInBlock : Integer ;
    DACNumBlocksIn1401Buf : Integer ;
    DACNextBlockToWrite : Integer ;
    DAC1401BlockDone : Integer ;
-
    DACStartOf1401BufLo : DWORD ;
    DACRepeatedWaveform : Boolean ;
    EmptyFlag : Integer ;
    DIGTIMStartEvent : Integer ;
    MaxDIGTIMSlices : Integer ;
-
 procedure CED_LoadLibrary  ;
 { ----------------------------------
   Load USE1401.DLL library into memory
@@ -324,7 +292,6 @@ var
 begin
      { Load library }
      GetSystemDirectory( Path, High(Path) ) ;
-
      // Get DLL from program folder (firat choice)
      LibraryPath := ExtractFilePath(ParamStr(0)) + 'USE1432.DLL' ;
      if not FileExists(LibraryPath) then begin
@@ -337,10 +304,8 @@ begin
            Exit ;
            end ;
         end ;
-
      // Load library
      LibraryHnd := LoadLibrary( PChar(LibraryPath) );
-
      { Get addresses of procedures in USE1432.DLL }
      if LibraryHnd <> 0 then begin
         @U14TypeOf1401 := GetProcAddress(LibraryHnd,'U14TypeOf1401') ;
@@ -357,7 +322,6 @@ begin
         @U14Close1401 := GetProcAddress(LibraryHnd,'U14Close1401') ;
         @U14LdCmd := GetProcAddress(LibraryHnd,'U14LdCmd') ;
         if @U14LdCmd = Nil then CED_ReportFailure('U14LdCmd') ;
-
         if @U14Close1401 = Nil then CED_ReportFailure('U14Close1401') ;
         @U14LongsFrom1401 := GetProcAddress(LibraryHnd,'U14LongsFrom1401') ;
         if @U14LongsFrom1401 = Nil then CED_ReportFailure('U14LongsFrom1401') ;
@@ -374,7 +338,6 @@ begin
         @U14GetString := GetProcAddress(LibraryHnd,'U14GetString') ;
         if @U14GetUserMemorySize = Nil then CED_ReportFailure('U14GetString') ;
 
-
         LibraryLoaded := True ;
         end
      else begin
@@ -382,14 +345,12 @@ begin
           end ;
      end ;
 
-
 procedure CED_ReportFailure(
           const ProcName : string
           ) ;
 begin
      ShowMessage('USE1432.DLL- ' + ProcName + ' not found.') ;
      end ;
-
 
 procedure CED_ConfigureHardware(
           Resolution : Integer ;   { A/D & D/A converter resolution (bits) }
@@ -409,12 +370,9 @@ begin
         DACScale := 16 ;
         FDACVoltageRangeMax := DACVoltageRange ;
         end ;
-
      CEDVRange := DACVoltageRange ;
-
      EmptyFlag := EmptyFlagIn ;
      end ;
-
 
 function CED_GetLabInterfaceInfo(
           var Model : string ; { Laboratory interface model name/number }
@@ -440,14 +398,10 @@ var
    s : ANSIString ;
    Err : SmallInt ;
 begin
-
      if not DeviceInitialised then CED_InitialiseBoard ;
-
      ADCMEMVersion := '' ;
-
      if DeviceInitialised then
         begin
-
         { Get the 1401 model }
         case U14TypeOf1401( Device ) of
              U14TYPE1401 : begin
@@ -474,7 +428,6 @@ begin
                 MaxDIGTIMSlices := Min(200,DIGTIMSlicesBufLimit) ;
                 ClockPeriod := 2.5E-7 ;
                 end ;
-
              U14TYPEPOWER : begin
                 Model := 'CED Power-1401 ';
                 ADCMaxChannels := 16 ;
@@ -484,10 +437,9 @@ begin
                 DACMinUpdateInterval := 1E-5 ;
                 ADC1401BufferSize := 2*131072 ;
                 DAC1401BufferSize := ADC1401BufferSize ;
-                MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
+                MaxDIGTIMSlices := Min(5000,DIGTIMSlicesBufLimit) ;
                 ClockPeriod := 2.5E-7 ;
                 end ;
-
              U14TYPEUNKNOWN : begin
                 Model := 'CED 1401? ';
                 ADCMaxChannels := 16 ;
@@ -500,7 +452,6 @@ begin
                 MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
                 ClockPeriod := 2.5E-7 ;
                 end ;
-
              U14TYPEMICRO : begin
                 Model := 'CED Micro-1401 ';
                 ADCMaxChannels := 4 ;
@@ -510,10 +461,9 @@ begin
                 DACMinUpdateInterval := 1E-4 ;
                 ADC1401BufferSize := 32768*2 ;
                 DAC1401BufferSize := ADC1401BufferSize ;
-                MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
+                MaxDIGTIMSlices := Min(5000,DIGTIMSlicesBufLimit) ;
                 ClockPeriod := 2.5E-7 ;
                 end ;
-
              U14TYPEMICROMK2 : begin
                 Model := 'CED Micro-1401 Mk2 ';
                 ADCMaxChannels := 4 ;
@@ -523,10 +473,9 @@ begin
                 DACMinUpdateInterval := 1E-4 ;
                 ADC1401BufferSize := 131072 ;
                 DAC1401BufferSize := ADC1401BufferSize ;
-                MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
+                MaxDIGTIMSlices := Min(5000,DIGTIMSlicesBufLimit) ;
                 ClockPeriod := 2.5E-7 ;
                 end ;
-
              U14TYPEMICROMK3 : begin
                 Model := 'CED Micro-1401 Mk3 ';
                 ADCMaxChannels := 4 ;
@@ -536,10 +485,9 @@ begin
                 DACMinUpdateInterval := 1E-5 ;
                 ADC1401BufferSize := 131072 ;
                 DAC1401BufferSize := ADC1401BufferSize ;
-                MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
+                MaxDIGTIMSlices := Min(5000,DIGTIMSlicesBufLimit) ;
                 ClockPeriod := 2.50E-7 ;
                 end ;
-
              U14TYPEPOWERMK2 : begin
                 Model := 'CED Power-1401 Mk2 ';
                 ADCMaxChannels := 16 ;
@@ -549,10 +497,9 @@ begin
                 DACMinUpdateInterval := 1E-5 ;
                 ADC1401BufferSize := 4*131072 ;
                 DAC1401BufferSize := ADC1401BufferSize ;
-                MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
+                MaxDIGTIMSlices := Min(5000,DIGTIMSlicesBufLimit) ;
                 ClockPeriod := 2.5E-7 ;
                 end ;
-
              U14TYPEPOWERMK3 : begin
                 Model := 'CED Power-1401 Mk3 ';
                 ADCMaxChannels := 16 ;
@@ -562,10 +509,9 @@ begin
                 DACMinUpdateInterval := 1E-5 ;
                 ADC1401BufferSize := 4*131072 ;
                 DAC1401BufferSize := ADC1401BufferSize ;
-                MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
+                MaxDIGTIMSlices := Min(5000,DIGTIMSlicesBufLimit) ;
                 ClockPeriod := 2.5E-7 ;
                 end ;
-
              U14TYPEMICROMK4 : begin
                 Model := 'CED Micro-1401 Mk4 ';
                 ADCMaxChannels := 4 ;
@@ -575,9 +521,8 @@ begin
                 DACMinUpdateInterval := 1E-4 ;
                 ADC1401BufferSize := 131072 ;
                 DAC1401BufferSize := ADC1401BufferSize ;
-                MaxDIGTIMSlices := Min(500,DIGTIMSlicesBufLimit) ;
+                MaxDIGTIMSlices := Min(5000,DIGTIMSlicesBufLimit) ;
                 ClockPeriod := 2.50E-7 ;
-
                 // 22.11.21 Determine version of ADCMEM in use
                 // Note. V80.0 ADCMEM,P returns Word pointers rather than Byte pointers
                 SendCommand('CLIST;');
@@ -587,7 +532,6 @@ begin
                     if ANSIContainsText(s,'ADCMEM 80.0') then ADCMEMVersion := '80.0' ;
                     until (s='') or (Err <> U14ERR_NOERROR) ;
                 end ;
-
              else begin
                 Model := 'CED 1401 (unidentified)' ;
                 ADCMaxChannels := 4 ;
@@ -601,10 +545,8 @@ begin
                 ClockPeriod := 2.5E-7 ;
                 end ;
              end ;
-
         FADCMinSamplingInterval := ADCMinSamplingInterval ;
         FADCMaxSamplingInterval := ADCMaxSamplingInterval ;
-
         { Add the CED1401.SYS driver version number }
 //      24.11.21 Removed because U14DriverVersion causing some sort of stack problem leading
 //      to access violation when CED_GetLabInterfaceInfo exits
@@ -612,46 +554,36 @@ begin
 //        VerHigh := Ver div $10000 ;
 //        VerLow := Ver and $FFFF ;
 //        Model := Model + format('Driver V%d.%d',[VerHigh,VerLow]) ;
-
         { Return A/D value range }
         if Use16BitResolution then ADCMinValue := -32768
                               else ADCMinValue := -2048 ;
         ADCMaxValue := (-ADCMinValue) - 1 ;
-
         ADCVoltageRanges[0] := CEDVRange ;
         FADCVoltageRangeMax := ADCVoltageRanges[0] ;
         NumADCVoltageRanges := 1 ;
         FDACVoltageRangeMax := CEDVRange ;
         DACMaxVolts := FDACVoltageRangeMax ;
-
         DIGTIMStartEvent := 0 ;
-
         { Cancel all commands and reset 1401 }
         SendCommand( 'CLEAR;' ) ;
         CED_GetError ;
-
         Result := True ;
-
         end
      else begin
           Model := 'Device Not Initialised' ;
           Result := False ;
           end ;
-
      // Initial placement of DIGTIM buffer
      Endof1401ADCBuffer := 0 ;
      StartOf1401DigBuffer := Endof1401ADCBuffer + 1 ;
      EndOf1401DigBuffer := StartOf1401DigBuffer + MaxDIGTIMSlices*16 - 1 ;
-
      end ;
-
 
 function  CED_IsLabInterfaceAvailable : boolean ;
 begin
      if not DeviceInitialised then CED_InitialiseBoard ;
      Result := DeviceInitialised ;
      end ;
-
 
 procedure CED_InitialiseBoard ;
 { -------------------------------------------
@@ -660,25 +592,18 @@ procedure CED_InitialiseBoard ;
 var
    Err : DWORD ;
 begin
-
    DeviceInitialised := False ;
-
    { Load CED1401 DLL library }
    if not LibraryLoaded then CED_LoadLibrary ;
-
    if LibraryLoaded then begin
-
       { Open 1401 }
       Device := U14Open1401(0) ;
-
       if Device >= 0 then
          begin
-
          { Load ADCMEM command }
          Err := U14Ld(Device,'','ADCMEM') ;
          if Err = -540 then
             ShowMessage( 'CED 1401 ERROR: Cannot find/load ADCMEM command! Check c:\1401 folder.');
-
          if Err = -541 then
             begin
             { If ADCMEM load fails (usually due to an old 1401 not
@@ -689,17 +614,14 @@ begin
            ADCCommand := 'ADCMEMI' ;
            end
          else ADCCommand := 'ADCMEM' ;
-
          // Load MEMDAC = D/A output command
          Err := U14Ld(Device,'','MEMDAC') ;
          if Err = -540 then
             ShowMessage( 'CED 1401 ERROR: Cannot find MEMDAC command! Check c:\1401 folder.');
-
          // Load DIGTIM = digital timing command
          Err := U14Ld(Device,'','DIGTIM') ;
          if Err = -540 then
             ShowMessage( 'CED 1401 ERROR: Cannot find DIGTIM command! Check c:\1401 folder.');
-
          if Err = U14ERR_NOERROR then
             begin
             { CED 1401 model }
@@ -711,19 +633,15 @@ begin
          else U14Close1401( Device ) ;
          end
       else CED_CheckError(Device) ;
-
       end ;
-
    { Create A/D input buffer }
    if DeviceInitialised then begin
       New(IOBuf) ;
       New(DACBuf) ;
    end ;
-
    ADCActive := False ;
    DACActive := False ;
    end ;
-
 
 procedure CED_CheckError
           ( Err : Integer
@@ -782,7 +700,6 @@ begin
         end ;
      end ;
 
-
 function CED_ADCToMemory(
           var ADCBuf : Array of SmallInt ;        { A/D sample buffer (OUT) }
           nChannels : Integer ;                   { Number of A/D channels (IN) }
@@ -807,13 +724,10 @@ begin
      ADCActive := False ;
      if not DeviceInitialised then CED_InitialiseBoard ;
      if not DeviceInitialised then Exit ;
-
      { Kill any A/D conversions in progress }
      SendCommand( ADCCommand + ',K;') ;
-
      // Clear command settings
      SendCommand('CLEAR;') ;
-
      if TriggerMode = tmWaveGen then
         begin
         // Make Event I/Ps 3 & 4 internal
@@ -827,12 +741,9 @@ begin
         SendCommand( format('EVENT, E,%d;',[Event3 or Event4])) ;
         // Set Events to 0ff
         SendCommand( format( 'EVENT, I,%d;',[0])) ;
-
         end ;
-
      // Set events mode to level
      SendCommand( 'EVENT,M,0;') ;
-
      { Make all events inputs ACTIVE-LOW }
      if ADCExternalTriggerActiveHigh then
         begin
@@ -844,60 +755,45 @@ begin
         // Active Low TTL external trigger (on event 4)
         SendCommand( 'EVENT,P,63;' ) ;
         end ;
-
      // Set size of internal 1401 A/D buffer
      // (must be a multiple of 2*nChannels)
      ADC1401BufferNumBytes := (ADC1401BufferSize div (nChannels*2))*nChannels*4 ;
-
      StartOf1401ADCBuffer := 0;
      Endof1401ADCBuffer := ADC1401BufferNumBytes - 1 ;
      ADC1401Pointer := 0 ;
-
      { Define end of external A/D buffer (ADCBuf in calling routine) }
      EndofADCBuf := nChannels*nSamples - 1 ;
      ADCBufPointer := 0 ;
-
      { Define digital buffer area }
      StartOf1401DigBuffer := Endof1401ADCBuffer + 1 ;
      EndOf1401DigBuffer := StartOf1401DigBuffer + MaxDIGTIMSlices*16 - 1 ;
-
      { Define start of D/A buffer area in 1401 }
      StartOf1401DACBuffer := Endof1401DigBuffer + 1 ;
-
      { ADCMEM command with no.of bytes to be collected }
      if ADCCommand = 'ADCMEM' then
         CommandString := format('%s,I,2,0,%d,',[ADCCommand,ADC1401BufferNumBytes])
      else
         CommandString := format('%s,2,0,%d,',[ADCCommand,ADC1401BufferNumBytes]) ;
-
      { Add channel list }
      for ch := 0 to nChannels-1 do
          CommandString := CommandString + format('%d ',[ADCChannelInputMap[ch]]);
-
      // Start indefinite repeated sampling into circular buffer
      CommandString := CommandString + ',0,' ;
-
      { Select immediate sweep or wait for trigger pulse on Event 4}
      if TriggerMode <> tmFreeRun then CommandString := CommandString + 'HT,'
                                  else CommandString := CommandString + 'H,' ;
-
      { Set sampling clock }
      dt1 := dt / nChannels ;
      CED_CheckSamplingInterval( dt1, PreScale, Ticks, 'H' ) ;
      dt := dt1 * nChannels ;
      CommandString := CommandString + format('%d,%d;',[PreScale,Ticks] );
-
      { Send A/D start command to 1401 }
      SendCommand( CommandString ) ;
      CED_GetError ;
-
      ADCActive := True ;
      Result := ADCActive ;
-
  //    CED_TestDIGTIM ;
-
      end ;
-
 
 procedure CED_GetADCSamples(
           var ADCBuf : Array of SmallInt  ;
@@ -911,16 +807,13 @@ var
    i,nBytes,nWrite,StartAt,NumSamples,DAC1401BlockInUse,IOBufPointer : Integer ;
    Done : Boolean ;
 begin
-
      // Query ADC byte pointer
      SendCommand( ADCCommand + ',P;' ) ;
      U14LongsFrom1401( Device, @Reply, High(Reply) ) ;
-
      // Code to ensure correct interpretation of ADCMEM,P with Micro 1401 Mk4.
      // Pre-2022 versions (80.0) of ADCMEM command returned Word rather than Byte pointers.
      // Version 80.1 of the command fixed this.
      if ADCMEMVersion = '80.0' then Reply[0] := Reply[0]*2 ;
-
      if Reply[0] > ADC1401Pointer then
         begin
         // Transfer samples to host memory as they are acquired }
@@ -938,10 +831,8 @@ begin
         ADC1401Pointer := 0 ;
         end
      else exit ;
-
      NumSamples := nBytes div 2 ;
      IOBufPointer := Cardinal(IOBuf) ;
-
 //     outputdebugString(PChar(format('%d %d %d',[Reply[0],StartAt,nbytes])));
      repeat
        nWrite := Min(nBytes,MaxBytesinBlock) ;
@@ -951,7 +842,6 @@ begin
        nBytes := nBytes - nWrite ;
        until nBytes = 0 ;
         //outputdebugString(PChar(format('%d',[nBytes div 2])));
-
      // Copy A/D samples to host buffer
      i := 0 ;
      Done := False ;
@@ -969,15 +859,11 @@ begin
             if ADCBufPointer > EndofADCBuf then Done := True ;
          end ;
      end ;
-
      OutPointer := ADCBufPointer ;
-
      // Update D/A output
-
      if DACActive then begin
         SendCommand( 'MEMDAC,P;' ) ;
         U14LongsFrom1401( Device, @Reply, High(Reply) ) ;
-
         DAC1401BlockInUse := Reply[0] div DACNumBytesInBlock ;
 //        outputdebugString(PChar(format('%d %d %d',[Reply[0],DAC1401BlockInUse,DAC1401BlockDone])));
         while DAC1401BlockDone <> DAC1401BlockInUse do begin
@@ -988,7 +874,6 @@ begin
         end ;
      end ;
 
-
 procedure CED_GetError ;
 var
    Reply : Array[0..2] of Integer ;
@@ -996,7 +881,6 @@ begin
      SendCommand( 'ERR;' ) ;
      U14LongsFrom1401( Device, @Reply, High(Reply) ) ;
      end ;
-
 
 procedure CED_CheckSamplingInterval(
           var dt : Double ;            // Sampling Interval (returns valid value)
@@ -1006,14 +890,12 @@ procedure CED_CheckSamplingInterval(
 var
    fTicks,Period : Double ;
 begin
-
      if UpperCase(ClockSource) = 'H' then Period := ClockPeriod
                                      else Period := 1E-6 ;
      if ClockPeriod = 0.0 then begin
         ShowMessage('Error: CED 1401 ClockPeriod=0.0! Set to 2.5E-7') ;
         ClockPeriod := 2.5E-7 ;
         end ;
-
      dt := max(FADCMinSamplingInterval,dt) ;
      PreScale := 1 ;
      repeat
@@ -1022,9 +904,7 @@ begin
           until ((fTicks < 65535.0)) ;
      Ticks := Max(round( fTicks ),1) ;
      dt := Ticks*PreScale*Period ;
-
      end ;
-
 
  Function CED_StopADC : Boolean ;
 { -------------------------------------
@@ -1041,7 +921,6 @@ begin
      Result := ADCActive ;
      end ;
 
-
 function  CED_MemoryToDAC(
            var DACBufIn : Array of SmallInt ;  { D/A output data buffer (IN) }
            nChannels : Integer ;             { No. of D/A channels (IN) }
@@ -1051,7 +930,6 @@ function  CED_MemoryToDAC(
            ExternalTrigger : Boolean ;        // True=Wait for ext. trigger (IN)
            DACRepeatedWaveformIn : Boolean     // True=Repeat waveform until stopped
            ) : Boolean ;                     { Returns TRUE=D/A active }
-
 { -------------------------------
    Set up a D/A conversion sweeep
   -------------------------------}
@@ -1061,16 +939,13 @@ var
    CommandString : string ;
    nBytes : DWORD ;
    Reply : Array[0..2] of Integer ;
-
 begin
      Result := False ;
      if not DeviceInitialised then CED_InitialiseBoard ;
      if not DeviceInitialised then Exit ;
-
      { Kill any D/A conversions in progress }
      SendCommand( 'MEMDAC,K;') ;
      CED_GetError ;
-
      DACRepeatedWaveform := DACRepeatedWaveformIn ;
      DACNumChannels := nChannels ;
      DACBufNumPoints := nPoints*nChannels ;
@@ -1078,28 +953,22 @@ begin
      DACNumBytesInBlock := DACNumPointsInBlock*2 ;
      DACNumBlocksIn1401Buf := DAC1401BufferSize div DACNumPointsInBlock ;
      DACNumPointsIn1401Buf := DACNumBlocksIn1401Buf*DACNumPointsInBlock ;
-
      // Copy D/A waveform to output buffer
      for i := 0 to DACBufNumPoints-1 do DACBuf^[i] := DACBufIn[i]*DACScale ;
-
      nBytes := DACNumPointsIn1401Buf*2 ;
      Endof1401DACBuffer := StartOf1401DACBuffer + nBytes -1 ;
      DACStartOf1401BufLo := StartOf1401DACBuffer ;
-
      // Fill first two 1401 blocks
      DACBufPointer := 0 ;
      DACNextBlockToWrite := 0 ;
      DAC1401BlockDone := 0 ;
      //CED_WriteToDACBuffer ;
-
      for i := 1 to 2 do begin
            CED_WriteToDACBuffer ;
            Inc(DAC1401BlockDone) ;
            if DAC1401BlockDone > DACNumBlocksIn1401Buf then DAC1401BlockDone := 0 ;
            end ;
-
      //outputdebugString(PChar(format('%d',[StartOf1401DACBuffer])));
-
      if TypeOf1401 = U14TYPE1401 then
         begin
         { Amount of 1401 memory available }
@@ -1109,21 +978,16 @@ begin
         if Endof1401DACBuffer > MemoryAvailable then
            ShowMessage( 'ERROR: Not enough 1401 memory' ) ;
         end ;
-
      { Create MEMDAC command string }
      //nBytes := 34 ;
      CommandString := format('MEMDAC,I,2,%d,%d,',[StartOf1401DACBuffer,nBytes]) ;
-
      { Add channel list }
      for ch := 0 to nChannels-1 do
          CommandString := CommandString + format('%d ',[ch]);
-
      { Number of repeats =1 or 0=until stopped}
      CommandString := CommandString + ',0,' ;
-
      { Set sampling clock and start D/A output }
      CED_CheckSamplingInterval( dt, PreScale, Ticks, 'H' ) ;
-
      if TriggerMode <> tmFreeRun then begin
         // Wait for trigger on Event 3
         CommandString := CommandString + format('HT,%d,%d;',[PreScale,Ticks] );
@@ -1132,10 +996,8 @@ begin
         // Start DAC output immediately
         CommandString := CommandString + format('H,%d,%d;',[PreScale,Ticks] );
         end ;
-
      SendCommand( CommandString ) ;
      CED_GetError ;
-
      // Trigger A/D and D/A sweeps (if in waveform generation mode)
      if U14TypeOf1401(Device) = U14TYPE1401 then
         begin
@@ -1150,14 +1012,10 @@ begin
         SendCommand( format( 'EVENT, I,%d;',[0])) ; // Clear events
         SendCommand( format( 'EVENT, I,%d;',[Event3 or Event4 or DIGTIMStartEvent])) ; // Set to trigger
         end ;
-
      DIGTIMStartEvent := 0 ;
-
      DACActive := True ;
      Result := DACActive ;
-
      end ;
-
 procedure CED_WriteToDACBuffer ;
 // -------------------------------
 // Write D/A to DAC buffer in 1401
@@ -1166,7 +1024,6 @@ var
     i : Integer ;
     iStart : DWORD ;
 begin
-
      // Copy from DACBuf to IOBuf
      for i := 0 to DACNumPointsInBlock-1 do begin
         IOBuf^[i] := DACBuf^[DACBufPointer] ;
@@ -1186,11 +1043,8 @@ begin
                 StartOf1401DACBuffer + iStart, 0 ) ;
      Inc(DACNextBlockToWrite) ;
      if DACNextBlockToWrite >= DACNumBlocksIn1401Buf then DACNextBlockToWrite := 0 ;
-
       CED_GetError ;
-
       end ;
-
 
 procedure CED_SetDAC2( Volts : Single ) ;
 // -----------------
@@ -1203,7 +1057,6 @@ begin
      SendCommand( format('DAC,%d,%d,2;',[2,Round( Volts*VScale )]));
      end ;
 
-
 function CED_ReadADC( Chan : Integer ) : SmallInt ;
 // --------------------------------
 // Read selected A/D input channel
@@ -1212,25 +1065,18 @@ var
    Command : string ;
    Reply : Array[0..2] of Integer ;
 begin
-
      // Keep channel within valid limits
      Chan := Min(Max(Chan,0), MaxADCChannel ) ;
-
      // Stop A/D conversions if in progress
      if ADCActive then CED_StopADC ;
-
      // Request an A/D conversion
      Command := format( 'ADC,%d;', [Chan] ) ;
      SendCommand( Command ) ;
-
      // Wait for return of value from 1401
      U14LongsFrom1401( Device, @Reply, High(Reply) ) ;
-
      // Return A/D sample (scaled 16->12 bits if necessary)
      Result := Reply[0] div DACScale ;
-
      end ;
-
 
 procedure CED_WriteDACs(
           const DACVolts : array of single ;
@@ -1244,10 +1090,8 @@ var
    DACValue,ch : Integer ;
    DACScale : single ;
 begin
-
      if not DeviceInitialised then CED_InitialiseBoard ;
      if not DeviceInitialised then Exit ;
-
      DACScale := MaxNativeValue / FDACVoltageRangeMax ;
      for ch := 0 to Min(High(DACVolts),NumDACS-1) do begin
          DACValue := Round( DACVolts[ch]*DACScale ) ;
@@ -1255,9 +1099,7 @@ begin
          SendCommand( Command ) ;
          end ;
      CED_GetError ;
-
      end ;
-
 
 function CED_StopDAC : Boolean ;
 { -------------------------------------
@@ -1267,7 +1109,6 @@ begin
      Result := False ;
      if not DeviceInitialised then CED_InitialiseBoard ;
      if not DeviceInitialised then Exit ;
-
      SendCommand( 'MEMDAC,K;') ; { Kill any D/A output }
      SendCommand( 'DIGTIM,K;') ; { Kill any digital output }
      { Wait till command done }
@@ -1275,7 +1116,6 @@ begin
      DACActive := False ;
      Result := DACActive ;
      end ;
-
 
 procedure  CED_WriteToDigitalOutPutPort(
            Pattern : Integer
@@ -1286,10 +1126,8 @@ procedure  CED_WriteToDigitalOutPutPort(
 var
    Command : string ;
 begin
-
      if not DeviceInitialised then CED_InitialiseBoard ;
      if not DeviceInitialised then Exit ;
-
      { Stop any digital pattern in progress }
      SendCommand( 'DIGTIM,K;') ;
      { Send digital O/P byte }
@@ -1298,7 +1136,6 @@ begin
      { Wait till done }
      CED_GetError ;
      end ;
-
 
 function  CED_ReadDigitalInPutPort : Integer  ;
 { ----------------------------------------------------------
@@ -1310,29 +1147,23 @@ begin
      Result := 0 ;
      if not DeviceInitialised then CED_InitialiseBoard ;
      if not DeviceInitialised then Exit ;
-
      // Read digital input bits 0-7
      SendCommand( 'DIG,I;' );
      // Wait for result
      U14LongsFrom1401( Device, @Reply, High(Reply) ) ;
      Result := Reply[0] ;
-
      end ;
-
 
 procedure CED_ArmStimulusTriggerInput ;
 // ----------------------------------------------
 // Arm external stimulus trigger input (EVENT 0)
 // ----------------------------------------------
 begin
-
      if not DeviceInitialised then CED_InitialiseBoard ;
      if not DeviceInitialised then Exit ;
-
      // Arm EVENT0
      SendCommand( 'CLKEVT,C,2;' ) ;
      end ;
-
 
 function CED_StimulusTriggerInputState : Boolean ;
 // ---------------------------------------------------------
@@ -1341,19 +1172,15 @@ function CED_StimulusTriggerInputState : Boolean ;
 var
   Reply : Array[0..3] of Integer ;
 begin
-
      Result := False ;
      if not DeviceInitialised then CED_InitialiseBoard ;
      if not DeviceInitialised then Exit ;
-
      // Read CLKEVT state
      SendCommand( 'CLKEVT,R;') ;
      // Wait for return of value from 1401
      U14LongsFrom1401( Device, @Reply, High(Reply) ) ;
      if Reply[1] <> 0 then Result := True ;
-
      end ;
-
 
 procedure CED_MemoryToDigitalPort(
           var DigBuf : Array of SmallInt ;  { Digital pattern buffer }
@@ -1370,7 +1197,6 @@ procedure CED_MemoryToDigitalPort(
   output is connected to BOTH Event 4 In (Trigger In on Micro1401)
   and Event 2 In (On back panel in Micro1401).)
   -------------------------------------------------------}
-
 type
     TSlice = record
            State : Integer ;
@@ -1385,18 +1211,14 @@ var
    PreScale,Ticks : Word ;
    nRepeat : Integer ;
 begin
-
      if not DeviceInitialised then CED_InitialiseBoard ;
      if not DeviceInitialised then Exit ;
-
      iDig := StartAt ;
-
      { Extract bit pattern from digital buffer and convert to
           a series of DIGTIM slices }
      nSlices := 1 ;
      Slice[nSlices-1].State := DigBuf[iDig] and $FF ;
      Slice[nSlices-1].Count := 2 ;
-
      { *** BODGE ***
           This second slice put here to sort out a curious bug
           where the time for the second slice is doubled.
@@ -1405,7 +1227,6 @@ begin
      nSlices := 2 ;
      Slice[nSlices-1].State := DigBuf[iDig] and $FF ;
      Slice[nSlices-1].Count := 2 ;
-
      // DIGTIM command seems to operate differently with Power 1401
      // All other 1401 DIGTIM slices seem to count before changing state
      // Power 1401 changes state then counts. Not sure if this is a bug
@@ -1413,15 +1234,12 @@ begin
      // 13/7/11. Some Power 1401s seem to behave differently, not requiring the
      // offset. So option CEDPOWER1401DIGTIMCOUNTSHIFT added to 'lab interface.xml'
      // to allow user to enable or disable offset
-
 //     Removed 22.11.2021
 //     if (TypeOf1401 = U14TYPEPOWER) or
 //        (TypeOf1401 = U14TYPEPOWERMK2) then iDigShift := CEDPower1401DIGTIMCountShift
 //                                       else iDigShift := 0 ;
 //    Added ... These problems seem to have been fixed. Now always assume that state changes at end of slice
-
       iDigShift := 0 ;
-
      iDig := iDig + 2 ;
      LastChange := iDig ;
      while (iDig <= nValues) and (nSlices < (MaxDIGTIMSlices-1)) do
@@ -1429,12 +1247,10 @@ begin
            Inc(iDig) ;
            if (DigBuf[iDig] <> DigBuf[iDig-1]) or (iDig >= nValues) then
               begin
-
               // Set slice count
               nCount := iDig-LastChange ;
               // Extend count beyond end of sweep by 10 seconds
 //              if iDig >= nValues then nCount := nCount + round(10.0 /dt) ;
-
               // Create slices
               repeat
                  // Increment slice counter
@@ -1447,15 +1263,12 @@ begin
                  // Decrement counts to do
                  nCount := nCount - (Slice[nSlices-1].Count div 2) ;
                  until (nCount <= 0) or (nSlices >= MaxDIGTIMSlices) ;
-
               LastChange := iDig ;
               end ;
            end ;
-
      { Cancel any DIGTIM commands that are running }
      SendCommand( 'DIGTIM,K;') ;
      CED_GetError ;
-
      if U14TypeOf1401(Device) = U14TYPE1401 then begin
         // Standard 1401 only - set DAC2 (connected to Events 2,3,4) high to prevent DIGTIM
         CED_SetDAC2( 4.9 ) ;
@@ -1464,25 +1277,20 @@ begin
         // All other 1401s - Set DIGTIM gate event to internal
         SendCommand( format('EVENT,D,%d;',[Event2])) ;
         end ;
-
      { Create DIGTIM slice table }
      Command := format('DIGTIM,SI,%d,%d;',[StartOf1401DigBuffer,nSlices*16]);
      SendCommand( Command ) ;
-
      { Allow DIGTIM to control digital O/P ports only }
      SendCommand( 'DIGTIM,OD;' ) ;
-
      for i := 0 to nSlices-1 do begin
          Command := format('DIGTIM,A,$FF,%d,%d;',[Slice[i].State,Slice[i].Count]);
          SendCommand( Command ) ;
          CED_GetError ;
          end ;
-
      { Set sampling clock and arm DIGTIM digital output
           Note.
           1) clock is run at twice the D/A update rate and slice counts are doubled
           2) DIGTIM clock is gated by Event Input 2 (Active Low) }
-
      CED_CheckSamplingInterval( dt, PreScale, Ticks, 'C' ) ;
      Ticks := Ticks div 2 ;
      if RepeatedWaveform then nRepeat := 0
@@ -1490,12 +1298,9 @@ begin
      Command := format('DIGTIM,CT,%d,%d,%d;',[PreScale,Ticks,nRepeat] );
      SendCommand( Command ) ;
      CED_GetError ;
-
      // Set DIGTIM start event #
      DIGTIMStartEvent := Event2 ;
-
      end ;
-
 
 procedure CED_TestDIGTIM ;
 var
@@ -1508,7 +1313,6 @@ begin
      // All other 1401s - Set DIGTIM gate event to internal
         SendCommand( format('EVENT,D,%d;',[Event2])) ;
     CED_GetError ;
-
      { Create DIGTIM slice table }
      Command := format('DIGTIM,SI,%d,%d;',[StartOf1401DigBuffer,40*16]);
      SendCommand( Command ) ;
@@ -1550,21 +1354,16 @@ begin
 
      end ;
 
-
 procedure CED_StopDIG ;
 { -------------------------------------
   Stop digital output pattern generator
   -------------------------------------}
 begin
-
      if not DeviceInitialised then CED_InitialiseBoard ;
      if not DeviceInitialised then Exit ;
-
      SendCommand( 'DIGTIM,K;' ) ;
      CED_GetError ;
-
      end ;
-
 
 procedure SendCommand(
           const CommandString : string
@@ -1575,13 +1374,10 @@ procedure SendCommand(
 var
    Command : ANSIstring ;
 begin
-
      if not DeviceInitialised then CED_InitialiseBoard ;
-
      Command := ANSIString(CommandString + #0) ;
      CED_CheckError( U14sendstring( Device, @Command[1] ) ) ;
      end ;
-
 
 procedure CED_GetChannelOffsets(
           var Offsets : Array of Integer ;
@@ -1596,14 +1392,10 @@ var
 begin
      for ch := 0 to NumChannels-1 do Offsets[ch] := ch ;
      end ;
-
 procedure CED_CloseLaboratoryInterface ;
 begin
-
      if DeviceInitialised then begin
-
         SendCommand( 'CLEAR;' ) ;
-
         if Device >= 0 then begin
            U14Close1401( Device ) ;
            Device := -1 ;
@@ -1613,26 +1405,20 @@ begin
         if LibraryLoaded then FreeLibrary( LibraryHnd ) ;
         LibraryLoaded := False ;
         end ;
-
      { Dispose of allocated memory resources }
      if IOBuf <> Nil then begin
         Dispose(IOBuf) ;
         IOBuf := Nil ;
         end ;
-
      if DACBuf <> Nil then begin
         Dispose(DACBuf) ;
         DACBuf := Nil ;
         end ;
-
      end ;
-
 function CED_GetType : Integer ;
 begin
      Result := TypeOf1401 ;
      end ;
-
-
 
 function ExtractInt ( CBuf : string ) : longint ;
 Type
@@ -1642,22 +1428,18 @@ var
    i : integer ;
    Quit : Boolean ;
    State : TState ;
-
 begin
      CNum := '' ;
      i := 1;
      Quit := False ;
      State := RemoveLeadingWhiteSpace ;
      while not Quit do begin
-
            case State of
-
            { Ignore all non-numeric characters before number }
            RemoveLeadingWhiteSpace : begin
                if CBuf[i] in ['0'..'9','E','e','+','-','.'] then State := ReadNumber
                                                             else i := i + 1 ;
                end ;
-
            { Copy number into string CNum }
            ReadNumber : begin
                 { End copying when a non-numeric character
@@ -1669,7 +1451,6 @@ begin
                 else Quit := True ;
                 end ;
            else end ;
-
            if i > Length(CBuf) then Quit := True ;
            end ;
      try
@@ -1678,8 +1459,6 @@ begin
         ExtractInt := 1 ;
         end ;
      end ;
-
-
 
 initialization
     LibraryLoaded := False ;

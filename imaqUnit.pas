@@ -39,6 +39,8 @@ unit imaqUnit;
 //          camera taps can now be corrected
 // 17.05.18 Start_Capture() SnapImAGE(): imgSessionStartAcquisition() now tried repeatedly to overcome random failure to start
 //          VA-29MC-5M acquisition. Not clear yet why random failures occur
+// 22.08.24 Camera trigger source is now camera external input (instead of CC1 line of Camerlink interface
+//          Pulse Interval trigger mode option added for VA-29MC-5M camera only
 
 
 interface
@@ -1100,6 +1102,7 @@ type
     CCDTapOffsetRT : Cardinal ;    // Top-right tap DC offset
     CCDTapOffsetLB : Cardinal ;    // Bottom-left tap DC offset
     CCDTapOffsetRB : Cardinal ;    // Bottom-right tap DC offset
+    PulseIntervalTriggerMode : Boolean ;
     end ;
 
 //============================================================================
@@ -1514,6 +1517,7 @@ function IMAQ_StartCapture(
          var ExposureTime : Double ;
          AmpGain : Integer ;
          ExternalTrigger : Integer ;
+         PulseIntervalTriggerMode : Boolean ;
          FrameLeft : Integer ;
          FrameTop : Integer ;
          FrameWidth : Integer ;
@@ -1530,6 +1534,7 @@ function IMAQ_SnapImage(
          var ExposureTime : Double ;
          AmpGain : Integer ;
          ExternalTrigger : Integer ;
+         PulseIntervalTriggerMode : Boolean ;
          FrameLeft : Integer ;
          FrameTop : Integer ;
          FrameWidth : Integer ;
@@ -1993,7 +1998,7 @@ begin
         Session.TriggerModeValFreeRun := 'Free Run';
         Session.TriggerModeValExtTrig := 'Overlap';//'Standard' ;
         Session.TriggerSourceCom := 'Trigger Source' ;
-        Session.TriggerSourceVal := 'CC1';//'Ext' ;
+        Session.TriggerSourceVal := 'Ext' ; // 'CC1' Trigger source is now camera external input 22.8.24
         Session.TriggerPolarityCom := 'Trigger Polarity' ;
         Session.TriggerPolarityVal := 'Active High' ;
 
@@ -2182,6 +2187,7 @@ function IMAQ_StartCapture(
          var ExposureTime : Double ;      // Frame exposure time
          AmpGain : Integer ;              // Camera amplifier gain index
          ExternalTrigger : Integer ;      // Trigger mode
+         PulseIntervalTriggerMode : Boolean ;  // TRUE = Use pulse duration to set exposure time
          FrameLeft : Integer ;            // Left pixel in CCD readout area
          FrameTop : Integer ;             // Top pixel in CCD eadout area
          FrameWidth : Integer ;           // Width of CCD readout area
@@ -2279,7 +2285,8 @@ begin
           // ----------------
           if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
              begin
-             IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,'Pulse Width') ;
+             if PulseIntervalTriggerMode then IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,'Pulse Width')
+                                         else IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,'Program') ;
              end;
           IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValExtTrig) ;
 //          IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,'Standard') ;
@@ -2394,6 +2401,7 @@ function IMAQ_SnapImage(
          var ExposureTime : Double ;      // Frame exposure time
          AmpGain : Integer ;              // Camera amplifier gain index
          ExternalTrigger : Integer ;      // Trigger mode
+         PulseIntervalTriggerMode : Boolean ; // Use trigger pulse duration to set exposure time
          FrameLeft : Integer ;            // Left pixel in CCD readout area
          FrameTop : Integer ;             // Top pixel in CCD eadout area
          FrameWidth : Integer ;           // Width of CCD readout area
@@ -2518,8 +2526,10 @@ begin
           // ----------------
           if ANSIContainsText( Session.CameraName, 'VA-29MC-5M') then
              begin
-             IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,'Pulse Width') ;
+             if PulseIntervalTriggerMode then IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,'Pulse Width')
+                                         else IMAQ_SetCameraAttributeString( Session.SessionID,Session.ExposureModeCom,'Program') ;
              end;
+
           IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,Session.TriggerModeValExtTrig) ;
 //          IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerModeCom,'Standard') ;
           IMAQ_SetCameraAttributeString(Session.SessionID,Session.TriggerSourceCom,Session.TriggerSourceVal) ;

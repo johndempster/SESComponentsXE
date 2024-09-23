@@ -79,6 +79,7 @@ unit SESCam;
  31.10.18 JD  Support iDS uEYE cameras (based on ThorlabsUnit.pas added
  14.11.18 JD  IDSuEYE and Thorlabs now updates FFrameCounter with frame count since StartCapture()
  27.03.19 JD  DCAM FrameCount property now returns no. of frames captured
+ 02.09,24 JD  Vieworks pulseinterval trigger mode added
 
   ================================================================================ }
 {$OPTIMIZATION OFF}
@@ -233,6 +234,8 @@ type
     FCCDTapOffsetRB : Cardinal ;    // Bottom-right tap DC offset
 
     FLightSpeedMode : Boolean ;     // Lightspeed mode on/off flag (supported only by Evolve 512 Delta)
+
+    FPulseIntervalTriggerMode : Boolean ; // TRUE = exposure interval determined by trigger pulse duration
 
     ImageAreaChanged : Boolean ;   // TRUE = image area has been changed
 
@@ -437,6 +440,8 @@ type
     Property CCDTapOffsetLB : Cardinal read FCCDTapOffsetLB write FCCDTapOffsetLB ;
     Property CCDTapOffsetRB : Cardinal read FCCDTapOffsetRB write FCCDTapOffsetRB ;
     Property LightSpeedMode : Boolean read FLightSpeedMode write SetLightSpeedMode ;
+    Property PulseIntervalTriggerMode : Boolean read FPulseIntervalTriggerMode write FPulseIntervalTriggerMode ;
+
 
   end;
 
@@ -562,6 +567,8 @@ begin
      FNumPixelShiftFrames := 1 ; // No. of pixel shift frames acquired
 
      FLightSpeedMode := False ;  // Light speed mode off
+
+     FPulseIntervalTriggerMode := False ;
 
      ImageAreaChanged := False ;
 
@@ -1271,6 +1278,8 @@ begin
              IMAQSession.CCDTapOffsetRT := FCCDTapOffsetRT ;
              IMAQSession.CCDTapOffsetLB := FCCDTapOffsetLB ;
              IMAQSession.CCDTapOffsetRB := FCCDTapOffsetRB ;
+
+             IMAQSession.PulseIntervalTriggerMode := FPulseIntervalTriggerMode ;
 
              FNumCameras := 1 ;
              end ;
@@ -2215,6 +2224,7 @@ begin
                            FFrameInterval,
                            FAmpGain,
                            FTriggerMode,
+                           FPulseIntervalTriggerMode,
                            FFrameLeft,
                            FFrameTop,
                            FFrameWidth*FBinFactor,
@@ -2574,6 +2584,7 @@ begin
                            FFrameInterval,
                            FAmpGain,
                            FTriggerMode,
+                           FPulseIntervalTriggerMode,
                            FFrameLeft,
                            FFrameTop,
                            FFrameWidth*FBinFactor,
