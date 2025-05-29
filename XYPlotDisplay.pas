@@ -34,6 +34,7 @@ unit XYPlotDisplay;
  17.05.23 ... Fitted functions and cursoe readout now scaled correctly on cumulative and % total histograms
               XY and Histogram arrays now accessed using pXYArray and pHistArray
  16.06.24 ... Space now allocated correctly for Y axis label. No longer overlaps tick numbers.
+ 29.05.25 ... .AddTick() Number of ticks now limited to space available in list (400).
  }
 
 interface
@@ -2732,6 +2733,9 @@ var
    TickString,TempString : string ;
    PowerOfTen : Boolean ;
 begin
+
+    // If tick list full - quit
+    if TickList.NumTicks >= High(TickList.Value) then Exit ;
 
     { Get tick value. If this is a logarithmic axis set PowerofTen% = TRUE
     to force the tick to be displayed as a power of ten irrespective of

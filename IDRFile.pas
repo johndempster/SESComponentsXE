@@ -2902,7 +2902,6 @@ begin
      Result := Value ;
      end ;
 
-
 function TIDRFile.ExtractFloat (
          CBuf : ANSIstring ;     { ASCII text to be processed }
          Default : Single    { Default value if text is not valid }
@@ -3394,3 +3393,4 @@ begin
 end;
 
 end.
+

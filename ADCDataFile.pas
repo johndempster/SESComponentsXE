@@ -57,12 +57,13 @@ unit ADCDataFile;
 // 16.07.19 .ASCIISaveRecordsinColumns property added. When set as TRUE exports records as columns in ASCII text table
 //          instead of blocks of rows.
 // 03.06.20 Export of records to text files in column format now in correct order
+// 15.05.25 ASCLoadFile now converts ASCII text to FP faster
 
 {$R 'adcdatafile.dcr'}
 interface
 
 uses
-  SysUtils, Classes, maths, windows, math  ;
+  sysutils, Classes, maths, windows, math ;
 
 const
   ChannelLimit = 127 ;
@@ -3632,7 +3633,6 @@ begin
 
     // Read header block as ABF file header (PClamp V6 and later)
     FileSeek( FileHandle, 0, 0 ) ;
-    //outputdebugString(PChar(format('%d',[Sizeof(pc6Header)]))) ;
 
     if FileRead(FileHandle,pc6Header,Sizeof(pc6Header)) < 2048 then begin
 
@@ -4578,6 +4578,7 @@ begin
     end ;
 
 
+
 function TADCDataFile.ASCLoadFile : Boolean ;
 // -----------------------------------
 // Read ASCII text file into temp file
@@ -4585,124 +4586,257 @@ function TADCDataFile.ASCLoadFile : Boolean ;
 const
      MaxColumns = ChannelLimit+2 ;
      MaxLines = 20 ;
+     MaxValues = 1000000 ;
+     cBufSize = 1000000 ;
 var
-     NumItems : Integer ;
-     MaxItems : Integer ;
-     Line : String ;
-     NumLines : Integer ;
-     NumLinesPerRecord : Integer ;
      EndOfRecord : Boolean ;
      Done : Boolean ;
-     EOF : Boolean ;
      i : Integer ;
-     Items : Array[0..MaxColumns-1] of String ;
-     Value : Single ;
      TValue : Single ;
      LastTValue : Single ;
      MaxValue : Array[0..MaxColumns-1] of Single ;
+     MaxRowsinValuesBuf : Integer ;
+     Values : PSingleArray ;
+     MaxRows : Integer ;
      dt : Single ;
      ch : Integer ;
+     NumBytesInFile : Int64 ;          // Total # of bytes in ASCII file
+     NumBytesRead : Int64 ;            // No. bytes read so far
+     cBuf : PANSIChar ;                // ANSI character buffer
+     iFileStart : Int64 ;
+
+     c,ColSeparator : ANSIChar ;
+     iC,iCol,NumCols,MaxCols,LastCol : Integer ;
+     iRow,NumRows,NumRowsPerRecord,NumRowsInFile : Integer ;
+     nValues : Integer ;
+     NumBytesInBuf : Integer ;
+     s : string ;
+     iLine,NumCharsInLine : Integer ;
+
 begin
 
      Result := False ;
 
+     // Determine size of file
+     NumBytesInFile := FileSeek( FileHandle, 0, 2 ) ;
      // Go to start of file
-     FileSeek( FileHandle, 0, 0 ) ;
+     iFileStart := 0 ;
+     FileSeek( FileHandle, iFileStart, 0 ) ;
 
-     // Skip requested number of initial lines
-     for i := 1 to FASCIITitleLines do
-         ASCReadLine( FileHandle, FASCIISeparator, Line, Items, NumItems, EOF ) ;
+     // Create text read buffer
+     cBuf := AllocMem( cBufSize ) ;
 
-     MaxItems := 0 ;
-     for i := 1 to MaxLines do
-         begin
-         ASCReadLine( FileHandle, FASCIISeparator, Line, Items, NumItems, EOF ) ;
-         if NumItems > MaxItems then MaxItems := NumItems ;
-         if EOF then Break ;
-         end ;
+     // create float write buffer
+     Values := AllocMem( MaxValues*SizeOf(Single)) ;
 
-     // Create a temporary file
+     // Create a temporary file to hold floating point values
      TempFileName := CreateTempFileName ;
      TempHandle := FileCreate( TempFileName ) ;
 
+//
+//   Skip requested number of initial lines
+//
+
+     NumBytesInBuf := Min( NumBytesInFile, cBufSize ) ;
+     FileSeek( FileHandle, iFileStart, 0 ) ;
+     FileRead( FileHandle, cBuf^, NumBytesInBuf ) ;
+
+     NumCharsInLine := 0 ;
+     for iC := 0 to NumBytesInBuf-1 do
+         begin
+         c := cBuf[iC] ;
+         if (c = #13) or (c = #10) then
+            begin
+            // CR or LF encountered
+            if NumCharsInLine > 0 then
+               begin
+               if iLine = FASCIITitleLines then iFileStart := Max(iC - NumCharsInLine - 1,0) ;
+               Inc(iLine) ;
+               NumCharsInLine := 0 ;
+               end;
+            end
+         else Inc(NumCharsInLine) ;
+
+         end;
+
+
+//
+//   Determine number of columns of data in file
+//
+     NumBytesInBuf := Min( NumBytesInFile, cBufSize ) ;
+     FileSeek( FileHandle, iFileStart, 0 ) ;
+     FileRead( FileHandle, cBuf^, NumBytesInBuf ) ;
+     NumCols := 0 ;
+     iCol := 0 ;
+     ColSeparator := ANSIChar(FASCIISeparator) ;
+     for iC := 0 to NumBytesInBuf-1 do
+         begin
+         c := cBuf[iC] ;
+         if (c = ColSeparator) then Inc(iCol)
+         else if (c = #13) or (c = #10) then
+              begin
+              // End of line encountered
+              if NumCharsInLine > 0 then
+                 begin
+                 Inc(iCol) ;
+                 NumCols := Max( NumCols, iCol ) ;
+                 iCol := 0 ;
+                 NumCharsInLine := 0 ;
+                 end ;
+              end
+          else Inc(NumCharsInLine) ;
+          end ;
+
     // Can't use column 1 for time if only one column ...
-    if (MaxItems = 1) and (ASCTimeColumn = 1) then
+    if (NumCols = 1) and (ASCTimeColumn = 1) then
        begin
        ShowMessage( 'Single column data table. Cannot use first column as time!' ) ;
        ASCTimeColumn := 0 ;
        end ;
 
-     // Convert from ASCII data to floating point and store in temporary file
+       // Process lines of text into rows of FP values ;
+       // --------------------------------------------
 
-     // Skip requested number of initial lines
-     FileSeek( FileHandle, 0, 0 ) ;
-     for i := 1 to FASCIITitleLines do
-         ASCReadLine( FileHandle, FASCIISeparator, Line, Items, NumItems, EOF ) ;
-
-     NumLines := 0 ;
-     NumLinesPerRecord := 0 ;
+     FileSeek( FileHandle, iFileStart, 0 ) ;
+     s := '' ;
+     iC := 0 ;
+     iCol := 0 ;
+     NumBytesInBuf := -1 ;
+     NumRows := 0 ;
+     MaxRowsinValuesBuf := MaxValues div NumCols ;
+//     NumLines := 0 ;
+     NumRowsPerRecord := 0 ;
+     NumRowsInFile := 0 ;
      EndOfRecord := False ;
-     LastTValue := 0.0 ;
-     for ch := 0 to MaxItems-1 do MaxValue[ch] := 0.0 ;
-
+     LastTValue := -1.0 ;
+     for i := 0 to High(MaxValue) do MaxValue[i] := 0.0 ;
+     NumBytesRead := 0 ;
      Done := False ;
-     dt := 1.0 ;
-     While not Done do begin
+     repeat
 
-        // Read line of items from file
-        ASCReadLine( FileHandle, FASCIISeparator, Line, Items, NumItems, Done ) ;
+       // Read text into buffer
+       if iC >= NumBytesInBuf then
+          begin
+          NumBytesInBuf := Min( NumBytesInFile, cBufSize ) ;
+          FileRead( FileHandle, cBuf^, NumBytesInBuf ) ;
+          iC := 0 ;
+          end;
 
-        if (NumItems = MaxItems) and (Length(Line) > 0) then begin
+       // Get next ANSI character
+       c := cBuf[iC] ;
 
-           // Write items to temp. file
-           ch := 0 ;
-           for i := 0 to NumItems-1 do begin
-               Value := ExtractFloat( Items[i],0.0 ) ;
-               if ( i > 0) or (ASCTimeColumn <> 1) then begin
-                  if Abs(Value) > MaxValue[ch] then MaxValue[ch] := Abs(Value) ;
-                  FileWrite( TempHandle, Value, SizeOf(Value) ) ;
-                  Inc(ch) ;
-                  end ;
-               end ;
+       // Replace quotations marks & apostrophes with space
+       if (c = #34) or (c = #39) then c := #32 ;
+
+       if (c = #13) or (c = #10) then
+          begin
+          // CR or LF encountered - convert last item in row to float
+          if s <> '' then
+             begin
+             // Convert to float
+             TryStrToFloat(s,Values[(NumRows*NumCols)+iCol]) ;
+             iCol := 0 ;
+             Inc(NumRows) ;
+             s := '' ;
+             end;
+          end
+       else if c = ColSeparator then
+          begin
+          // column separator encountered - convert item to float
+          TryStrToFloat(s,Values[(NumRows*NumCols)+iCol]) ;
+          Inc(iCol) ;
+          s := '' ;
+          end
+       else
+          begin
+          // Add to numeric item value string
+          s := s + c ;
+          end;
+
+       // Terminate when all bytes read from file
+       Inc(iC) ;
+       Inc(NumBytesRead) ;
+       if NumBytesRead >= NumBytesInFile then Done := True ;
+
+       // Write floating point values to temp. file
+       //
+
+       if Done or (NumRows >= MaxRowsinValuesBuf) then
+          begin
+
+          // Remove time column (if present)
+          //
+          if ASCTimeColumn = 1 then
+             begin
 
            // Calculate sampling interval and record length
-           TValue := ExtractFloat( Items[0],0.0 ) ;
-           if NumLines > 1 then begin
-              if TValue > LastTValue then begin
-                 dt := TValue - LastTValue ;
-                 end
-              else begin
-                 EndOfRecord := True ;
-                 end ;
-              end ;
-           if not EndOfRecord then Inc(NumLinesPerRecord) ;
-           LastTValue := TValue ;
-           Inc(NumLines) ;
-           end ;
+            for iRow := 0 to NumRows-1 do
+                begin
+                TValue := Values[iRow*NumCols] ;
+                if TValue > LastTValue then
+                   begin
+                   dt := TValue - LastTValue ;
+                   end
+                else EndOfRecord := True ;
+                if not EndOfRecord then Inc(NumRowsPerRecord) ;
+                LastTValue := TValue ;
+                end;
 
-        end ;
+             // Remove time column values
+             nValues := 0 ;
+             for iRow := 0 to NumRows-1 do
+                 for i := 1 to NumCols-1 do
+                     begin
+                     Values[nValues] := Values[iRow*NumCols+i] ;
+                     Inc(nValues) ;
+                     end;
+             end
+          else
+             begin
+             // No times column
+             nValues := NumRows*NumCols ;
+             end;
 
-    if ASCTimeColumn = 1 then begin
+          // Determine absolute range of data in each column
+          //
+          for i := 0 to nValues-1 do
+              begin
+              iCol := i mod NumCols ;
+              MaxValue[iCol] := Max(Abs(Values[i]),MaxValue[iCol]) ;
+              end;
+
+          // Write to floating point values file
+          //
+          FileWrite( TempHandle, Values^, nValues*SizeOf(Single) ) ;
+          NumRowsInFile := NumRowsInFile + NumRows ;
+          NumRows := 0 ;
+          outputdebugstring(pchar(format('%d ASCII rows converted to FP',[NumRowsInFile])));
+          end;
+
+       until Done ;
+
+    if ASCTimeColumn = 1 then
+       begin
        // Sampling times available
-       if (not FASCIIFixedRecordSize) then FNumScansPerRecord := NumLinesPerRecord ;
+       if (not FASCIIFixedRecordSize) then FNumScansPerRecord := NumRowsPerRecord ;
 
-       FNumChannelsPerScan := MaxItems - 1 ;
-       //FNumRecords := Max(NumLines div FNumScansPerRecord,1) ;
+       FNumChannelsPerScan := NumCols - 1 ;
        if LowerCase(FASCIITimeUnits) = 's' then FScanInterval := dt
        else if LowerCase(FASCIITimeUnits) = 'ms' then FScanInterval := dt*0.001
        else FScanInterval := dt*60.0 ;
        end
-    else begin
+    else
+       begin
        // No sample times
-       FNumChannelsPerScan := MaxItems ;
-       if (not FASCIIFixedRecordSize) then FNumScansPerRecord := NumLines ;
+       FNumChannelsPerScan := NumCols ;
+       if (not FASCIIFixedRecordSize) then FNumScansPerRecord := NumRowsInFile ;
        //FNumRecords := 1 ;
        end ;
 
     if FScanInterval <= 0.0 then FScanInterval := 1.0 ;
     FNumScansPerRecord := Max(FNumScansPerRecord,1) ;
-    FNumRecords := Max(NumLines div FNumScansPerRecord,1) ;
-    if NumLines > (FNumRecords*FNumScansPerRecord) then Inc(FNumRecords) ;
+    FNumRecords := Max(NumRowsInFile div FNumScansPerRecord,1) ;
+    if NumRowsInFile > (FNumRecords*FNumScansPerRecord) then Inc(FNumRecords) ;
 
     FFloatingPointSamples := True ;
 
@@ -4722,7 +4856,8 @@ begin
     FADCOffset := 0 ;
     UseTempFile := True ;
 
-    for ch := 0 to FNumChannelsPerScan-1 do begin
+    for ch := 0 to FNumChannelsPerScan-1 do
+        begin
 
         // Scaling and offset factors
         if MaxValue[ch] > 0.0 then
@@ -4741,6 +4876,9 @@ begin
 
         end ;
     FIdentLine := '' ;
+
+    FreeMem(cBuf) ;
+    FreeMem(Values) ;
 
      end ;
 

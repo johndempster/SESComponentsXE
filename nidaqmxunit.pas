@@ -68,6 +68,7 @@ unit NidaqMXUnit;
 // 09.11.22 Min. AO update interval for USB-600X now reduced from  2ms to 1ms.
 // 03.04.23 Digital clock support temporarily disabled for 6353 devices to determine
 //          if there is a programming incompatibility with 32 bit Port0
+// 24.10.24 LibraryHnd now defined as THandle (not Integer to avoid potential issues in 64 bit compiles)
 
 interface
 
@@ -2106,7 +2107,7 @@ implementation
 uses seslabio ;
 
 var
-    LibraryHnd : Integer ;
+    LibraryHnd : THandle ;
     FBoardModel : String ;
 
     // D/A Converter

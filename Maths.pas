@@ -24,6 +24,8 @@ unit Maths;
  20/4/11 Initial guesses for gaussian fits improved (usinfg GaussianGuess function)
  9/7/14 Temporary file name now created using TPath.GetTempFileName()
  5/1/18 RoundToNearestMultiple() function added
+ 29.05.25 SSQMIN: GoodFit=False if if any best fit parameters is NAN or INF
+          TMathFunc.Value() Now returns zero if any parameter NAN or INF
  }
 
 
@@ -1740,7 +1742,20 @@ Function TMathFunc.Value(
   ---------------------}
 var
    Y,A,A1,A2,Theta1,Theta2 : Single ;
+   iPar: Integer;
 begin
+
+     // Exit returning zero if any parameter is NAN or INF
+
+     for iPar := 0 to GetNumParameters-1 do
+         begin
+           if IsNAN(Pars[iPar]) or IsInfinite(Pars[iPar]) then
+              begin
+              Result := 0.0 ;
+              Exit ;
+              end;
+
+         end;
 
      Case FEqnType of
 
@@ -2859,7 +2874,8 @@ begin
         deltamax := 1E-16 ;
         maxiterations := 100 ;
         iconv := 0 ;
-        if nVar > 0 then begin
+        if nVar > 0 then
+           begin
            try
               ssqmin ( FitPars , nPoints, nVar, maxiterations,
                        NumSig,NSigSq,DeltaMax,
@@ -2876,16 +2892,21 @@ begin
 
            { Calculate parameter and residual standard deviations
            (If the fit has been successful) }
-           if iConv > 0 then begin
-              if nPoints > nVar then begin
-                 STAT( nPoints,nVar,F^,Data.y,W^,SLTJJ,SSQ,
-                       FitPars.SD,ResidualSDValue,RValue,FitPars.Value ) ;
-                 for i := 1 to nVar do Pars[FitPars.Map[i]] := FitPars.Value[i] ;
-                 for i := 1 to nVar do ParSDs[FitPars.Map[i]] := FitPars.SD[i] ;
-                 DegreesOfFreedomValue := nPoints-GetNumParameters ;
+           if iConv > 0 then
+              begin
+              if nPoints > nVar then
+                 begin
+                 STAT( nPoints,nVar,F^,Data.y,W^,SLTJJ,SSQ,FitPars.SD,ResidualSDValue,RValue,FitPars.Value ) ;
+                 for i := 1 to GetNumParameters do Pars[FitPars.Map[i]] := FitPars.Value[i] ;
+                 for i := 1 to GetNumParameters do ParSDs[FitPars.Map[i]] := FitPars.SD[i] ;
+                 DegreesOfFreedomValue := nPoints - GetNumParameters ;
                  end
               else DegreesOfFreedomValue := 0 ;
-               GoodFitFlag := True ;
+
+              // Mark as bad fit if any parameters NAN or INF
+              GoodFitFlag := True ;
+              for i:= 1 to nVar do if IsNAN(Pars[i]) or IsInFinite(Pars[i]) then GoodFitFlag := False ;
+
               ParsSet := False ;
               end
            else GoodFitFlag := False ;

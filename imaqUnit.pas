@@ -41,6 +41,8 @@ unit imaqUnit;
 //          VA-29MC-5M acquisition. Not clear yet why random failures occur
 // 22.08.24 Camera trigger source is now camera external input (instead of CC1 line of Camerlink interface
 //          Pulse Interval trigger mode option added for VA-29MC-5M camera only
+// 23.10.24 Now loads procedures addresses correctly from 64 bit version of IMAQ.DLL
+//          ( Handle in IMAQ_GetDLLAddress() now correctly specified as THandle instead of Integer
 
 
 interface
@@ -1574,7 +1576,7 @@ procedure IMAQ_CheckFrameInterval(
 
 procedure IMAQ_LoadLibrary  ;
 function IMAQ_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
 
 procedure IMAQ_CheckROIBoundaries( var Session : TIMAQSession ;
@@ -1803,7 +1805,7 @@ begin
 
 
 function IMAQ_GetDLLAddress(
-         Handle : Integer ;
+         Handle : THandle ;
          const ProcName : string ) : Pointer ;
 // -----------------------------------------
 // Get address of procedure within PVCAM32.DLL
@@ -1832,7 +1834,7 @@ const
 
 var
     Err : Integer ;
-    i :Integer ;
+    i, nCount :Integer ;
     InterfaceName : Array[0..255] of ANSIchar ;
     wcBuf : Array[0..255] of Char ;
     InterfaceType : Integer ;
@@ -1850,10 +1852,22 @@ begin
 
      // Get name of first interface found
      i := 0 ;
+     nCount := 0 ;
      repeat
         Err := imgInterfaceQueryNames( i, InterfaceName ) ;
-        until (Err = 0) or (i > 10) ;
-     CameraInfo.Add( IMAQ_CharArrayToString(InterfaceName)) ;
+        Inc(nCount) ;
+        until (Err = 0) or (i > 10) or (nCount > 10) ;
+
+     if Err = 0 then
+        begin
+        CameraInfo.Add( IMAQ_CharArrayToString(InterfaceName)) ;
+        end
+     else
+        begin
+        IMAQ_CheckError( 'imgInterfaceQueryNames', Err ) ;
+        CameraInfo.Add( 'IMAQ: No frame grabber interface found.' ) ;
+        Exit ;
+        end;
 
      // Open interface
      Err := imgInterfaceOpen( InterfaceName, Session.InterfaceID ) ;

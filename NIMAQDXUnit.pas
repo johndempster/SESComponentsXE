@@ -1265,16 +1265,16 @@ begin
      Session.AttrBitsPerPixel  := IMAQDX_FindAttribute( Session, 'BitsPerPixel', false ) ;
      Session.AttrPixelSize  := IMAQDX_FindAttribute( Session, 'PixelSize', false ) ;
 
-     Session.AttrExposureTime  := IMAQDX_FindAttribute( Session, 'CameraAttributes::Exposure::Value', false ) ;
-     if Session.AttrExposureTime < 0 then Session.AttrExposureTime  := IMAQDX_FindAttribute( Session, 'AcquisitionAttributes::ExposureTime', false ) ;
-     if Session.AttrExposureTime < 0 then Session.AttrExposureTime  := IMAQDX_FindAttribute( Session, 'AcquisitionControl::ExposureTime', false ) ;
+     Session.AttrExposureTime  := IMAQDX_FindAttribute( Session, 'CameraAttributes::Exposure::Value', true ) ;
+     if Session.AttrExposureTime < 0 then Session.AttrExposureTime  := IMAQDX_FindAttribute( Session, 'CameraAttributes::AcquisitionAttributes::ExposureTime', true ) ;
+     if Session.AttrExposureTime < 0 then Session.AttrExposureTime  := IMAQDX_FindAttribute( Session, 'CameraAttributes::AcquisitionControl::ExposureTime', true ) ;
      if Session.AttrExposureTime < 0 then Session.AttrExposureTime  := IMAQDX_FindAttribute( Session, 'ExposureTimeAbs', false ) ;
      if Session.AttrExposureTime < 0 then Session.AttrExposureTime  := IMAQDX_FindAttribute( Session, 'ExposureTime', false ) ;
 
-     Session.AttrExposureMode  := IMAQDX_FindAttribute( Session, 'CameraAttributes::Exposure::Mode', false ) ;
-     if Session.AttrExposureMode < 0 then Session.AttrExposureMode  := IMAQDX_FindAttribute( Session, 'AcquisitionControl::ExposureMode', false ) ;
-     if Session.AttrExposureMode < 0 then Session.AttrExposureMode  := IMAQDX_FindAttribute( Session, 'AcquisitionAttributes::ExposureMode', false ) ;
-     if Session.AttrExposureMode < 0 then Session.AttrExposureMode  := IMAQDX_FindAttribute( Session, 'Exposure::Mode', false ) ;
+     Session.AttrExposureMode  := IMAQDX_FindAttribute( Session, 'CameraAttributes::Exposure::Mode', True ) ;
+     if Session.AttrExposureMode < 0 then Session.AttrExposureMode  := IMAQDX_FindAttribute( Session, 'CameraAttributes::AcquisitionControl::ExposureMode', True ) ;
+     if Session.AttrExposureMode < 0 then Session.AttrExposureMode  := IMAQDX_FindAttribute( Session, 'CameraAttributes::AcquisitionAttributes::ExposureMode', True ) ;
+     if Session.AttrExposureMode < 0 then Session.AttrExposureMode  := IMAQDX_FindAttribute( Session, 'CameraAttributes::Exposure::Mode', True ) ;
      if Session.AttrExposureMode < 0 then Session.AttrExposureMode  := IMAQDX_FindAttribute( Session, 'ExposureMode', false ) ;
 
      Session.AttrExposureAuto := IMAQDX_FindAttribute( Session, 'AcquisitionControl::ExposureAuto', false ) ;
@@ -1284,8 +1284,11 @@ begin
      if Session.AttrAcquisitionFrameRateEnabled < 0 then Session.AttrAcquisitionFrameRateEnabled := IMAQDX_FindAttribute( Session, 'AcquisitionFrameRateEnable', false ) ;
 
      Session.AttrAcquisitionFrameRate := IMAQDX_FindAttribute( Session, 'CameraAttributes::AcquisitionControl::AcquisitionFrameRate', true ) ;
-     Session.AttrResultingFrameRate := IMAQDX_FindAttribute( Session, 'AcquisitionControl::AcquisitionResultingFrameRate', false ) ;
-     if Session.AttrResultingFrameRate < 0 then Session.AttrResultingFrameRate := IMAQDX_FindAttribute( Session, 'AcquisitionControl::ResultingFrameRate', false ) ;
+
+     Session.AttrResultingFrameRate := IMAQDX_FindAttribute( Session, 'CameraAttributes::AcquisitionControl::AcquisitionResultingFrameRate', True ) ;
+     if Session.AttrResultingFrameRate < 0 then Session.AttrResultingFrameRate := IMAQDX_FindAttribute( Session, 'CameraAttributes::AcquisitionControl::ResultingFrameRate', true ) ;
+     if Session.AttrResultingFrameRate < 0 then Session.AttrResultingFrameRate := IMAQDX_FindAttribute( Session, 'CameraAttributes::AcquisitionControl::BslResultingAcquisitionFrameRate', true ) ;
+     if Session.AttrResultingFrameRate < 0 then Session.AttrResultingFrameRate := IMAQDX_FindAttribute( Session, 'ResultingAcquisitionFrameRate', false ) ;
 
      Session.AttrAcquisitionFrameRateAuto := IMAQDX_FindAttribute( Session, 'AcquisitionFrameRateAuto', false ) ;
 
@@ -1323,7 +1326,10 @@ begin
      if Session.AttrGain < 0 then Session.AttrGain := IMAQDX_FindAttribute( Session, 'CameraAttributes::Gain::Value', true ) ;
      if Session.AttrGain < 0 then Session.AttrGain := IMAQDX_FindAttribute( Session, 'GainRaw', false) ;
      Session.AttrGainMode := IMAQDX_FindAttribute( Session, 'CameraAttributes::Gain::Mode', true) ;
-     Session.AttrGainAuto := IMAQDX_FindAttribute( Session, 'GainAuto', false ) ;
+
+     Session.AttrGainAuto := IMAQDX_FindAttribute( Session, 'CameraAttributes::AnalogControl::GainAuto', true ) ;
+     if Session.AttrGainAuto < 0 then Session.AttrGainAuto := IMAQDX_FindAttribute( Session, 'GainAuto', false ) ;
+
 
      //if Session.AttrGainMode < 0 then Session.AttrGainMode := IMAQDX_FindAttribute( Session, 'CameraAttributes::AnalogControl::Gain', true) ;
 
@@ -1409,7 +1415,10 @@ begin
      if NumCameraInits = 1 then CameraInfo.Add('Camera Attributes:') ;
      for i := 0 to Session.NumAttributes-1 do
          begin
-         s := IMAQDX_CharArrayToString( Session.Attributes[i].Name) ;
+
+         s := format('%d: ',[i]) ;
+
+         s := s + IMAQDX_CharArrayToString( Session.Attributes[i].Name) ;
 
          if Session.Attributes[i].Readable then s := s + ' R' ;
          if Session.Attributes[i].Writable then s := s + 'W' ;
@@ -1984,6 +1993,7 @@ procedure IMAQDX_SetPixelFormat(
 // ----------------
 var
   i : Integer ;
+  FormatName : string ;
 begin
 
     if not Session.CameraOpen then Exit ;
@@ -1999,64 +2009,62 @@ begin
                           Session.PixelFormats[PixelFormat].Name ) ;
 
      // Set image format
-     if ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'RGB') and
-        ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'8')then begin
+
+     // Remove spaces from format name
+     FormatName := ANSIReplaceText( String(Session.PixelFormats[PixelFormat].Name), ' ', '' ) ;
+     FormatName := ANSIReplaceText( FormatName, ' ', '' ) ;
+
+     if ANSIContainsText( FormatName,'RGB') and ANSIContainsText( FormatName,'8')then begin
         Session.PixelFormatType := pfRGB8 ;
         Session.NumPixelComponents := 3 ;
         Session.UseComponent := 1 ;
         PixelDepth := 8 ;
         end
-     else if ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'YUV 422') then begin
+     else if ANSIContainsText( FormatName,'YUV422') then begin
         Session.PixelFormatType := pfYUV422 ;
         Session.NumPixelComponents := 2 ;
         Session.UseComponent := 1 ;
         PixelDepth := 8 ;
         end
-     else if ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'Mono') and
-             ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'8')then begin
+     else if ANSIContainsText( FormatName,'Mono8') then begin
         // 8 bit mono formats
         Session.PixelFormatType := pfMono8 ;
         Session.NumPixelComponents := 1 ;
         Session.UseComponent := 0 ;
         PixelDepth := 8 ;
         end
-     else if ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'Mono') and
-        ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'12')then begin
+     else if ANSIContainsText( FormatName,'Mono12') then begin
         // 12 bit mono formats
-        if ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'IIDC') then Session.PixelFormatType := pfMono12PackedIIDC
-        else if ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'packed') then Session.PixelFormatType := pfMono12Packed
-        else if ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'Mono12p') then Session.PixelFormatType := pfMono12P
-        else Session.PixelFormatType := pfMono12 ;
+        if ANSIContainsText( FormatName,'IIDC') then Session.PixelFormatType := pfMono12PackedIIDC
+        else if ANSIContainsText( FormatName, 'packed') then Session.PixelFormatType := pfMono12Packed
+        else if ANSIContainsText( FormatName ,'p') then Session.PixelFormatType := pfMono12P
+        else Session.PixelFormatType := pfMono16 ;
         Session.NumPixelComponents := 1 ;
         Session.UseComponent := 0 ;
         PixelDepth := 12 ;
         end
-     else if ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'Mono') and
-        ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'10')then begin
+     else if ANSIContainsText( FormatName ,'Mono10') then begin
         // 10 bit mono formats
-        if ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'packed') then Session.PixelFormatType := pfMono10Packed
-        else if ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'Mono10p') then Session.PixelFormatType := pfMono10P
-        else Session.PixelFormatType := pfMono10 ;
+        if ANSIContainsText( FormatName ,'packed') then Session.PixelFormatType := pfMono10Packed
+        else if ANSIContainsText( FormatName ,'p') then Session.PixelFormatType := pfMono10P
+        else Session.PixelFormatType := pfMono16 ;
         Session.NumPixelComponents := 1 ;
         Session.UseComponent := 0 ;
         PixelDepth := 10 ;
         end
-     else if ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'Mono') and
-        ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'16')then begin
+     else if ANSIContainsText( FormatName, 'Mono16') then begin
         Session.PixelFormatType := pfMono16 ;
         Session.NumPixelComponents := 1 ;
         Session.UseComponent := 0 ;
         PixelDepth := 16 ;
         end
-     else if ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'BGRA') and
-        ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'8')then begin
+     else if ANSIContainsText(  FormatName ,'BGRA8') then begin
         Session.PixelFormatType := pfBGRA8 ;
         Session.NumPixelComponents := 4 ;
         Session.UseComponent := 1 ;
         PixelDepth := 8 ;
         end
-     else if ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'BGR') and
-        ANSIContainsText(String(Session.PixelFormats[Session.PixelFormat].Name),'8')then begin
+     else if ANSIContainsText( FormatName ,'BGR8') then begin
         Session.PixelFormatType := pfBGR8 ;
         Session.NumPixelComponents := 3 ;
         Session.UseComponent := 1 ;
@@ -2145,7 +2153,7 @@ begin
      Session.FrameHeight := FrameHeight ;
      Session.FrameWidth := FrameWidth ;
 
-      // if ResultingFrameRate attribute available, calculate readoutn time
+      // if ResultingFrameRate attribute available, calculate readout time
      if Session.AttrResultingFrameRate >= 0 then
         begin
         // Determine readout time from resulting frame rate for a very short exposure (1 ms)
@@ -2476,11 +2484,13 @@ begin
       if Attribute < 0 then Exit ;
       if not Session.Attributes[Attribute].Writable then Exit ;
 
+//      outputdebugstring( pchar(format('%d %s %d',[Attribute,Session.Attributes[Attribute].Name,Session.Attributes[Attribute].iType])));
+
       // Keep within min-max limits and incremental steps and write attribute
 
       case Session.Attributes[Attribute].iType of
 
-          IMAQdxValueTypeI64 : begin
+          IMAQdxAttributeTypeI64 : begin
              i64Value := Value ;
              IMAQDX_GetAttrRange( Session, Attribute, Min64,Max64,Inc64) ;
              If Inc64 > 0 then i64Value := (i64Value div Inc64)*Inc64 ;
@@ -2492,7 +2502,7 @@ begin
              Result := True ;
              end ;
 
-          IMAQdxValueTypeF64 : begin
+          IMAQdxAttributeTypeF64 : begin
              DValue := Value ;
              IMAQDX_GetAttrRange( Session, Attribute, DMin,DMax,DInc) ;
              If DInc > 0 then DValue := Floor(DValue / DInc)*DInc ;
@@ -2542,10 +2552,13 @@ begin
       if Attribute < 0 then Exit ;
       if not Session.Attributes[Attribute].Writable then Exit ;
 
+//      outputdebugstring( pchar(format('%d %s %d',[Attribute,Session.Attributes[Attribute].Name,Session.Attributes[Attribute].iType])));
+
       // Keep within min-max limits and incremental steps and write attribute
 
       case Session.Attributes[Attribute].iType of
-          IMAQdxValueTypeI64 : begin
+
+          IMAQdxAttributeTypeI64 : begin
 
              i64Value := Value ;
              IMAQDX_GetAttrRange( Session, Attribute, Min64,Max64,Inc64) ;
@@ -2558,7 +2571,7 @@ begin
              Result := True ;
              end ;
 
-          IMAQdxValueTypeF64 : begin
+          IMAQdxAttributeTypeF64 : begin
              DValue := Value ;
              IMAQDX_GetAttrRange( Session, Attribute, DMin,DMax,DInc) ;
              If DInc > 0 then DValue := Floor(DValue / DInc)*DInc ;
@@ -2605,11 +2618,13 @@ var
       if Attribute < 0 then Exit ;
       if not Session.Attributes[Attribute].Writable then Exit ;
 
+//outputdebugstring( pchar(format('%d %s %d',[Attribute,Session.Attributes[Attribute].Name,Session.Attributes[Attribute].iType])));
+
       // Keep within min-max limits and incremental steps
 
       case Session.Attributes[Attribute].iType of
 
-          IMAQdxValueTypeI64 : begin
+          IMAQdxAttributeTypeI64 : begin
              i64Value := Round(Value);
              IMAQDX_GetAttrRange( Session, Attribute, Min64,Max64,Inc64) ;
              If Inc64 > 0 then i64Value := (i64Value div Inc64)*Inc64 ;
@@ -2621,7 +2636,7 @@ var
              Result := True ;
              end ;
 
-          IMAQdxValueTypeF64 : begin
+          IMAQdxAttributeTypeF64 : begin
              DValue := Value ;
              IMAQDX_GetAttrRange( Session, Attribute, DMin,DMax,DInc) ;
              If DInc > 0 then Value := Floor(Value / DInc)*DInc ;
@@ -2748,7 +2763,7 @@ begin
     SetF64 := Value ;
     IMAQdxSetAttributeF64_DLL(SessionID,AttributeName,IMAQdxAttributeTypeF64,SetF64) ;
     IMAQdxGetAttribute(SessionID,AttributeName,IMAQdxAttributeTypeF64,@GetF64) ;
-    outputdebugstring(pchar(format('F64: %s set= %.5g get= %.5g',[String(AttributeName),SetF64,GetF64])));
+//    outputdebugstring(pchar(format('F64: %s set= %.5g get= %.5g',[String(AttributeName),SetF64,GetF64])));
     if Abs(SetF64 - GetF64) <= 10.0 then
        begin
        Result := 0 ;
@@ -2759,7 +2774,7 @@ begin
     SetI64 := Round(Value) ;
     IMAQdxSetAttributeI64(SessionID,AttributeName,IMAQdxAttributeTypeI64,SetI64) ;
     IMAQdxGetAttribute(SessionID,AttributeName,IMAQdxAttributeTypeI64,@GetI64) ;
-    outputdebugstring(pchar(format('I64: %s set= %d get= %d',[String(AttributeName),SetI64,geti64])));
+//    outputdebugstring(pchar(format('I64: %s set= %d get= %d',[String(AttributeName),SetI64,geti64])));
     if Abs(SetI64 - GetI64) <= 10 then
        begin
        Result := 0 ;
@@ -2859,7 +2874,7 @@ begin
 
     // Copy all new frames to output buffer
 
-//    outputdebugstring(pchar(format('Session.FrameCounter: ',[Session.FrameCounter])));
+//    outputdebugstring(pchar(format('Session.FrameCounter: %d',[Session.FrameCounter])));
 
     NumCopied := 0 ;
     while (LatestFrameTransferred > Session.FrameCounter) and
