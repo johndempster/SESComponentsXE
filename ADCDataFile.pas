@@ -2,7 +2,7 @@ unit ADCDataFile;
 // -------------------------------------------------
 // Analogue data file handling component
 // (c) J. Dempster, University of Strathclyde, 2003
-// -------------------------------------------------
+// -------------------------------------------------                                                                                                                                         w
 // 14.9.03
 // 19.11.03 Importing of SCAN and SPAN data files added
 // 2.12.03  Export to ABF and ASCII added
@@ -58,6 +58,7 @@ unit ADCDataFile;
 //          instead of blocks of rows.
 // 03.06.20 Export of records to text files in column format now in correct order
 // 15.05.25 ASCLoadFile now converts ASCII text to FP faster
+// 19.06.25 .csv added and .dat removed from file extensions considered to be ASCII
 
 {$R 'adcdatafile.dcr'}
 interface
@@ -142,6 +143,8 @@ type
   TByteDynArray         = array of Byte ;
   TSmallIntArray = Array[0..10000000] of SmallInt ;
   PSmallIntArray = ^TSmallIntArray ;
+  TLongIntArray = Array[0..10000000] of LongInt ;
+  PLongIntArray = ^TLongIntArray ;
   TSingleArray = Array[0..10000000] of Single ;
   PSingleArray = ^TSingleArray ;
 
@@ -1779,7 +1782,8 @@ begin
 
      Result := False ;
 
-     if FileHandle >= 0 then begin
+     if FileHandle >= 0 then
+        begin
         ShowMessage( 'A file is aready open ' ) ;
         Exit ;
         end ;
@@ -1787,16 +1791,15 @@ begin
      // Open file
      FFileName := FileName ;
      FileHandle := FileOpen( FFileName, fmOpenReadWrite ) ;
-     if FileHandle < 0 then begin
+     if FileHandle < 0 then
+        begin
         ShowMessage( 'TADCDataFile: Unable to open ' ) ;
         Exit ;
         end ;
 
      // Determine type of file if unknown
-     if FileType = ftUnknown then begin
-        FFileType := FindFileType( FFileName ) ;
-        end
-     else FFileType := FileType ;
+     if FileType = ftUnknown then FFileType := FindFileType( FFileName )
+                             else FFileType := FileType ;
 
      // Load header data
      Case FFileType of
@@ -1846,18 +1849,22 @@ begin
      // Is it an Axon ABF2 data file?
      // Load ABF V2 I/O library DLL
      if not ABF2LibraryLoaded then LoadABF2Library ;
-     if (Result = ftUnknown) and (@ABF_IsABFFile <> Nil) then begin
+     if (Result = ftUnknown) and (@ABF_IsABFFile <> Nil) then
+        begin
         s := FileName ;
         if ABF_IsABFFile( PANSIChar(s), ABF2Format, Err ) then Result := ftAxonABF2 ;
         end ;
 
      // Is it an Axon PClamp V6 or later data file?
-     if Result = ftUnknown then begin
+     if Result = ftUnknown then
+        begin
 
         // Open file if it is not already open
-        if FileHandle < 0 then begin
+        if FileHandle < 0 then
+           begin
            FileHandle := FileOpen( FileName, fmOpenRead ) ;
-           if FileHandle < 0 then begin
+           if FileHandle < 0 then
+              begin
               ShowMessage( 'Unable to open ' + FileName ) ;
               Exit ;
               end ;
@@ -1866,18 +1873,17 @@ begin
          else TempFileOpen := False ;
 
         FileSeek( FileHandle, 0, 0 ) ;
-        if FileRead(FileHandle,IdentChar,Sizeof(IdentChar))
-           = Sizeof(IdentChar) then begin
+        if FileRead(FileHandle,IdentChar,Sizeof(IdentChar)) = Sizeof(IdentChar) then
+           begin
            s := '' ;
            for i := 1 to High(IdentChar) do s := s + IdentChar[i] ;
-           if (Pos('ABF',s) > 0) or
-              (Pos('CPLX',s) > 0) or
-              (Pos('FTCX',s) > 0) then Result := ftAxonABF ;
+           if (Pos('ABF',s) > 0) or (Pos('CPLX',s) > 0) or (Pos('FTCX',s) > 0) then Result := ftAxonABF ;
            end ;
         end ;
 
       { Is it an Axon PClamp V5 data file? }
-      if Result = ftUnknown then begin
+      if Result = ftUnknown then
+         begin
          FileSeek( FileHandle, 0, 0 ) ;
          if FileRead(FileHandle,IdentNumber,Sizeof(IdentNumber))
             = Sizeof(IdentNumber) then begin
@@ -1886,10 +1892,11 @@ begin
          end ;
 
       { Is it a CED Filing System data file? }
-      if Result = ftUnknown then begin
+      if Result = ftUnknown then
+         begin
          FileSeek( FileHandle, 0, 0 ) ;
-         if FileRead(FileHandle,IdentChar,Sizeof(IdentChar))
-            = Sizeof(IdentChar) then begin
+         if FileRead(FileHandle,IdentChar,Sizeof(IdentChar)) = Sizeof(IdentChar) then
+            begin
             s := '' ;
             for i := 1 to High(IdentChar) do s := s + IdentChar[i] ;
             if (Pos('CEDFILE',s) > 0) then Result := ftCFS ;
@@ -1899,18 +1906,16 @@ begin
       { Is it a WAV data file ? }
      if Result = ftUnknown then begin
         FileSeek( FileHandle, 0, 0 ) ;
-        if FileRead(FileHandle,IdentChar,Sizeof(IdentChar))
-           = Sizeof(IdentChar) then begin
+        if FileRead(FileHandle,IdentChar,Sizeof(IdentChar)) = Sizeof(IdentChar) then
+           begin
            s := '' ;
            for i := 1 to High(IdentChar) do s := s + IdentChar[i] ;
            if (Pos('RIFF',s) > 0) then Result := ftWAV ;
            end ;
         end ;
 
-      { Is it a CDR data file ? }
-      if Result = ftUnknown then begin
-         if ExtractFileExt(LowerCase(FileName)) = '.cdr' then Result := ftCDR ;
-         end ;
+     { Is it a CDR data file ? }
+     if Result = ftUnknown then if ExtractFileExt(LowerCase(FileName)) = '.cdr' then Result := ftCDR ;
 
         { Is it a Strathclyde DOS CDR data file? }
 {        FileSeek( FileHandle, 0, 0 ) ;
@@ -1921,64 +1926,45 @@ begin
               (CDRHeader.signature[2] = 'R') then FileType := CDR ;
            end ;}
 
-      { Is it a WinWCP data file ? }
-      if Result = ftUnknown then begin
-         if ExtractFileExt(LowerCase(FileName)) = '.wcp' then Result := ftWCP ;
-         end ;
+     { Is it a WinWCP data file ? }
+     if Result = ftUnknown then if ExtractFileExt(LowerCase(FileName)) = '.wcp' then Result := ftWCP ;
 
-      { Is it a PAT file }
-      if Result = ftUnknown then begin
-         if ExtractFileExt(LowerCase(FileName)) = '.scd' then Result := ftSCD ;
-         end ;
+     { Is it a PAT file }
+     if Result = ftUnknown then if ExtractFileExt(LowerCase(FileName)) = '.scd' then Result := ftSCD ;
 
-      { Is it a WCD (WinCDR V2.X file) }
-      if Result = ftUnknown then begin
-         if ExtractFileExt(LowerCase(FileName)) = '.wcd' then Result := ftWCD ;
-         end ;
+     { Is it a WCD (WinCDR V2.X file) }
+     if Result = ftUnknown then if ExtractFileExt(LowerCase(FileName)) = '.wcd' then Result := ftWCD ;
 
-      { Is it a SPAN data file ? }
-      if Result = ftUnknown then begin
-         if ExtractFileExt(LowerCase(FileName)) = '.spa' then Result := ftSPA ;
-         end ;
+     { Is it a SPAN data file ? }
+     if Result = ftUnknown then if ExtractFileExt(LowerCase(FileName)) = '.spa' then Result := ftSPA ;
 
-      { Is it a SCAN data file ? }
-      if Result = ftUnknown then begin
-         if ExtractFileExt(LowerCase(FileName)) = '.sca' then Result := ftSCA ;
-         end ;
+     { Is it a SCAN data file ? }
+     if Result = ftUnknown then if ExtractFileExt(LowerCase(FileName)) = '.sca' then Result := ftSCA ;
 
-      { Is it an ASCII text data file ? }
-      if Result = ftUnknown then begin
-         if (ExtractFileExt(LowerCase(FileName)) = '.txt') or
-            (ExtractFileExt(LowerCase(FileName)) = '.dat')then Result := ftASC ;
-         end ;
+     { Is it an ASCII text data file ? }
+     if Result = ftUnknown then if (ExtractFileExt(LowerCase(FileName)) = '.txt') or (ExtractFileExt(LowerCase(FileName)) = '.csv') then Result := ftASC ;
 
-      { Is it an WFDB header file ? }
-      if Result = ftUnknown then begin
-         if (ExtractFileExt(LowerCase(FileName)) = '.hea') then Result := ftWFDB ;
-         end ;
+     { Is it an WFDB header file ? }
+     if Result = ftUnknown then if (ExtractFileExt(LowerCase(FileName)) = '.hea') then Result := ftWFDB ;
 
-      { Is it an IGOR Binary Wave file ? }
-      if Result = ftUnknown then begin
-         if ExtractFileExt(LowerCase(FileName)) = '.ibw' then Result := ftIBW ;
-         end ;
+     { Is it an IGOR Binary Wave file ? }
+     if Result = ftUnknown then if ExtractFileExt(LowerCase(FileName)) = '.ibw' then Result := ftIBW ;
 
-      { Is it a PoNeMah protocol file ? }
-      if Result = ftUnknown then begin
-         if ExtractFileExt(LowerCase(FileName)) = '.pro' then Result := ftPNM ;
-         end ;
+     { Is it a PoNeMah protocol file ? }
+     if Result = ftUnknown then if ExtractFileExt(LowerCase(FileName)) = '.pro' then Result := ftPNM ;
 
-      { Is it a Strathclyde Chart data file ? }
-      if Result = ftUnknown then begin
-         if ExtractFileExt(LowerCase(FileName)) = '.cht' then Result := ftCHT ;
-         end ;
+     { Is it a Strathclyde Chart data file ? }
+     if Result = ftUnknown then if ExtractFileExt(LowerCase(FileName)) = '.cht' then Result := ftCHT ;
 
-      // Close file if this was only a
-      if TempFileOpen then begin
-         FileClose(FileHandle) ;
-         FileHandle := -1 ;
-         end ;
+     // Close file if this was only a
+     if TempFileOpen then
+        begin
+        FileClose(FileHandle) ;
+        FileHandle := -1 ;
+        end ;
 
-      end ;
+
+     end;
 
 
 function TADCDataFile.CreateDataFile(
@@ -3072,7 +3058,7 @@ begin
          FChannelZero[ch] := Round(Value) - FADCOffset ;
          FChannelZeroAt[ch] := -1 ;
          FChannelADCVoltageRange[ch] :=  FADCVoltageRange ;
-         FChannelCalibrationFactor[ch] := CalibFactor( ch ) ;
+         FChannelCalibrationFactor[ch] := ADCScale( ch ) ;
          end ;
 
      ReadString( Header, 'ID=', FIdentLine ) ;
@@ -4659,7 +4645,6 @@ begin
 
          end;
 
-
 //
 //   Determine number of columns of data in file
 //
@@ -5229,11 +5214,20 @@ function TADCDataFile.RAWLoadHeader : Boolean ;
 // -------------------------
 // Initialise RAW data file
 // -------------------------
+const
+   MaxSamplesPerBuf = 1000000 ;
+
 var
    i,ch : Integer ;
-   NumDataBytesInFile : Integer ;
+   NumDataBytesInFile : Int64 ;
+   BufSize : Cardinal ;
+   NumBytes,NumBytesDone : Integer ;
    Buf : Array[1..512] of ANSIChar ;
    iEnd : Integer ;
+   iBuf2 : PSmallIntArray ;
+   iBuf4 : PLongIntArray ;
+   fBuf4 : PSingleArray ;
+   YMax : Single ;
    s : String ;
 begin
 
@@ -5241,43 +5235,157 @@ begin
 
      FNumBytesPerScan := FNumChannelsPerScan*FNumBytesPerSample ;
 
-     FNumRecordDataBytes := FNumScansPerRecord*FNumBytesPerScan ;
-     FNumRecordAnalysisBytes := 0 ;
-     FNumRecordBytes := FNumRecordDataBytes + FNumRecordAnalysisBytes ;
-
      // Determine no. of records in file
      NumDataBytesInFile := FileSeek( FileHandle, 0, 2 ) - FNumHeaderBytes ;
-     FNumRecords := NumDataBytesInFile div FNumRecordBytes ;
-     if (FNumRecords*FNumRecordBytes) < NumDataBytesInFile then Inc(FNumRecords) ;
+     FNumRecordDataBytes := NumDataBytesInFile ;
+     FNumRecordAnalysisBytes := 0 ;
+     FNumRecordBytes := FNumRecordDataBytes + FNumRecordAnalysisBytes ;
+     FNumScansPerRecord := FNumRecordDataBytes div FNumBytesPerScan ;
+     FNumRecords := 1 ;
+     FMaxADCValue := 32767 ;
+     FMinADCValue := FMaxADCValue - 1 ;
 
      for ch := 0 to FNumChannelsPerScan-1 do FADCScale[ch] := 1.0 ;
      FADCOffset := 0 ;
-     UseTempFile := False ;
+     UseTempFile := True ;
 
      FADCVoltageRange := FChannelADCVoltageRange[0] ;
-     if FADCVoltageRange = 0.0 then FADCVoltageRange := 1.0 ;
+     if FADCVoltageRange = 0.0 then FADCVoltageRange := 10.0 ;
 
-     for ch := 0 to FNumChannelsPerScan-1 do begin
+     // Set channel integer->channel units scaling
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
          if FChannelScale[ch] = 0.0 then FChannelScale[ch] := 1.0 ;
          FChannelZero[ch] := 0 ;
          FChannelZeroAt[ch] := -1 ;
          FChannelGain[ch] := 1.0 ;
          FChannelOffset[ch] := ch ;
-         if FChannelADCVoltageRange[ch] = 0.0 then
-            FChannelADCVoltageRange[ch] := FADCVoltageRange ;
-         FChannelCalibrationFactor[ch] := CalibFactor( ch ) ;
+         if FChannelADCVoltageRange[ch] = 0.0 then FChannelADCVoltageRange[ch] := FADCVoltageRange ;
+         FChannelScale[ch] := ADCScale( ch ) ;
+         FADCOffset := 0 ;
+         FADCScale[ch] := 1.0 ;
          end ;
 
      FIdentLine := '' ;
 
-     FileSeek( FileHandle, 0,0) ;
-     fileRead( FileHandle, Buf, 512 ) ;
+     // Create a temporary file to hold floating point values
+     TempFileName := CreateTempFileName ;
+     TempHandle := FileCreate( TempFileName ) ;
+     UseTempFile := True ;
 
-     s := '' ;
-     for i := 1 to 512 do s := s + Buf[i] ;
-     IEnd := Pos( '001', s ) + 3  ;
-     ShowMessage( format('%d',[iend]) ) ;
-     Result := True ;
+     if FFloatingPointSamples then
+        begin
+        // Copy floating point data to temp. file
+        // --------------------------------------
+
+        // Allocate buffers
+        BufSize := MaxSamplesPerBuf*FNumChannelsPerScan*SizeOf(Single) ;
+        BufSize := Min( BufSize, NumDataBytesInFile ) ;
+        fBuf4 := AllocMem(BufSize) ;
+
+        // Move file pointers to start of data
+        FileSeek( FileHandle, FNumHeaderBytes, 0 ) ;
+        FileSeek( TempHandle, FNumHeaderBytes, 0 )  ;
+
+        NumBytesDone := 0 ;
+        while NumBytesDone < NumDataBytesInFile do
+            begin
+             NumBytes := Min(NumDataBytesInFile,BufSize) ;
+             // Read data from file
+             FileRead( FileHandle, fBuf4^, NumBytes ) ;
+             // Write to temp. file
+             FileWrite( TempHandle, fBuf4^, NumBytes ) ;
+             NumBytesDone := NumBytesDone + NumBytes ;
+            end;
+
+        // Set FP -> integer scaling
+        for ch := 0 to FNumChannelsPerScan-1 do
+             begin
+             FADCOffset := 0 ;
+             FADCScale[ch] := 1.0 / FChannelScale[ch]  ;
+             end ;
+
+        FreeMem( fBuf4 ) ;
+
+        end
+     else if FNumBytesPerSample = 2 then
+        begin
+        // --------------------------------------
+        // Copy 2 byte integer data to temp. file
+        // --------------------------------------
+
+        // Allocate buffers
+        BufSize := MaxSamplesPerBuf*FNumChannelsPerScan*Max(FNumBytesPerSample,2) ;
+        BufSize := Min( BufSize, NumDataBytesInFile ) ;
+        iBuf2 := allocMem( BufSize ) ;
+
+        // Move file pointers to start of data
+        FileSeek( FileHandle, FNumHeaderBytes, 0 ) ;
+        FileSeek( TempHandle, FNumHeaderBytes, 0 )  ;
+
+        NumBytesDone := 0 ;
+        while NumBytesDone < NumDataBytesInFile do
+              begin
+              NumBytes := Min(NumDataBytesInFile,BufSize) ;
+              // Read data from file
+              FileRead( FileHandle, iBuf2^, NumBytes ) ;
+              // Write to temp. file
+              FileWrite( TempHandle, iBuf2^, NumBytes ) ;
+              NumBytesDone := NumBytesDone + NumBytes ;
+              end;
+
+        FreeMem( iBuf2 ) ;
+        end
+     else if FNumBytesPerSample = 4 then
+        begin
+        // --------------------------------------
+        // Copy 4 byte integer data to temp. file as floating point
+        // --------------------------------------
+
+        // Allocate buffers
+        BufSize := MaxSamplesPerBuf*FNumChannelsPerScan*Max(FNumBytesPerSample,2) ;
+        BufSize := Min( BufSize, NumDataBytesInFile ) ;
+        iBuf4 := allocMem( BufSize ) ;
+        fBuf4 := AllocMem(BufSize) ;
+
+        // Move file pointers to start of data
+        FileSeek( FileHandle, FNumHeaderBytes, 0 ) ;
+        FileSeek( TempHandle, FNumHeaderBytes, 0 )  ;
+
+        NumBytesDone := 0 ;
+        YMax := 0.0 ;
+        while NumBytesDone < NumDataBytesInFile do
+              begin
+             NumBytes := Min(NumDataBytesInFile,BufSize) ;
+             // Read data from file
+             FileRead( FileHandle, iBuf4^, NumBytes ) ;
+             // Convert to floating point
+             for i := 0 to (NumBytes div FNumBytesPerSample) -1 do
+                 begin
+                 fBuf4^[i] := Single(iBuf4^[i]) ;
+                 YMax := Max(Abs(fBuf4^[i]),YMax) ;
+                 end;
+             // Write to temp. file
+             FileWrite( TempHandle, fBuf4^, NumBytes ) ;
+             NumBytesDone := NumBytesDone + NumBytes ;
+            end;
+
+        // Set internal FP -> integer scaling
+
+        for ch := 0 to FNumChannelsPerScan-1 do
+             begin
+             FADCOffset := 0 ;
+             FADCScale[ch] := 1.0 / Max(Ceil(YMax/FMaxADCValue),1.0) ;
+             FChannelScale[ch] := FChannelScale[ch] / FADCScale[ch] ;
+             FChannelCalibrationFactor[ch] := CalibFactor( ch ) ;
+             end ;
+
+        FreeMem( iBuf4 ) ;
+        FreeMem( fBuf4 ) ;
+
+        FFloatingPointSamples := True ;
+
+        end;
 
      end ;
 
