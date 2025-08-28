@@ -63,6 +63,7 @@ unit IDRFile;
 //             Limit of 100 ROIs stored in IDR file header, 100-1000 stored in <filename>.roi.csv
 // 30.05.24 JD IDRGetHeader() User now warned when a file with corrupt header data loaded. Bad values substituted
 //             with default values to allow file to load. IDRSaveHeader() attempts to avoid saving bad data
+// 22.07.25 JD NativeInt Add/GetKeyValue removed for compatibility with Delphi 12
 
 interface
 
@@ -320,11 +321,6 @@ TChannel = record
 
     procedure AddKeyValue( List : TStringList ;  // List for Key=Value pairs
                            Keyword : string ;    // Key
-                           Value : NativeInt        // Value
-                           ) ; Overload ;
-
-    procedure AddKeyValue( List : TStringList ;  // List for Key=Value pairs
-                           Keyword : string ;    // Key
                            Value : String        // Value
                            ) ; Overload ;
 
@@ -348,11 +344,6 @@ TChannel = record
                          KeyWord : string ;   // Key
                          Value : Int64       // Value
                          ) : Int64 ; Overload ;        // Return value
-
-   function GetKeyValue( List : TStringList ;  // List for Key=Value pairs
-                         KeyWord : string ;   // Key
-                         Value : NativeInt       // Value
-                         ) : NativeInt ; Overload ;        // Return value
 
    function GetKeyValue( List : TStringList ;  // List for Key=Value pairs
                          KeyWord : string ;   // Key
@@ -2695,18 +2686,6 @@ end;
 
 procedure TIDRFile.AddKeyValue( List : TStringList ;  // List for Key=Value pairs
                                 KeyWord : string ;    // Key
-                                Value : NativeInt        // Value
-                                 ) ;
-// ---------------------
-// Add Key=NativeInt Value to List
-// ---------------------
-begin
-     List.Add( ReplaceText(Keyword + format('=%d',[Value] ),'==','=') ) ;
-end;
-
-
-procedure TIDRFile.AddKeyValue( List : TStringList ;  // List for Key=Value pairs
-                                KeyWord : string ;    // Key
                                 Value : string        // Value
                                  ) ;
 // ---------------------
@@ -2807,32 +2786,6 @@ begin
 
 end;
 
-
-
-function TIDRFile.GetKeyValue( List : TStringList ;  // List for Key=Value pairs
-                               KeyWord : string ;   // Key
-                               Value : NativeInt       // Value
-                               ) : NativeInt ;        // Return value
-// ------------------------------
-// Get Key=Integer Value from List
-// ------------------------------
-var
-    istart,idx : Integer ;
-    s : string ;
-begin
-
-     idx := List.IndexOfName( Keyword ) ;
-     if idx >= 0 then
-        begin
-        s := List[idx] ;
-        // Find key=value separator and remove key
-        istart := Pos( '=', s ) ;
-        if istart > 0 then Delete( s, 1, istart ) ;
-        Result := STrToInt( s ) ;
-        end
-     else Result := Value ;
-
-end;
 
 
 function TIDRFile.GetKeyValue( List : TStringList ;  // List for Key=Value pairs

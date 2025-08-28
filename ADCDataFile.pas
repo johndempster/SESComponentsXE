@@ -59,6 +59,7 @@ unit ADCDataFile;
 // 03.06.20 Export of records to text files in column format now in correct order
 // 15.05.25 ASCLoadFile now converts ASCII text to FP faster
 // 19.06.25 .csv added and .dat removed from file extensions considered to be ASCII
+// 22.08.25 .EDF European Data Format file format added
 
 {$R 'adcdatafile.dcr'}
 interface
@@ -148,8 +149,9 @@ type
   TSingleArray = Array[0..10000000] of Single ;
   PSingleArray = ^TSingleArray ;
 
-  // Types of image file supported
-  TADCDataFileType = ( ftUnknown,
+  // Types of data file supported
+  TADCDataFileType = (
+                ftUnknown,
                 ftWCP,
                 ftEDR,
                 ftCFS,
@@ -169,7 +171,12 @@ type
                 ftCHT,
                 ftWAV,
                 ftHEK,
-                ftMAT ) ;
+                ftMAT,
+                ftEDF ) ;
+
+
+// PCLAMP data file structures
+// ---------------------------
 
   TpClampV5 = packed record { Note. FETCHEX format header block }
 	    par : Array[0..79] of single ;
@@ -925,6 +932,7 @@ type
 
 
 // WCP V9.0 file structure
+// -----------------------
 
 { Data file header block }
 TWCPFileHeader = packed record
@@ -993,6 +1001,9 @@ TLDTSegmentHeader = packed record
            NumSamples : Cardinal ;
            end ;
 
+// CED Filing System structures
+// ----------------------------
+
     TCFSChannelDef = packed record
         ChanName : String[21] ;
         UnitsY : String[9] ;
@@ -1040,6 +1051,8 @@ TLDTSegmentHeader = packed record
         end ;
 
 // IGOR file header structures
+// ---------------------------
+
 const
     MAXDIMS = 4 ;
     MAX_WAVE_NAME2 = 18 ;
@@ -1214,6 +1227,10 @@ TPONEMAHBlockHeader = Packed Record
   Unused : Byte ;
   end ;
 
+
+//  Igor Data File structures
+//  -------------------------
+
 TRIFFHeader = packed record
     ID : Array[0..3] of ANSIChar ;
     ChunkSize : Cardinal ;
@@ -1236,6 +1253,35 @@ TWAVEDataChunk = packed record
     ChunkSize : Cardinal ;
     end ;
 
+//  European Data Format header structire
+//  -------------------------------------
+
+TEDFChannelInfo = packed record
+    Name : Array[0..15] of ANSIChar ;          // CHannel name
+    Transducer : Array[0..79] of ANSIChar ;    // Transducer used
+    Units : Array[0..7] of ANSIChar ;          // Channel units
+    MinUnits : Array[0..7] of ANSIChar ;       // Min value (units)
+    MaxUnits : Array[0..7] of ANSIChar ;       // Max value (units)
+    MinADCUnits : Array[0..7] of ANSIChar ;    // Min ADC units
+    MaxADCUnits : Array[0..7] of ANSIChar ;    // Max ADC Units
+    Prefilter : Array[0..79] of ANSIChar ;     // Pre-filertering applied
+    NumSamples : Array[0..7] of ANSIChar ;    // No. of samples in channel
+    Reserved : Array[0..31] of ANSICHar ;
+    end ;
+
+TEDFHeader = packed record
+    Version : Array[0..7] of ANSICHar ;
+    PatientID : Array[0..79] of ANSICHar ;
+    RecordingID : Array[0..79] of ANSICHar ;
+    StartDate : Array[0..7] of ANSICHar ;     // dd.mm.yy
+    StartTime : Array[0..7] of ANSICHar ;     // hh.mm.ss
+    BytesInHeader : Array[0..7] of ANSICHar ; // No. bytes in header (ASCII text)
+    Reserved : Array[0..43] of ANSICHar ;
+    NumDataRecords : Array[0..7] of ANSICHar ; // No. data records (ASCII text)
+    DataRecordDuration : Array[0..7] of ANSICHar ; // Duration (s) of data record (ASCII text)
+    NumSignals : Array[0..3] of ANSICHar ; // No. signal channels per record (ASCII text)
+    end ;
+
   TADCDataFile = class(TComponent)
   private
     { Private declarations }
@@ -1245,6 +1291,7 @@ TWAVEDataChunk = packed record
     FIdentLine : String ;           // File ID text
     FileHandle : Integer ;         // File handle
     FFileName : String ;            // Name of data file
+    FCreationTime : String ;        // Date & time of file creation
     FNumChannelsPerScan : Integer ; // No. of analogue channels per scan
     FNumBytesPerScan : Integer ;     // No. of byte in channel scan
     FNumBytesPerSample : Integer ;  // No. of bytes per A/D sample
@@ -1342,10 +1389,9 @@ TWAVEDataChunk = packed record
     FASCIIFixedRecordSize : Boolean ; // Fixed record size flag
     FASCIISaveRecordsinColumns : Boolean ; // TRUE = Save records as columns in ASCII text table
 
+    EDFHeader : TEDFHeader ;  // EDF File header
+
     UseTempFile : Boolean ;
-    //InBuf : Array[0..64000] of SmallInt ;
-
-
 
     procedure WCPLoadFileHeader ;
     function WCPSaveFileHeader : Boolean ;
@@ -1402,6 +1448,10 @@ TWAVEDataChunk = packed record
          var Items : Array of String ;// Returns items within line
          var NumItems : Integer ;      // Returns no. of items
          var EOF : Boolean ) ;        // Returns True if at end of file
+
+    // European Data File functions
+    function EDFLoadFileHeader : Boolean ;
+    function EDFSaveFileHeader : Boolean ;
 
 
     function CharacterArrayToString(
@@ -1510,11 +1560,26 @@ TWAVEDataChunk = packed record
     procedure CopyStringToANSIArray( var Dest : array of ANSIChar ; Source : string ) ;
     procedure AppendStringToANSIArray( var Dest : array of ANSIChar ; Source : string ) ;
     procedure CopyANSIArrayToString( var Dest : string ; var Source : array of ANSIChar ) ;
+
+
     procedure FindParameter(
               const Source : array of ANSIChar ;
               Keyword : string ;
               var Parameter : string ) ;
+
+    function ExtractFloatFromANSIArray ( ansiBuf : Array of ANSIChar ) : Single ;
+    procedure WriteFloatToANSIArray(
+              var ansiBuf : Array of ANSIChar ;
+              Value : Single ) ;
+
     function ExtractFloat ( CBuf : string ; Default : Single) : single ;
+
+    function ExtractIntFromANSIArray ( ansiBuf : Array of ANSIChar ) : Integer ;
+    procedure WriteIntToANSIArray(
+              var ansiBuf : Array of ANSIChar ;
+              iValue : Integer
+              ) ;
+
     function ExtractInt ( CBuf : string ) : Integer ;
 
     function ExtractItems(
@@ -1603,6 +1668,7 @@ TWAVEDataChunk = packed record
     Property MinADCValue : Integer Read FMinADCValue Write FMinADCValue ;
     Property RecordNum : Integer Read FRecordNum Write SetRecordNum ;
     Property IdentLine : String Read FIdentLine Write FIdentLine ;
+    Property CreationTime : string Read FCreationTime Write FCreationTime ;
     Property ScanInterval : Single Read GetScanInterval Write FScanInterval ;
     Property NumFileHeaderBytes : Integer Read FNumHeaderBytes Write FNumHeaderBytes ;
 
@@ -1822,6 +1888,7 @@ begin
           ftCHT : CHTLoadFileHeader ;
           ftWAV : WAVLoadFileHeader ;
           ftHEK : HEKLoadFile ;
+          ftEDF : EDFLoadFileHeader ;
           end ;
 
      Result := True ;
@@ -1956,6 +2023,10 @@ begin
      { Is it a Strathclyde Chart data file ? }
      if Result = ftUnknown then if ExtractFileExt(LowerCase(FileName)) = '.cht' then Result := ftCHT ;
 
+     { Is it a European Data Format file ? }
+     if Result = ftUnknown then if ExtractFileExt(LowerCase(FileName)) = '.edf' then Result := ftedf ;
+
+
      // Close file if this was only a
      if TempFileOpen then
         begin
@@ -1982,7 +2053,8 @@ begin
 
      Result := False ;
 
-     if FileHandle >= 0 then begin
+     if FileHandle >= 0 then
+        begin
         ShowMessage( 'TADCDataFile: A file is aready open ' ) ;
         Exit ;
         end ;
@@ -1990,13 +2062,13 @@ begin
     for ch := 0 to FNumChannelsPerScan-1 do FADCScale[ch] := 1.0 ;
     FADCOffset := 0 ;
 
-
      // Set file name and type
      FFileName := FileName ;
      FFileType := FileType ;
 
      // Create data file (for file types which write directly to file)
-     if FFileType <> ftASC then begin
+     if FFileType <> ftASC then
+        begin
         FileHandle := FileCreate( FFileName ) ;
         if FileHandle < 0 then begin
            ShowMessage( 'Unable to create ' + FileName ) ;
@@ -2111,6 +2183,22 @@ begin
            FFloatingPointSamples := False ;
            end ;
 
+        ftEDF : begin
+           // European Data File
+           FNumBytesPerSample := 2 ;
+           FNumHeaderBytes := SizeOf(TEDFHeader) + SizeOf(TEDFChannelInfo)*FNumChannelsPerScan ;
+           FNumRecordAnalysisBytes := 0 ;
+           FNumBytesPerScan := FNumChannelsPerScan*FNumBytesPerSample ;
+           FNumRecordDataBytes := FNumScansPerRecord*FNumBytesPerScan ;
+           FNumRecordBytes := FNumRecordDataBytes + FNumRecordAnalysisBytes ;
+           FFloatingPointSamples := False ;
+           // Create a temporary data file
+           TempFileName := CreateTempFileName ;
+           UseTempFile := True ;
+           TempHandle := FileCreate( TempFileName ) ;
+
+           end ;
+
         end ;
 
      FNumRecords := 0 ;
@@ -2145,7 +2233,9 @@ var
   Err : Integer ;
 begin
 
-     if UpdateHeader then begin
+     if UpdateHeader then
+        begin
+
         case FFileType of
              ftWCP : WCPSaveFileHeader ;
              ftEDR : EDRSaveFileHeader ;
@@ -2155,25 +2245,30 @@ begin
              ftCHT : CHTSaveFileHeader ;
              ftWAV : WAVSaveFileHeader ;
              ftCFS : CFSSaveFileHeader ;
+             ftEDF : EDFSaveFileHeader ;
              end ;
         UpdateHeader := False ;
+
         end ;
 
      // Close ASCII temporary file (if open)
-     if  TempHandle >= 0 then begin
+     if  TempHandle >= 0 then
+        begin
         FileClose( TempHandle ) ;
         TempHandle := -1 ;
         end ;
 
      // Close  file
-     if FileHandle >= 0 then begin
+     if FileHandle >= 0 then
+        begin
         if FFileType = ftAxonABF2 then ABF_Close( FileHandle, Err )
         else FileClose( FileHandle ) ;
         end ;
      FileHandle := -1 ;
 
      // Remove ABF V2 I/O library
-     if ABF2LibraryLoaded then begin
+     if ABF2LibraryLoaded then
+        begin
         FreeLibrary( ABF2LibraryHnd ) ;
         ABF2LibraryLoaded := False ;
         end;
@@ -2232,11 +2327,11 @@ begin
          { Read record data header & channel info }
          FileSeek( FileHandle, DataPointer, 0 ) ;
          FileRead( FileHandle,RecHeader,SizeOf(RecHeader)) ;
-         for ch := 0 to CFSFileHeader.DataChans-1 do
-             FileRead( FileHandle,ChannelInfo[ch],SizeOf(TCFSChannelInfo)) ;
+         for ch := 0 to CFSFileHeader.DataChans-1 do FileRead( FileHandle,ChannelInfo[ch],SizeOf(TCFSChannelInfo)) ;
 
          // Copy each channel individually
-         for ch := 0 to FNumChannelsPerScan-1 do begin
+         for ch := 0 to FNumChannelsPerScan-1 do
+             begin
 
              CFSch := CFSChannel[ch] ;
 
@@ -2273,7 +2368,8 @@ begin
              Result := NumScans ;
 
          end
-      else if FFileType = ftAxonABF2 then begin
+      else if FFileType = ftAxonABF2 then
+         begin
          // Load data from ABF V2.X file
          fBuf := AllocMem( SizeOf(Single)*ABF2Header.ActualAcqLength) ;
          iBuf := AllocMem( SizeOf(SmallInt)*ABF2Header.ActualAcqLength) ;
@@ -2325,25 +2421,24 @@ begin
                        + StartAtScan*FNumBytesPerScan ;
         FileSeek( FileHandle1, FilePointer, 0 ) ;
 
-        if FFloatingPointSamples then begin
+        if FFloatingPointSamples then
+           begin
            // Read A/D samples in floating point format
            FPBuf := AllocMem( NumScans*FNumBytesPerScan ) ;
-           NumBytesRead := FileRead( FileHandle1,
-                                     FPBuf^,
-                                     NumScans*FNumBytesPerScan ) ;
+           NumBytesRead := FileRead( FileHandle1, FPBuf^,NumScans*FNumBytesPerScan ) ;
            ch := 0 ;
-           for i := 0 to (NumBytesRead div FNumBytesPerSample)-1 do begin
+           for i := 0 to (NumBytesRead div FNumBytesPerSample)-1 do
+               begin
                Buf[i] := Round((FPBuf^[i]-FADCOffset)*FADCScale[ch]) ;
                Inc(ch) ;
                if ch >= FNumChannelsPerScan then ch := 0 ;
                end ;
            FreeMem( FPBuf ) ;
            end
-        else begin
+        else
+           begin
            // Read A/D samples
-           NumBytesRead := FileRead( FileHandle1,
-                                     Buf,
-                                     NumScans*FNumBytesPerScan ) ;
+           NumBytesRead := FileRead( FileHandle1,Buf,NumScans*FNumBytesPerScan ) ;
 
         //   for i := 0 to NumScans*FNumChannelsPerScan-1 do
        //        Buf[i] := (WBuf[i] div 2) ;
@@ -2406,11 +2501,14 @@ begin
                     + StartAtScan*FNumBytesPerScan ;
      FileSeek( FileHandle1, FilePointer, 0 ) ;
 
-     if (FFileType = ftASC) or FFloatingPointSamples then begin
+     if (FFileType = ftASC) or FFloatingPointSamples then
+        begin
         // Write data in scaled floating point values
         j := 0 ;
-        for i := 0 to NumScans-1 do begin
-            for ch := 0 to FNumChannelsPerScan-1 do begin
+        for i := 0 to NumScans-1 do
+            begin
+            for ch := 0 to FNumChannelsPerScan-1 do
+                begin
                 Value := (Buf[j]- FChannelZero[ch])*FChannelScale[ch] ;
                 FileWrite(FileHandle1,Value,SizeOf(Value) ) ;
                 Inc(j) ;
@@ -2424,17 +2522,18 @@ begin
      else begin
         // Write as integer values
         j := 0 ;
-        for i := 0 to NumScans-1 do begin
-            for ch := 0 to FNumChannelsPerScan-1 do begin
+        for i := 0 to NumScans-1 do
+            begin
+            for ch := 0 to FNumChannelsPerScan-1 do
+                begin
                 OutBuf^[j] := Round(Buf[j]/FADCScale[ch]) + FADCOffset ;
                 Inc(j) ;
                 end ;
             end ;
 
         // Write`A/D samples
-        NumBytesWritten := FileWrite( FileHandle1,
-                                      OutBuf^,
-                                      NumScans*FNumBytesPerScan ) ;
+        NumBytesWritten := FileWrite( FileHandle1, OutBuf^, NumScans*FNumBytesPerScan ) ;
+
         // Return no. scans written
         Result := NumBytesWritten div FNumBytesPerScan ;
 
@@ -6722,6 +6821,405 @@ begin
     end ;
 
 
+function TADCDataFile.EDFLoadFileHeader : Boolean ;
+// ----------------------------------------------
+// European Data Format file header load function
+// ----------------------------------------------
+const
+    NumSamplesPerBuf = 10000 ;
+var
+    ch,i,j,jStart,iRep,iRec : Integer ;
+    NumSamplesInChannel : Array[0..127] of Integer ;
+    TempFileName : string ;
+    TempFileHandle : THandle ;
+
+    iADCMin : Array[0..ChannelLimit] of Integer ;       // Lower limit of ADC values in channel
+    iADCMax : Array[0..ChannelLimit] of Integer ;       // Upper limit of ADC values in channel
+    YMin : Array[0..ChannelLimit] of Single ;           // Lower limit of signal values
+    YMax : Array[0..ChannelLimit] of Single ;           // Upper limit of signal values
+
+
+    iBuf : PSmallIntArray ;
+    iBufInterleaved : PSmallIntArray ;
+    nRepeats : Integer ;
+    RecordDuration : Single ;
+    EDFChannelInfo : TEDFChannelInfo ;
+    sDate,sTime : string ;
+    FS : TFormatSettings ;
+    StartDate : TDateTime ;
+begin
+
+     Result := False ;
+
+     //  Read EDF file header block (max size)
+     FileSeek( FileHandle, 0, 0 ) ;
+     FileRead(FileHandle,EDFHeader,Sizeof(EDFHeader)) ;
+
+     FNumRecords := ExtractIntFromANSIArray( EDFHeader.NumDataRecords ) ;
+     FNumChannelsPerScan := ExtractIntFromANSIArray( EDFHeader.NumSignals ) ;
+     FNumBytesPerSample := 2 ;
+     FNumHeaderBytes := ExtractIntFromANSIArray( EDFHeader.BytesInHeader ) ;
+
+     // Read date/time stamp
+     CopyANSIArrayToString( sDate, EDFHeader.StartDate) ;
+     CopyANSIArrayToString( sTime, EDFHeader.StartTime) ;
+     FS := FormatSettings.Create ;
+     FS.DateSeparator := '.' ;
+     StartDate := StrToDate( sDate,  FS ) ;
+     FS.TimeSeparator := '.' ;
+     StartDate := StartDate + StrToTime( sDate,  FS ) ;
+     FCreationTime := DateTimeToStr( StartDate ) ;
+
+     // Read Patient ID
+     CopyANSIArrayToString( FIdentLine, EDFHeader.PatientID) ;
+
+     // Channel name
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         FileRead(FileHandle,EDFChannelInfo.Name,Sizeof(EDFChannelInfo.Name)) ;
+         CopyANSIArrayToString( FChannelName[ch], EDFChannelInfo.Name) ;
+         end;
+
+     // Channel transducer type
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         FileRead(FileHandle,EDFChannelInfo.Transducer,Sizeof(EDFChannelInfo.Transducer)) ;
+         end;
+
+     // Channel units
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         FileRead(FileHandle,EDFChannelInfo.Units,Sizeof(EDFChannelInfo.Units)) ;
+         CopyANSIArrayToString( FChannelUnits[ch], EDFChannelInfo.Units) ;
+         end;
+
+     // Signal value lower limit
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         FileRead(FileHandle,EDFChannelInfo.MinUnits,Sizeof(EDFChannelInfo.MinUnits)) ;
+         YMin[ch] := ExtractFloatFromANSIArray( EDFChannelInfo.MinUnits ) ;
+         end;
+
+     // Signal value upper limit
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         FileRead(FileHandle,EDFChannelInfo.MaxUnits,Sizeof(EDFChannelInfo.MaxUnits)) ;
+         YMax[ch] := ExtractFloatFromANSIArray( EDFChannelInfo.MaxUnits ) ;
+         end;
+
+     // ADC value range lower limit
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         FileRead(FileHandle,EDFChannelInfo.MinADCUnits,Sizeof(EDFChannelInfo.MinADCUnits)) ;
+         iADCMin[ch] := ExtractIntFromANSIArray( EDFChannelInfo.MinADCUnits ) ;
+         end;
+
+     // ADC value range upper limit
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         FileRead(FileHandle,EDFChannelInfo.MaxADCUnits,Sizeof(EDFChannelInfo.MaxADCUnits)) ;
+         iADCMax[ch] := ExtractIntFromANSIArray( EDFChannelInfo.MaxADCUnits ) ;
+         end;
+
+     // Channel pre-filtering field
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         FileRead(FileHandle,EDFChannelInfo.PreFilter,Sizeof(EDFChannelInfo.PreFilter)) ;
+         end;
+
+     // No. of samples in channel
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         FileRead(FileHandle,EDFChannelInfo.NumSamples,Sizeof(EDFChannelInfo.NumSamples)) ;
+          NumSamplesInChannel[ch]  := ExtractIntFromANSIArray( EDFChannelInfo.NumSamples ) ;
+         end;
+
+     // Channel reserved field
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         FileRead(FileHandle,EDFChannelInfo.Reserved,Sizeof(EDFChannelInfo.Reserved)) ;
+         end;
+
+     // Read in channel information
+
+     FNumScansPerRecord := 0 ;
+     FMaxADCValue := 0 ;
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+
+         // ADC data value offset
+         fChannelOffset[ch] := ch ;
+
+         FMaxADCValue := Max(iADCMax[ch],FMaxADCValue) ;
+         FMinADCValue := -FMaxADCValue - 1 ;
+
+         // Scaled units range
+         FCHannelScale[ch] := (YMax[ch] - YMin[ch]) / (iADCMax[ch] - iADCMin[ch]) ;
+
+         // Compute channel V/Units scaling factor
+         FChannelADCVoltageRange[ch] := 10.0 ;
+         FChannelGain[ch] := 1.0 ;
+         FChannelCalibrationFactor[ch] := CalibFactor(ch) ;
+
+         FNumScansPerRecord := Max( FNumScansPerRecord, NumSamplesInChannel[ch] ) ;
+
+         end;
+
+     // Smallest sampling interval in any channel
+     RecordDuration := ExtractFloatFromANSIArray( EDFHeader.DataRecordDuration ) ;
+     FScanInterval := RecordDuration / FNumScansPerRecord ;
+     FNumBytesPerSample := 2 ;
+     FNumBytesPerScan := FNumBytesPerSample*FNumChannelsPerScan ;
+     FNumRecordAnalysisBytes := 0 ;
+     FNumRecordDataBytes := FNumBytesPerScan*FNumScansPerRecord ;
+     FNumRecordBytes :=  FNumRecordDataBytes + FNumRecordAnalysisBytes ;
+
+     // Create a temporary file to hold interleaved channel data
+     TempFileName := CreateTempFileName ;
+     TempHandle := FileCreate( TempFileName ) ;
+     FFloatingPointSamples := False ;
+     UseTempFile := True ;
+
+     // Allocate buffers
+     iBuf := AllocMem( FNumScansPerRecord*SizeOf(SmallInt));
+     iBufInterleaved := AllocMem( FNumRecordBytes ) ;
+
+     FileSeek( TempHandle, FNumHeaderBytes, 0 ) ; // Temp file pointer at start of data
+     FileSeek( FileHandle, FNumHeaderBytes, 0 ) ; // EDF file pointer at start of data
+
+     // Copy all reccords to temp. file
+     // -------------------------------
+
+     for iRec := 1 to FNumRecords do
+         begin
+
+         for ch := 0 to FNumChannelsPerScan-1 do
+             begin
+
+             // Read EDR record
+             FileRead( FileHandle, iBuf^,  NumSamplesInChannel[ch]*SizeOf(SmallInt) ) ;
+
+            // Interleave channel data (repeating samples if necessary)
+             j := ch ;
+             nRepeats := FNumScansPerRecord div NumSamplesInChannel[ch] ;
+             For i := 0 to NumSamplesInChannel[ch]-1 do
+                 begin
+                 for iRep := 1 to nRepeats do
+                     begin
+                     iBufInterleaved[j] := iBuf[i] ;
+                     j := j + FNumChannelsPerScan ;
+                     end;
+                 end;
+
+             end ;
+
+          // Write interleaved buffer to temp file
+          FileWrite( TempHandle, iBufInterleaved^, FNumRecordBytes ) ;
+
+          end;
+
+     // Free buffers
+     FreeMem( iBuf ) ;
+     FreeMem( iBufInterleaved ) ;
+
+     Result := True ;
+
+end;
+
+
+function TADCDataFile.EDFSaveFileHeader : Boolean ;
+// ----------------------------------------------
+// European Data Format file header save function
+// ----------------------------------------------
+var
+    ch,i,j : Integer ;
+    iBuf : PSmallIntArray ;
+    iBufInterleaved : PSmallIntArray ;
+    NumSamplesToCopy,NumSamples : Integer ;
+    nRepeats : Integer ;
+    RecordDuration : Single ;
+    EDFChannelInfo : TEDFChannelInfo ;
+    FS : TFormatSettings ;
+    sDate,sTime : string ;
+    DTime : TDateTime ;
+    NumSamplesInChannel,NumDataRecords,iRec : Integer ;
+    NumScansInFile,iFactor : Integer ;
+    DataDuration,DataRecordDuration,NumDataRecordBytes : single ;
+begin
+
+     Result := False ;
+
+     // Write date/time stamp in EDF format
+     try
+       if FCreationTime <> '' then DTime := StrToDateTime(FCreationTime)
+                              else DTime := Now ;
+     except
+       DTime := Now ;
+     end;
+
+     FS := FormatSettings.Create ;
+     FS.DateSeparator := '.' ;
+     sDate := FormatDateTime( 'dd.mm.yy', DTime ) ;//DateToStr( DTime,  FS ) ;
+     CopyStringToANSIArray( EDFHeader.StartDate, sDate )  ;
+     FS.TimeSeparator := '.' ;
+     sTime := TimeToStr( DTime,  FS ) ;
+     CopyStringToANSIArray( EDFHeader.StartTime, sTime ) ;
+
+     // Write Patient ID and other data
+     CopyStringToANSIArray( EDFHeader.PatientID, FIdentLine ) ;
+     CopyStringToANSIArray( EDFHeader.RecordingID, ' ' ) ;
+     CopyStringToANSIArray( EDFHeader.Reserved, ' ' ) ;
+     CopyStringToANSIArray( EDFHeader.Version, '0' ) ;
+
+     // No of bytes in file header
+     FNumHeaderBytes := SizeOf(EDFHeader) + SizeOf(EDFChannelInfo)*FNumChannelsPerScan ;
+     WriteIntToANSIArray( EDFHeader.BytesInHeader, FNumHeaderBytes ) ;
+     // Duration of recording (s)
+     WriteIntToANSIArray( EDFHeader.NumSignals, FNumChannelsPerScan ) ;
+
+//   Divide sample data into a series of 1 second records of less than 61440 bytes
+
+     NumScansInFile := FNumScansPerRecord*FNumRecords ;
+     DataDuration := NumScansInFile*FSCanInterval ;
+     DataRecordDuration := 0.0 ;
+
+     repeat
+         DataRecordDuration := DataRecordDuration + 1.0 ;
+         NumDataRecords := Round(DataDuration / DataRecordDuration ) ;
+         NumSamplesInChannel := Round( DataRecordDuration / FSCanInterval ) ;
+         NumDataRecordBytes := NumSamplesInChannel*FNumChannelsPerScan*SizeOf(SmallInt) ;
+         until (NumDataRecordBytes < 61440) ;
+     NumDataRecords := NumScansInFile div NumSamplesInChannel ;
+     DataRecordDuration := NumSamplesInChannel*FSCanInterval ;
+
+     WriteFloatToANSIArray( EDFHeader.DataRecordDuration, NumSamplesInChannel*FScanInterval ) ;
+     WriteIntToANSIArray( EDFHeader.NumDataRecords, NumDataRecords ) ;
+
+     // Write file header to file
+     FileSeek( FileHandle, 0, 0 ) ;
+     FileWrite(FileHandle,EDFHeader,Sizeof(EDFHeader)) ;
+
+     // Write channel information to file
+     // Note. order of data written to file is significant
+
+     // Channel names
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         CopyStringToANSIArray( EDFChannelInfo.Name, FChannelName[ch] ) ;
+         FileWrite(FileHandle,EDFChannelInfo.Name,Sizeof(EDFChannelInfo.Name)) ;
+         end ;
+
+     // Transducer types
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         CopyStringToANSIArray( EDFChannelInfo.Transducer, ' ' ) ;
+         FileWrite(FileHandle,EDFChannelInfo.Transducer,Sizeof(EDFChannelInfo.Transducer)) ;
+         end ;
+
+     // Physical units
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         CopyStringToANSIArray( EDFChannelInfo.Units, FChannelUnits[ch] ) ;
+         FileWrite(FileHandle,EDFChannelInfo.Units,Sizeof(EDFChannelInfo.Units)) ;
+         end ;
+
+     // Physical units mininum
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         WriteFloatToANSIArray( EDFChannelInfo.MinUnits, FCHannelScale[ch]*FMinADCValue ) ;
+         FileWrite(FileHandle,EDFChannelInfo.MinUnits,Sizeof(EDFChannelInfo.MinUnits)) ;
+         end ;
+
+     // Physical units maximum
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         WriteFloatToANSIArray( EDFChannelInfo.MaxUnits, FCHannelScale[ch]*FMaxADCValue ) ;
+         FileWrite(FileHandle,EDFChannelInfo.MaxUnits,Sizeof(EDFChannelInfo.MaxUnits)) ;
+         end ;
+
+     // A/D units minumim
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         WriteIntToANSIArray( EDFChannelInfo.MinADCUnits, MinADCValue ) ;
+         FileWrite(FileHandle,EDFChannelInfo.MinADCUnits,Sizeof(EDFChannelInfo.MinADCUnits)) ;
+         end ;
+
+     // A/D units maxmimm
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         WriteIntToANSIArray( EDFChannelInfo.MaxADCUnits, MaxADCValue ) ;
+         FileWrite(FileHandle,EDFChannelInfo.MaxADCUnits,Sizeof(EDFChannelInfo.MaxADCUnits)) ;
+         end ;
+
+     // Pre-filter applied
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         CopyStringToANSIArray( EDFChannelInfo.Prefilter, ' ' ) ;
+         FileWrite(FileHandle,EDFChannelInfo.PreFilter,Sizeof(EDFChannelInfo.PreFilter)) ;
+         end ;
+
+     // No. of samples per channel
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         WriteIntToANSIArray( EDFChannelInfo.NumSamples, NumSamplesInChannel ) ;
+         FileWrite(FileHandle,EDFChannelInfo.NumSamples,Sizeof(EDFChannelInfo.NumSamples)) ;
+         end ;
+
+     // Reserved data space
+     for ch := 0 to FNumChannelsPerScan-1 do
+         begin
+         CopyStringToANSIArray( EDFChannelInfo.Reserved, ' ' ) ;
+         FileWrite(FileHandle,EDFChannelInfo.Reserved,Sizeof(EDFChannelInfo.Reserved)) ;
+         end ;
+
+
+     // Write channel data sequentially to EDF file
+     // --------------------------------------------
+
+     // Allocate buffers
+     iBuf := AllocMem( NumSamplesInChannel*SizeOf(SmallInt) ) ;
+     iBufInterleaved := AllocMem( NumSamplesInChannel*FNumChannelsPerScan*SizeOf(SmallInt) ) ;
+
+     FileSeek( FileHandle, FNumHeaderBytes, 0 ) ; // EDF file pointer at start of data
+     FileSeek( TempHandle, FNumHeaderBytes, 0 ) ; // temp file pointer at start of data
+
+     for iRec := 1 to NumDataRecords do
+         begin
+
+         // Read interleaved data into buffer
+         FileRead( TempHandle, iBufInterleaved^, NumSamplesInChannel*FNumChannelsPerScan*SizeOf(SmallInt) ) ;
+
+         // Extract channel and write to EDF file
+
+         for ch := 0 to FNumChannelsPerScan-1 do
+              begin
+             j := ch ;
+             for i := 0 to NumSamplesInChannel-1  do
+                 begin
+                 iBuf[i] := iBufInterleaved[j] ;
+                 j := j + FNumChannelsPerScan ;
+                 end;
+
+             // Write integer data to EDF file
+             FileWrite( FileHandle, iBuf^, NumSamplesInChannel*SizeOf(SmallInt)) ;
+
+             end;
+
+        end;
+
+     // Free buffers
+     FreeMem( iBuf ) ;
+     FreeMem( IBufInterleaved ) ;
+
+end;
+
+
+
+//
+// Get/Set methods and general utility functions
+// ---------------------------------------------
+
+
 function TADCDataFile.CharacterArrayToString(
          Buf : Array of ANSIChar
          )  : String ;
@@ -7224,15 +7722,14 @@ procedure TADCDataFile.CopyStringToANSIArray(
 // Append string to end of ANSIChar array
 // --------------------------------------
 var
-   iFrom,iTo : Integer ;
+   i : Integer ;
 begin
 
-     for iTo := 0 to High(Dest) do Dest[iTo] := #0 ;
+     for i := 0 to High(Dest) do Dest[i] := ' ' ;
 
-     iTo := 0 ;
-     for iFrom := 1 to Min(Length(Source),High(Dest)-iTo) do begin
-         Dest[iTo] := ANSIChar(Source[iFrom]) ;
-         Inc(iTo) ;
+     for i := 1 to Min(Length(Source),High(Dest)+1) do
+         begin
+         Dest[i-1] := ANSIChar(Source[i]) ;
          end;
 
      end ;
@@ -7242,6 +7739,9 @@ begin
 procedure TADCDataFile.CopyANSIArrayToString(
           var Dest : string ;
           var Source : array of ANSIChar ) ;
+// ------------------------------
+// Copy ANSIChar array to string
+// ------------------------------
 var
    i : Integer ;
    c : Char ;
@@ -7253,6 +7753,9 @@ begin
         if c <> #0 then Dest := Dest + c ;
         Inc(i) ;
         until (c = #0) or (i >= High(Source));
+
+     // Remove leading & trailing spaces
+     Dest := Trim(Dest) ;
 
      end ;
 
@@ -7294,6 +7797,34 @@ begin
              end ;
         end ;
     end ;
+
+
+function TADCDataFile.ExtractFloatFromANSIArray ( ansiBuf : Array of ANSIChar ) : Single ;
+// ------------------------------------------------------
+// Extract an integer number from an ANSI character array
+// ------------------------------------------------------
+var
+    s : string ;
+begin
+     CopyANSIArrayToString( s, ansiBuf ) ;
+     Result := Extractfloat( s, 0.0 ) ;
+end;
+
+
+procedure TADCDataFile.WriteFloatToANSIArray(
+          var ansiBuf : Array of ANSIChar ;    // ansi char array
+          Value : Single ) ;                       // floating point value
+
+// -------------------------------------------
+// Write an integer value to an ANSIchar array
+// -------------------------------------------
+var
+    s : string ;
+begin
+    s := format( '%.8g', [Value] );
+    CopyStringToANSIArray( ansiBuf, s ) ;
+end;
+
 
 
 function TADCDataFile.ExtractFloat (
@@ -7341,6 +7872,32 @@ begin
         on E : EConvertError do ExtractFloat := Default ;
         end ;
      end ;
+
+
+function TADCDataFile.ExtractIntFromANSIArray ( ansiBuf : Array of ANSIChar ) : Integer ;
+// ------------------------------------------------------
+// Extract an integer number from an ANSI character array
+// ------------------------------------------------------
+var
+    s : string ;
+begin
+     CopyANSIArrayToString( s, ansiBuf ) ;
+     Result := ExtractInt( s ) ;
+end;
+
+
+procedure TADCDataFile.WriteIntToANSIArray(
+          var ansiBuf : Array of ANSIChar ;    // ansi char array
+          iValue : Integer );                  // Integer value
+// -------------------------------------------
+// Write an integer value to an ANSIchar array
+// -------------------------------------------
+var
+    s : string ;
+begin
+    s := format('%d',[iValue]);
+    CopyStringToANSIArray( ansiBuf, s ) ;
+end;
 
 
 function TADCDataFile.ExtractInt ( CBuf : string ) : Integer ;

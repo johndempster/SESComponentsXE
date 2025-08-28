@@ -135,6 +135,8 @@ unit ScopeDisplay;
   17.01.22 ... JD System.IO.TPath function now used to get temporary file name
   16.06.24 ... JD .CopyDataToClipboard. Skewing of compressed channels with unchanging Min/Max signal levels fixed
                    Two points always saved even though Min=Max. Uncompressed channels saved as single data point per value.
+  22.08.25 ... JD Recursive low-pass filter added to plots.
+  27.08.25 ... JD FNumPoints can now be set to zero.
   }
 
 interface
@@ -272,11 +274,10 @@ type
     FMetafileWidth : Integer ;
     FMetafileHeight : Integer ;
     FTitle : TStringList ;
+
     { Additional line }
     FLines : Array[0..MaxScopeLines] of TScopeLine ;
-//    FLineCount : Integer ;
-//    FLineChannel : Integer ;
-//    FLinePen : TPen ;
+
     { Display storage mode internal variables }
     FStorageMode : Boolean ;
     FStorageFileName : String ;
@@ -298,6 +299,9 @@ type
     FFixZeroLevels : Boolean ; // True = Zero level cursors fixed at true zero
 
     FDisplaySelected : Boolean ;
+
+    FLowPassFilterOn : Boolean ;   // True = Appy recursive low-pass filter to plotted data
+    FLowPassFilterCoeff : single ; // Low pass filter coefficient
 
     FMouseDown : Boolean ;
 
@@ -394,6 +398,11 @@ type
     function GetNumHorizontalCursors : Integer ;
 
     procedure SetFixZeroLevels( Value : Boolean ) ;
+
+    procedure SetLowPassFilterOn( Active : Boolean ) ;
+    procedure SetLowPassFilterCoeff( Coeff : Single ) ;
+
+
 
     { -- End of property read/write methods -------------- }
 
@@ -511,6 +520,9 @@ type
     function ScreenCoordToX(Chan : Integer ;Value : Integer ) : single ;
     function ScreenCoordToY(Chan : Integer ;Value : Integer ) : single ;
 
+    function LowPassFilterCutOffFrequency( SmoothingFactor : single ) : single ;
+    function LowPassFilterSmoothingFactor( CutOffFrequency : single ) : single ;
+
     property ChanName[ i : Integer ] : string read GetChanName write SetChanName ;
     property ChanUnits[ i : Integer ] : string read GetChanUnits write SetChanUnits ;
     property ChanScale[ i : Integer ] : single read GetChanScale write SetChanScale ;
@@ -532,6 +544,8 @@ type
              read GetHorCursor write SetHorCursor ;
     property VerticalCursors[ i : Integer ] : single
              read GetVertCursor write SetVertCursor ;
+
+
 
   published
     { Published declarations }
@@ -589,29 +603,24 @@ type
     property PrinterShowZeroLevels : Boolean
              read FPrinterShowZeroLevels write FPrinterShowZeroLevels ;
 
-    property MetafileWidth : Integer
-             read FMetafileWidth write FMetafileWidth ;
-    property MetafileHeight : Integer
-             read FMetafileHeight write FMetafileHeight ;
-    property StorageMode : Boolean
-             read FStorageMode write SetStorageMode ;
-    property RecordNumber : Integer
-             read FRecordNum write FRecordNum ;
-    property DisplayGrid : Boolean
-             Read FDrawGrid Write SetGrid ;
-    property MaxADCValue : Integer
-             Read FMaxADCValue write FMaxADCValue ;
-    property MinADCValue : Integer
-             Read FMinADCValue write FMinADCValue ;
+    property MetafileWidth : Integer read FMetafileWidth write FMetafileWidth ;
+    property MetafileHeight : Integer read FMetafileHeight write FMetafileHeight ;
+    property StorageMode : Boolean read FStorageMode write SetStorageMode ;
+    property RecordNumber : Integer read FRecordNum write FRecordNum ;
+    property DisplayGrid : Boolean Read FDrawGrid Write SetGrid ;
+    property MaxADCValue : Integer Read FMaxADCValue write FMaxADCValue ;
+    property MinADCValue : Integer Read FMinADCValue write FMinADCValue ;
     property NumVerticalCursors : Integer read GetNumVerticalCursors ;
     property NumHorizontalCursors : Integer read GetNumHorizontalCursors ;
     property NumBytesPerSample : Integer read FNumBytesPerSample write FNumBytesPerSample ;
     property FloatingPointSamples : Boolean read FFloatingPointSamples write FFloatingPointSamples ;
     property FixZeroLevels : Boolean read FFixZeroLevels write SetFixZeroLevels ;
-    property DisplaySelected : Boolean
-             read FDisplaySelected write FDisplaySelected ;
-    property FontSize : Integer
-             read FFontSize write FFontSize ;
+    property DisplaySelected : Boolean read FDisplaySelected write FDisplaySelected ;
+    property FontSize : Integer read FFontSize write FFontSize ;
+
+    property LowPassFilterOn : Boolean  read FLowPassFilterOn write SetLowPassFilterOn ;
+    property LowPassFilterCoeff : Single  read FLowPassFilterCoeff write SetLowPassFilterCoeff ;
+
   end;
 
 procedure Register;
@@ -802,6 +811,9 @@ begin
     FMarkerText := TStringList.Create ;
 
     FDisplaySelected := False ;
+
+    FLowPassFilterOn := False ;
+    FLowPassFilterCoeff := 0.1 ;
 
     ZoomRectCount := 0 ;
     NumZoomButtons := 0 ;
@@ -1023,7 +1035,8 @@ procedure TScopeDisplay.PlotRecord(
 var
    ch,n,i,j,iStart,iEnd,iStep,iPlot : Integer ;
    XPix,XPixRange,iYMin,iYMax : Integer ;
-   YMin,YMax,y : single ;
+   YMin,YMax,y,yPrevious : single ;
+   FirstSample : Boolean ;
 begin
 
      // Exit if no buffer
@@ -1035,6 +1048,7 @@ begin
      { Plot each active channel }
      for ch := 0 to FNumChannels-1 do if Channels[ch].InUse then
          begin
+
          Canv.Pen.Color := Channels[ch].Color ;
          n := 0 ;
 
@@ -1050,10 +1064,24 @@ begin
          iYMax := 1 ;
          YMin := 1E30 ;
          YMax := -YMin ;
+         FirstSample := True ;
          repeat
 
              y := GetSample( FBuf, j, FNumBytesPerSample, FFloatingPointSamples ) ;
 
+             // Recursive low-pass filter
+             if FLowPassFilterOn then
+                begin
+                if FirstSample then
+                   begin
+                   yPrevious := y ;
+                   FirstSample := False ;
+                   end;
+                y := yPrevious*(1.0 - FLowPassFilterCoeff) + FLowPassFilterCoeff*y ;
+                yPrevious := y ;
+                end;
+
+             // Determine Y min/max
              if y < Ymin then begin
                 iYMin := i ;
                 YMin := y ;
@@ -1063,9 +1091,11 @@ begin
                 YMax := y ;
                 end;
 
-             if i = iPlot then begin
+             if i = iPlot then
+                begin
                 XPix := XToCanvasCoord( Channels[ch], i ) ;
-                if iYMin < iYMax then begin
+                if iYMin < iYMax then
+                   begin
                    xy[n].y := YToCanvasCoord( Channels[ch], yMin) ;
                    xy[n].x := XPix ;
                    Inc(n) ;
@@ -1092,7 +1122,8 @@ begin
 
              { If line exceeds 16000 output a partial line to canvas,
                since polyline function seems to be unable to handle more than 16000 points }
-             if n > 16000 then begin
+             if n > 16000 then
+                begin
                 Polyline( Canv.Handle, xy, n ) ;
                 xy[0] := xy[n-1] ;
                 n := 1 ;
@@ -1106,7 +1137,8 @@ begin
 
          // Display lines indicating area from which "From Record" zero level is derived
          if (Channels[ch].ADCZeroAt >= Channels[ch].xMin) and
-            ((Channels[ch].ADCZeroAt+FChanZeroAvg) <= Channels[ch].xMax) then begin
+            ((Channels[ch].ADCZeroAt+FChanZeroAvg) <= Channels[ch].xMax) then
+            begin
             Canv.Pen.Color := FCursorColor ;
             xy[0].x := XToCanvasCoord( Channels[ch],Channels[ch].ADCZeroAt ) ;
             xy[1].x := xy[0].x ;
@@ -1123,6 +1155,8 @@ begin
 
             end ;
          end ;
+
+
      end ;
 
 
@@ -1534,7 +1568,7 @@ procedure TScopeDisplay.DisplayNewPoints(
 var
    i,iStep,j,ch,iPlot : Integer ;
    StartAt,EndAt,XPix,XPixRange,XPixLeft,XPixRight,iYMin,iYMax : Integer ;
-   YMin,YMax,y : single ;
+   YMin,YMax,y,yPrevious : single ;
 begin
 
      { Start plot lines at last point in buffer }
@@ -1544,7 +1578,8 @@ begin
      EndAt := FNumPoints-1 ;
 
      for ch := 0 to FNumChannels-1 do
-         if Channel[ch].InUse and (FBuf <> Nil) then begin
+         if Channel[ch].InUse and (FBuf <> Nil) then
+         begin
 
          XPixRange := Min( XToCanvasCoord( Channel[ch], EndAt ), Channel[ch].Right )
                       - Max( XToCanvasCoord( Channel[ch], StartAt ), Channel[ch].Left ) ;
@@ -1563,35 +1598,55 @@ begin
          XPixLeft := Channel[ch].Left ;
          XPixRight := Channel[ch].Right ;
 
-         if StartAt = 0 then begin
+         if StartAt = 0 then
+            begin
             y := GetSample( FBuf, j, FNumBytesPerSample, FFloatingPointSamples ) ;
             Canvas.MoveTo( Channel[ch].Left, YToCanvasCoord( Channel[ch], y) ) ;
+            yPrevious := y ; ;
             end
-         else begin
+         else
+            begin
             Canvas.MoveTo( XToCanvasCoord( Channel[ch],Channel[ch].xLast ),
                            YToCanvasCoord( Channel[ch],Channel[ch].yLast ) ) ;
+            yPrevious := Channel[ch].yLast ;
             end;
 
          repeat
+
              y := GetSample( FBuf, j, FNumBytesPerSample, FFloatingPointSamples ) ;
-            if y <= Ymin then begin
+
+             // Recursive low-pass filter
+             if FLowPassFilterOn then
+                begin
+                y := yPrevious*(1.0 - FLowPassFilterCoeff) + FLowPassFilterCoeff*y ;
+                yPrevious := y ;
+                end;
+
+            if y <= Ymin then
+               begin
                iYMin := i ;
                YMin := y ;
                end;
-            if y >= Ymax then begin
+            if y >= Ymax then
+               begin
                iYmax := i ;
                YMax := y ;
                end;
+
             XPix := XToCanvasCoord( Channel[ch], i ) ;
-            if i = iPlot then begin
-                 if (XPix >= XPixLeft) and (XPix <= XPixRight) then begin
-                    if iYMin < iYMax then begin
+            if i = iPlot then
+                 begin
+                 if (XPix >= XPixLeft) and (XPix <= XPixRight) then
+                    begin
+                    if iYMin < iYMax then
+                       begin
                        Canvas.LineTo( XPix, YToCanvasCoord( Channel[ch], yMin) ) ;
                        Canvas.LineTo( XPix, YToCanvasCoord( Channel[ch], yMax) ) ;
                        Channel[ch].xLast := i ;
                        Channel[ch].yLast := yMax ;
                        end
-                    else begin
+                    else
+                       begin
                        Canvas.LineTo( XPix, YToCanvasCoord( Channel[ch], yMax) ) ;
                        Canvas.LineTo( XPix, YToCanvasCoord( Channel[ch], yMin) ) ;
                        Channel[ch].xLast := i ;
@@ -1613,8 +1668,7 @@ begin
      DrawVerticalCursorLink(Canvas) ;
 
      { Vertical Cursors }
-     for i := 0 to High(VertCursors) do if VertCursors[i].InUse then
-         DrawVerticalCursor(Canvas,i) ;
+     for i := 0 to High(VertCursors) do if VertCursors[i].InUse then DrawVerticalCursor(Canvas,i) ;
 
      end ;
 
@@ -1672,7 +1726,8 @@ begin
            and (iCursor < High(HorCursors)) do Inc(iCursor) ;
 
     { Attach the cursor to a channel }
-    if iCursor <= High(HorCursors) then begin
+    if iCursor <= High(HorCursors) then
+       begin
        HorCursors[iCursor] := Channel[iChannel] ;
        HorCursors[iCursor].Position := 0 ;
        HorCursors[iCursor].InUse := True ;
@@ -1682,10 +1737,11 @@ begin
        HorCursors[iCursor].ADCName := CursorText ;
        Result := iCursor ;
        end
-    else begin
-         { Return -1 if no cursors available }
-         Result := -1 ;
-         end ;
+    else
+       begin
+       { Return -1 if no cursors available }
+       Result := -1 ;
+       end ;
     end ;
 
 
@@ -2034,7 +2090,7 @@ procedure TScopeDisplay.SetNumPoints(
   Set the number of points per channel
   ------------------------------------ }
 begin
-     FNumPoints :=  Max(Value,1);
+     FNumPoints :=  Max(Value,0);
      end ;
 
 
@@ -2698,6 +2754,29 @@ begin
      FFixZeroLevels := Value ;
      Invalidate ;
      end ;
+
+
+procedure TScopeDisplay.SetLowPassFilterOn( Active : Boolean ) ;
+// ----------------------------
+// low pass filter on/odd flag
+// ----------------------------
+begin
+    FLowPassFilterOn := Active ;
+    Invalidate ;
+end;
+
+
+procedure TScopeDisplay.SetLowPassFilterCoeff( Coeff : Single ) ;
+// ----------------------------
+// low pass filter coefficent
+// ----------------------------
+begin
+    FLowPAssFilterCoeff := Coeff ;
+    Invalidate ;
+end;
+
+
+
 
 
 { =======================================================
@@ -4671,6 +4750,45 @@ begin
 
      Inc(ZoomRectCount) ;
      end ;
+
+
+function TScopeDisplay.LowPassFilterCutOffFrequency( SmoothingFactor : single ) : single ;
+// -----------------------------------------------------------------------------
+// Calculate display low pass filter cut-off frequency from smoothing coefficent
+// -----------------------------------------------------------------------------
+var
+  ScaleToHz : single ;
+begin
+
+    // Adjust cut-off to Hz if display time units are not seconds
+    if ContainsText( FTUnits, 'ms') then ScaleToHz := 1E-3
+    else if ContainsText( FTUnits, 'min') then ScaleToHz := 60
+    else ScaleToHz := 1.0 ;
+
+    SmoothingFactor := Max(Min(SmoothingFactor,0.999),0.01) ;
+    Result := ( -1.0 /( 2*pi()*FTScale ) )*ln(1.0 - SmoothingFactor) * ScaleToHz ;
+
+end;
+
+
+function TScopeDisplay.LowPassFilterSmoothingFactor( CutOffFrequency : single ) : single ;
+// -----------------------------------------------------------------------------
+// Calculate display low pass filter smoothing coefficent from cut-off frequency
+// -----------------------------------------------------------------------------
+var
+  ScaleToSeconds : single ;
+begin
+
+    // Adjust cut-off to Hz if display time units are not seconds
+    if ContainsText( FTUnits, 'ms') then ScaleToSeconds := 1E-3
+    else if ContainsText( FTUnits, 'min') then ScaleToSeconds := 60
+    else ScaleToSeconds := 1.0 ;
+
+    Result := 1.0 - exp( -2.0*pi()*CutOffFrequency*FTScale*ScaleToSeconds) ;
+
+end;
+
+
 
 
 end.
