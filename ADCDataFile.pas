@@ -2484,7 +2484,7 @@ begin
      FNumRecordBytes := FNumRecordDataBytes + FNumRecordAnalysisBytes ;
 
      // Allocate output buffer
-     OutBuf := AllocMem( FNumRecordDataBytes ) ;
+     OutBuf := AllocMem( NumScans*FNumBytesPerScan ) ;
 
      // Update no. records in file
      FRecordNum := Max(FRecordNum,1);
@@ -7043,8 +7043,8 @@ var
     sDate,sTime : string ;
     DTime : TDateTime ;
     NumSamplesInChannel,NumDataRecords,iRec : Integer ;
-    NumScansInFile,iFactor : Integer ;
-    DataDuration,DataRecordDuration,NumDataRecordBytes : single ;
+    NumScansInFile,iFactor,NumDataRecordBytes : Integer ;
+    DataDuration,DataRecordDuration : single ;
 begin
 
      Result := False ;
@@ -7077,20 +7077,29 @@ begin
      // Duration of recording (s)
      WriteIntToANSIArray( EDFHeader.NumSignals, FNumChannelsPerScan ) ;
 
-//   Divide sample data into a series of 1 second records of less than 61440 bytes
-
      NumScansInFile := FNumScansPerRecord*FNumRecords ;
      DataDuration := NumScansInFile*FSCanInterval ;
-     DataRecordDuration := 0.0 ;
 
-     repeat
-         DataRecordDuration := DataRecordDuration + 1.0 ;
-         NumDataRecords := Round(DataDuration / DataRecordDuration ) ;
-         NumSamplesInChannel := Round( DataRecordDuration / FSCanInterval ) ;
-         NumDataRecordBytes := NumSamplesInChannel*FNumChannelsPerScan*SizeOf(SmallInt) ;
-         until (NumDataRecordBytes < 61440) ;
-     NumDataRecords := NumScansInFile div NumSamplesInChannel ;
+//   Divide sample data into a series of 1 second records of less than 61440 bytes
+     DataRecordDuration := 1.0 ;
+     NumSamplesInChannel := Round( DataRecordDuration / FSCanInterval ) ;
+     NumDataRecordBytes := NumSamplesInChannel*FNumChannelsPerScan*SizeOf(SmallInt) ;
+     NumDataRecordBytes := Min(NumDataRecordBytes,61440) ;
+     NumDataRecordBytes := (NumDataRecordBytes div FNumChannelsPerScan)*FNumChannelsPerScan ;
+     NumSamplesInChannel := NumDataRecordBytes div SizeOf(SmallInt) ;
+
+//   Ensure for small data files that there is either only one record or that the record size
+     if NumSamplesInChannel > NumScansInFile then
+        begin
+        NumSamplesInChannel := NumScansInFile ;
+        end
+     else
+        begin
+        while ((NumScansInFile mod  NumSamplesInChannel) > (0.01* NumScansInFile)) and (NumSamplesInChannel > 10) do NumSamplesInChannel := NumSamplesInChannel - 1 ;
+        end;
+
      DataRecordDuration := NumSamplesInChannel*FSCanInterval ;
+     NumDataRecords := NumScansInFile div NumSamplesInChannel ;
 
      WriteFloatToANSIArray( EDFHeader.DataRecordDuration, NumSamplesInChannel*FScanInterval ) ;
      WriteIntToANSIArray( EDFHeader.NumDataRecords, NumDataRecords ) ;

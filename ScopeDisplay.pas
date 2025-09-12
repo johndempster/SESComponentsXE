@@ -135,8 +135,9 @@ unit ScopeDisplay;
   17.01.22 ... JD System.IO.TPath function now used to get temporary file name
   16.06.24 ... JD .CopyDataToClipboard. Skewing of compressed channels with unchanging Min/Max signal levels fixed
                    Two points always saved even though Min=Max. Uncompressed channels saved as single data point per value.
-  22.08.25 ... JD Recursive low-pass filter added to plots.
+  22.08.25 ... JD Recursive low-pass filter option added to plots.
   27.08.25 ... JD FNumPoints can now be set to zero.
+  10.08.25 ... JD Recursive high pass filter option added to plot
   }
 
 interface
@@ -300,8 +301,10 @@ type
 
     FDisplaySelected : Boolean ;
 
-    FLowPassFilterOn : Boolean ;   // True = Appy recursive low-pass filter to plotted data
-    FLowPassFilterCoeff : single ; // Low pass filter coefficient
+    FLowPassFilterOn : Boolean ;    // True = Appy recursive low-pass filter to plotted data
+    FLowPassFilterCoeff : single ;  // Low pass filter coefficient
+    FHighPassFilterOn : Boolean ;   // True = Appy recursive high-pass filter to plotted data
+    FHighPassFilterCoeff : single ; // High pass filter coefficient
 
     FMouseDown : Boolean ;
 
@@ -321,6 +324,11 @@ type
     NumZoomButtons : Integer ;
 
     PrinterException : Boolean ;
+
+   xPrevious : Array[0..ScopeChannelLimit] of Single ;
+   yPrevious : Array[0..ScopeChannelLimit] of Single ;
+   yLPPrevious : Array[0..ScopeChannelLimit] of Single ;
+   yHPPrevious : Array[0..ScopeChannelLimit] of Single ;
 
     { -- Property read/write methods -------------- }
 
@@ -401,8 +409,8 @@ type
 
     procedure SetLowPassFilterOn( Active : Boolean ) ;
     procedure SetLowPassFilterCoeff( Coeff : Single ) ;
-
-
+    procedure SetHighPassFilterOn( Active : Boolean ) ;
+    procedure SetHighPassFilterCoeff( Coeff : Single ) ;
 
     { -- End of property read/write methods -------------- }
 
@@ -522,6 +530,8 @@ type
 
     function LowPassFilterCutOffFrequency( SmoothingFactor : single ) : single ;
     function LowPassFilterSmoothingFactor( CutOffFrequency : single ) : single ;
+    function HighPassFilterCutOffFrequency( SmoothingFactor : single ) : single ;
+    function HighPassFilterSmoothingFactor( CutOffFrequency : single ) : single ;
 
     property ChanName[ i : Integer ] : string read GetChanName write SetChanName ;
     property ChanUnits[ i : Integer ] : string read GetChanUnits write SetChanUnits ;
@@ -620,6 +630,8 @@ type
 
     property LowPassFilterOn : Boolean  read FLowPassFilterOn write SetLowPassFilterOn ;
     property LowPassFilterCoeff : Single  read FLowPassFilterCoeff write SetLowPassFilterCoeff ;
+    property HighPassFilterOn : Boolean  read FHighPassFilterOn write SetHighPassFilterOn ;
+    property HighPassFilterCoeff : Single  read FHighPassFilterCoeff write SetHighPassFilterCoeff ;
 
   end;
 
@@ -814,6 +826,8 @@ begin
 
     FLowPassFilterOn := False ;
     FLowPassFilterCoeff := 0.1 ;
+    FHighPassFilterOn := False ;
+    FHighPassFilterCoeff := 0.1 ;
 
     ZoomRectCount := 0 ;
     NumZoomButtons := 0 ;
@@ -934,8 +948,7 @@ begin
                end ;
 
            { Display old records stored in file }
-           for Rec := 1 to High(FStorageList) do if FStorageList[Rec] <> NoRecord
-               then
+           for Rec := 1 to High(FStorageList) do if FStorageList[Rec] <> NoRecord then
                begin
                FStorageFile.Read( FBuf^, NumBytesPerRecord ) ;
                PlotRecord( BackBitmap.Canvas, Channel, xy^) ;
@@ -1035,8 +1048,7 @@ procedure TScopeDisplay.PlotRecord(
 var
    ch,n,i,j,iStart,iEnd,iStep,iPlot : Integer ;
    XPix,XPixRange,iYMin,iYMax : Integer ;
-   YMin,YMax,y,yPrevious : single ;
-   FirstSample : Boolean ;
+   YMin,YMax,y,x : single ;
 begin
 
      // Exit if no buffer
@@ -1064,21 +1076,36 @@ begin
          iYMax := 1 ;
          YMin := 1E30 ;
          YMax := -YMin ;
-         FirstSample := True ;
          repeat
 
-             y := GetSample( FBuf, j, FNumBytesPerSample, FFloatingPointSamples ) ;
+             // Read raw data point
+             x := GetSample( FBuf, j, FNumBytesPerSample, FFloatingPointSamples ) ;
+
+             // Recursive High-pass filter
+             // y[n] = alpha * (y[n-1] + x[n] - x[n-1])
+             // where alpha = SampleRate / (SampleRate + CutoffFreq)
+             if FHighPassFilterOn then
+                begin
+
+                if i = iStart then
+                   begin
+                   xPrevious[ch] := x ;
+                   yHPPrevious[ch] := 0.0 ;
+                   end;
+
+                y := FHighPassFilterCoeff*(yHPPrevious[ch] + x - xPrevious[ch]) ;
+                yHPPrevious[ch] := y ;
+                xPrevious[ch] := x ;
+
+                end
+             else y := x ;
 
              // Recursive low-pass filter
              if FLowPassFilterOn then
                 begin
-                if FirstSample then
-                   begin
-                   yPrevious := y ;
-                   FirstSample := False ;
-                   end;
-                y := yPrevious*(1.0 - FLowPassFilterCoeff) + FLowPassFilterCoeff*y ;
-                yPrevious := y ;
+                if i = iStart then yLPPrevious[ch] := y ;
+                y := yLPPrevious[ch]*(1.0 - FLowPassFilterCoeff) + FLowPassFilterCoeff*y ;
+                yLPPrevious[ch] := y ;
                 end;
 
              // Determine Y min/max
@@ -1090,6 +1117,8 @@ begin
                 iYMax := i ;
                 YMax := y ;
                 end;
+
+             // Plot line between min and max of compression block
 
              if i = iPlot then
                 begin
@@ -1105,7 +1134,8 @@ begin
                    Channels[ch].yLast := yMax ;
                    Inc(n) ;
                    end
-                else begin
+                else
+                   begin
                    xy[n].y := YToCanvasCoord( Channels[ch], yMax) ;
                    xy[n].x := XPix ;
                    Inc(n) ;
@@ -1568,7 +1598,7 @@ procedure TScopeDisplay.DisplayNewPoints(
 var
    i,iStep,j,ch,iPlot : Integer ;
    StartAt,EndAt,XPix,XPixRange,XPixLeft,XPixRight,iYMin,iYMax : Integer ;
-   YMin,YMax,y,yPrevious : single ;
+   YMin,YMax,x,y : single ;
 begin
 
      { Start plot lines at last point in buffer }
@@ -1577,8 +1607,7 @@ begin
      FNumPoints := NewPoints ;
      EndAt := FNumPoints-1 ;
 
-     for ch := 0 to FNumChannels-1 do
-         if Channel[ch].InUse and (FBuf <> Nil) then
+     for ch := 0 to FNumChannels-1 do if Channel[ch].InUse and (FBuf <> Nil) then
          begin
 
          XPixRange := Min( XToCanvasCoord( Channel[ch], EndAt ), Channel[ch].Right )
@@ -1602,26 +1631,49 @@ begin
             begin
             y := GetSample( FBuf, j, FNumBytesPerSample, FFloatingPointSamples ) ;
             Canvas.MoveTo( Channel[ch].Left, YToCanvasCoord( Channel[ch], y) ) ;
-            yPrevious := y ; ;
+            yPrevious[ch] := y ;
             end
          else
             begin
             Canvas.MoveTo( XToCanvasCoord( Channel[ch],Channel[ch].xLast ),
                            YToCanvasCoord( Channel[ch],Channel[ch].yLast ) ) ;
-            yPrevious := Channel[ch].yLast ;
+            yPrevious[ch] := Channel[ch].yLast ;
             end;
 
          repeat
 
-             y := GetSample( FBuf, j, FNumBytesPerSample, FFloatingPointSamples ) ;
+             // Read raw data point
+             x := GetSample( FBuf, j, FNumBytesPerSample, FFloatingPointSamples ) ;
 
-             // Recursive low-pass filter
+             // Recursive High-pass filter
+             // y[n] = alpha * (y[n-1] + x[n] - x[n-1])
+             // where alpha = SampleRate / (SampleRate + CutoffFreq)
+             if FHighPassFilterOn then
+                begin
+
+                if StartAt = 0 then
+                   begin
+                   xPrevious[ch] := x ;
+                   yHPPrevious[ch] := y ;
+                   end;
+
+                y := FHighPassFilterCoeff*(yHPPrevious[ch] + x - xPrevious[ch]) ;
+                yHPPrevious[ch] := y ;
+                xPrevious[ch] := x ;
+
+                end
+             else y := x ;
+
+             // Recursive low pass filter
+
              if FLowPassFilterOn then
                 begin
-                y := yPrevious*(1.0 - FLowPassFilterCoeff) + FLowPassFilterCoeff*y ;
-                yPrevious := y ;
+                if StartAt = 0 then yLPPrevious[ch] := y ;
+                y := yLPPrevious[ch]*(1.0 - FLowPassFilterCoeff) + FLowPassFilterCoeff*y ;
+                yLPPrevious[ch] := y ;
                 end;
 
+            // Determine min-max range of compressed display block
             if y <= Ymin then
                begin
                iYMin := i ;
@@ -1632,6 +1684,8 @@ begin
                iYmax := i ;
                YMax := y ;
                end;
+
+             // Plot compressed block as line between min and max
 
             XPix := XToCanvasCoord( Channel[ch], i ) ;
             if i = iPlot then
@@ -2775,9 +2829,24 @@ begin
     Invalidate ;
 end;
 
+procedure TScopeDisplay.SetHighPassFilterOn( Active : Boolean ) ;
+// ----------------------------
+// High pass filter on/odd flag
+// ----------------------------
+begin
+    FHighPassFilterOn := Active ;
+    Invalidate ;
+end;
 
 
-
+procedure TScopeDisplay.SetHighPassFilterCoeff( Coeff : Single ) ;
+// ----------------------------
+// High pass filter coefficent
+// ----------------------------
+begin
+    FHighPAssFilterCoeff := Coeff ;
+    Invalidate ;
+end;
 
 { =======================================================
   INTERNAL EVENT HANDLING METHODS
@@ -4787,6 +4856,46 @@ begin
     Result := 1.0 - exp( -2.0*pi()*CutOffFrequency*FTScale*ScaleToSeconds) ;
 
 end;
+
+
+function TScopeDisplay.HighPassFilterCutOffFrequency( SmoothingFactor : single ) : single ;
+// -----------------------------------------------------------------------------
+// Calculate display high pass filter cut-off frequency from smoothing coefficent
+// -----------------------------------------------------------------------------
+var
+  ScaleToHz : single ;
+begin
+//                alpha = SampleRate / (SampleRate + CutoffFreq)
+// sr/alpha = sr + CF
+    // Adjust cut-off to Hz if display time units are not seconds
+    if ContainsText( FTUnits, 'ms') then ScaleToHz := 1E-3
+    else if ContainsText( FTUnits, 'min') then ScaleToHz := 60
+    else ScaleToHz := 1.0 ;
+
+    SmoothingFactor := Max(Min(SmoothingFactor,0.999),0.01) ;
+    Result := (( (1.0/SmoothingFactor) - 1.0) / FTScale)*ScaleToHz ;
+
+end;
+
+
+function TScopeDisplay.HighPassFilterSmoothingFactor( CutOffFrequency : single ) : single ;
+// -----------------------------------------------------------------------------
+// Calculate display high pass filter smoothing coefficent from cut-off frequency
+// -----------------------------------------------------------------------------
+var
+  ScaleToSeconds,SamplingRate : single ;
+begin
+
+    // Adjust cut-off to Hz if display time units are not seconds
+    if ContainsText( FTUnits, 'ms') then ScaleToSeconds := 1E-3
+    else if ContainsText( FTUnits, 'min') then ScaleToSeconds := 60
+    else ScaleToSeconds := 1.0 ;
+
+    SamplingRate := 1.0 / TScale ;
+    Result := ( SamplingRate/(SamplingRate  + CutOffFrequency) )*ScaleToSeconds ;
+
+end;
+
 
 
 
