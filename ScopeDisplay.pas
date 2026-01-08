@@ -138,6 +138,8 @@ unit ScopeDisplay;
   22.08.25 ... JD Recursive low-pass filter option added to plots.
   27.08.25 ... JD FNumPoints can now be set to zero.
   10.08.25 ... JD Recursive high pass filter option added to plot
+  05.12.25 ... JD .ZoomIn zooms in to min-max range of signal amplitudes
+  07.01.26 ... JD .ZoomIn range now set to min-max + 10% margin
   }
 
 interface
@@ -490,8 +492,8 @@ type
     procedure MoveActiveVerticalCursor( Step : Integer ) ;
     procedure LinkVerticalCursors( C0 : Integer ; C1 : Integer ) ;
 
-    procedure ZoomIn( Chan : Integer ) ;
-    procedure ZoomOut ;
+    procedure ZoomIn ;  // Zoom in to signal min-max range
+    procedure ZoomOut ; // Zoom out to minimum
 
     procedure XZoom( PercentChange : Single ) ;
     procedure YZoom( Chan : Integer ; PercentChange : Single ) ;
@@ -1054,6 +1056,8 @@ begin
      // Exit if no buffer
      if FBuf = Nil then Exit ;
 
+     outputdebugstring(pchar('ScopeDisplay.PlotRecord'));
+
      iStart := Round(FXMin) ;
      iEnd := Min(Round(FXMax),FNumPoints-1) ;
 
@@ -1505,41 +1509,20 @@ begin
             Canv.TextOut( XLeft,YMid,s) ;
             end ;
 
-         if not FZoomDisableVertical then begin
-            DrawZoomButton( Canv,
-                         Channel[ch].Right + 2,
-                         YMid - 27,
-                         12,
-                         cZoomUpButton,
-                         ch ) ;
-
-            DrawZoomButton( Canv,
-                         Channel[ch].Right + 2,
-                         YMid - 13,
-                         12,
-                         cZoomInButton,
-                         ch ) ;
-
-             DrawZoomButton( Canv,
-                         Channel[ch].Right + 2,
-                         YMid + 1,
-                         12,
-                         cZoomOutButton,
-                         ch ) ;
-
-             DrawZoomButton( Canv,
-                         Channel[ch].Right + 2,
-                         YMid + 14,
-                         12,
-                         cZoomDownButton,
-                         ch ) ;
-             end ;
+         if not FZoomDisableVertical then
+            begin
+            DrawZoomButton( Canv,Channel[ch].Right + 2,YMid - 27,12,cZoomUpButton,ch ) ;
+            DrawZoomButton( Canv,Channel[ch].Right + 2,YMid - 13,12,cZoomInButton,ch ) ;
+            DrawZoomButton( Canv,Channel[ch].Right + 2,YMid + 1, 12,cZoomOutButton,ch ) ;
+            DrawZoomButton( Canv,Channel[ch].Right + 2,YMid + 14,12,cZoomDownButton,ch ) ;
+            end ;
 
          end ;
 
      // Display Horizontal zoom buttons
 
-     if not FZoomDisableHorizontal then begin
+     if not FZoomDisableHorizontal then
+         begin
 
          xPix := (Max(ClientWidth,2) - (ButtonSize*2)) div 2 ;
          //xPix := 0 ;
@@ -2978,7 +2961,6 @@ begin
      end ;
 
 
-
 procedure TScopeDisplay.MouseMove(
           Shift: TShiftState;
           X, Y: Integer) ;
@@ -3001,7 +2983,6 @@ begin
             (Y > Channel[ch].Bottom) and
             (Y < Channel[ch+1].Top) then BetweenChannels := True ;
          end ;
-
 
      if not FMouseDown then ZoomRectCount := 0 ;
      // Re-size display zoom box
@@ -3030,12 +3011,9 @@ begin
            DrawVerticalCursorLink(ForeBitmap.Canvas) ;
 
            // Draw vertical cursors
-           for i := 0 to High(VertCursors) do if VertCursors[i].InUse then
-               DrawVerticalCursor(ForeBitmap.Canvas,i) ;
+           for i := 0 to High(VertCursors) do if VertCursors[i].InUse then DrawVerticalCursor(ForeBitmap.Canvas,i) ;
 
-          Canvas.CopyRect( DisplayRect,
-                           ForeBitmap.Canvas,
-                           DisplayRect) ;
+          Canvas.CopyRect( DisplayRect,ForeBitmap.Canvas,DisplayRect) ;
 
            end ;
 
@@ -3081,13 +3059,39 @@ begin
      end ;
 
 
-procedure TScopeDisplay.ZoomIn(
-          Chan : Integer
-          ) ;
-{ -----------------------------------------------------------
-  Switch to zoom in/out mode on selected chan (External call)
-  ----------------------------------------------------------- }
+procedure TScopeDisplay.ZoomIn ;
+{ ---------------------------------
+  Zoom in to signal amplitude range
+  ---------------------------------}
+var
+   i,j,ch : Integer ;
+   y,yMin,yMax : Single ;
 begin
+
+     for ch := 0 to FNumChannels-1 do
+         begin
+
+         // Find min/max amplitude of signal
+         j := Channel[ch].ADCOffset ;
+         yMin := FMaxADCValue ;
+         yMax := FMinADCValue ;
+         for i := 0 to FNumPoints-1 do
+             begin
+             y := GetSample( FBuf, j, FNumBytesPerSample, FFloatingPointSamples ) ;
+             yMin := Min(yMin,y) ;
+             yMax := Max(yMax,y) ;
+             j := j + FNumChannels ;
+             end ;
+
+         // Set display Y range
+         Channel[ch].yMax := Min(yMax + Abs((yMax-YMin)*0.1),FMaxADCValue) ;
+         Channel[ch].yMin := Max(yMin - Abs((yMax-YMin)*0.1),FMinADCValue) ;
+         FXMin := 0 ;
+         FXMax := FMaxPoints - 1;
+         Channel[ch].xMin := FXMin ;
+         Channel[ch].xMax := FXMax ;
+         end ;
+     Invalidate ;
      end ;
 
 
@@ -3132,23 +3136,28 @@ begin
      YShift := Round( Abs(Channel[Chan].YMax - Channel[Chan].YMin)
                       *Min(Max(PercentChange*0.01,-1.0),10.0)) div 2 ;
 
-     if Chan < 0 then begin
+     if Chan < 0 then
+        begin
         // Zoom all channels
-        for ch := 0 to FNumChannels-1 do begin
+        for ch := 0 to FNumChannels-1 do
+            begin
             Channel[ch].YMax := Max(Min(Channel[ch].YMax + YShift, FMaxADCValue),FMinADCValue) ;
             Channel[ch].YMin := Max(Min(Channel[ch].YMin - YShift, FMaxADCValue),FMinADCValue) ;
-            if Abs(Channel[ch].YMax - Channel[ch].YMin) < YLoLimit then begin
+            if Abs(Channel[ch].YMax - Channel[ch].YMin) < YLoLimit then
+               begin
                YMid := Round((Channel[ch].YMax + Channel[ch].YMin)*0.5) ;
                Channel[ch].YMax := YMid + (YLoLimit div 2) ;
                Channel[ch].YMin := YMid - (YLoLimit div 2) ;
                end ;
             end ;
         end
-     else begin
+     else
+        begin
         // Zoom selected channel
         Channel[Chan].YMax := Max(Min(Channel[Chan].YMax + YShift, FMaxADCValue),FMinADCValue) ;
         Channel[Chan].YMin := Max(Min(Channel[Chan].YMin - YShift, FMaxADCValue),FMinADCValue) ;
-        if Abs(Channel[Chan].YMax - Channel[Chan].YMin) < YLoLimit then begin
+        if Abs(Channel[Chan].YMax - Channel[Chan].YMin) < YLoLimit then
+           begin
            YMid := Round((Channel[Chan].YMax + Channel[Chan].YMin)*0.5) ;
            Channel[Chan].YMax := YMid + (YLoLimit div 2) ;
            Channel[Chan].YMin := YMid - (YLoLimit div 2) ;
@@ -3167,7 +3176,8 @@ procedure TScopeDisplay.ZoomOut ;
 var
    ch : Integer ;
 begin
-     for ch := 0 to FNumChannels-1 do begin
+     for ch := 0 to FNumChannels-1 do
+         begin
          Channel[ch].yMin := FMinADCValue ;
          Channel[ch].yMax := FMaxADCValue ;
          FXMin := 0 ;
@@ -3177,6 +3187,7 @@ begin
          end ;
      Invalidate ;
      end ;
+
 
 
 function TScopeDisplay.ProcessHorizontalCursors(

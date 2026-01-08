@@ -146,6 +146,7 @@ unit SESLabIO;
   21.04.19 THold now set to correct value in TritonAutoCompensate() (rather than set to VHold)
   11.04.19 TritonRemoveArtifact() procedure added.
   02.05.22 External start now added to Triton_MemoryToDACAndDigitalOut()
+  03.12.25 ADCChannelInvert property added
   ================================================================================ }
 
 interface
@@ -275,6 +276,7 @@ type
     FADCChannelYMin : Array[0..MaxADCChannels-1] of Single ;
     FADCChannelYMax : Array[0..MaxADCChannels-1] of Single ;
     FADCChannelInputNumber : Array[0..MaxADCChannels-1] of Integer ;
+    FADCChannelInvert : Array[0..MaxADCChannels-1] of Boolean ;
 
     FADCChannelNumZero : Integer ;  // No. of points to average when zero level calculated from record region
 
@@ -282,7 +284,7 @@ type
     FDACMaxValue : Integer ;           // upper limit of D/A sample value
 
     FDACNumChannels : Integer ;          // Number A/D channels being sampled
-    FDACMaxChannels : Integer ;          // Max. number of channels supported
+    FDACMaxChannels : Integer ;          // Max. numberool of channels supported
 
     FDACNumSamples : Integer ;           // No. D/A values (per channel) in waveform
     FDACBufferLimit : Integer ;          // D/A buffer limit
@@ -372,6 +374,7 @@ type
     function GetADCChannelYMin( Chan : Integer ) : Single ;
     function GetADCChannelYMax( Chan : Integer ) : Single ;
     function GetADCChannelInputNumber( Chan : Integer ) : Integer ;
+    function GetADCChannelInvert( Chan : Integer ) : Boolean ;
 
     procedure SetADCChannelName( Chan : Integer ; Value : String ) ;
     procedure SetADCChannelUnits( Chan : Integer ; Value : String ) ;
@@ -384,6 +387,7 @@ type
     procedure SetADCChannelYMin( Chan : Integer ; Value : Single ) ;
     procedure SetADCChannelYMax( Chan : Integer ; Value : Single ) ;
     procedure SetADCChannelInputNumber( Chan : Integer ; Value : Integer ) ;
+    procedure SetADCChannelInvert( Chan : Integer ; Value : Boolean ) ;
 
     function GetStimulusTimerPeriod : Single ;
     function GetStimulusTimerTime : Single ;
@@ -736,6 +740,9 @@ procedure TritonRemoveArtifact(
              Read GetADCChannelYMax Write SetADCChannelYMax ;
     Property ADCChannelInputNumber[Chan : Integer] : Integer
              Read GetADCChannelInputNumber Write SetADCChannelInputNumber ;
+    Property ADCChannelInvert[CHan: Integer] : Boolean
+             Read GetADCChannelInvert Write SetADCChannelInvert ;
+
     Property ADCChannelNumZero : Integer
              Read FADCChannelNumZero write FADCChannelNumZero ;
 
@@ -3616,6 +3623,15 @@ begin
     Result := FADCChannelUnitsPerBit[Chan] ;
     end ;
 
+function TSESLabIO.GetADCChannelInvert( Chan : Integer ) : Boolean ;
+// -----------------------
+// Get invert channel flag
+// -----------------------
+begin
+    Chan := Min(Max(0,Chan),MaxADCChannels-1) ;
+    Result := FADCChannelInvert[Chan] ;
+    end ;
+
 
 procedure TSESLabIO.SetADCChannelName( Chan : Integer ; Value : String ) ;
 // ---------------------
@@ -3744,6 +3760,16 @@ procedure TSESLabIO.SetADCChannelYMax( Chan : Integer ; Value : Single ) ;
 begin
     if (Chan >= 0) and (Chan < MaxADCChannels) then begin
        FADCChannelYMax[Chan] := Value ;
+       end ;
+    end ;
+
+procedure TSESLabIO.SetADCChannelInvert( Chan : Integer ; Value : Boolean ) ;
+// ---------------------
+// Set channel invert flag
+// ---------------------
+begin
+    if (Chan >= 0) and (Chan < MaxADCChannels) then begin
+       FADCChannelInvert[Chan] := Value ;
        end ;
     end ;
 
@@ -5375,6 +5401,7 @@ begin
         AddElementFloat( iNode, 'DISPLAYMAX', FADCChannelYMax[i] ) ;
         AddElementInt( iNode, 'INPUTNUMBER', FADCChannelInputNumber[i] ) ;
         AddElementFloat( iNode, 'ADCVOLTAGERANGE', FADCChannelVoltageRanges[i] ) ;
+        AddElementBool( iNode, 'INVERT', FADCChannelInvert[i] ) ;
         end ;
 
     AddElementInt( ProtNode, 'ADCCHANNELNUMZEROAVG', FADCChannelNumZero ) ;
@@ -5533,6 +5560,7 @@ begin
            GetElementInt( iNode, 'INPUTNUMBER', FADCChannelInputNumber[i] ) ;
            FADCChannelVoltageRanges[i] := FADCVoltageRangeIndex ;
            GetElementFloat( iNode, 'ADCVOLTAGERANGE', FADCChannelVoltageRanges[i] ) ;
+           GetElementBool( iNode, 'INVERT', FADCChannelInvert[i] ) ;
            end ;
         Inc(NodeIndex) ;
         end ;
