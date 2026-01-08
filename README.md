@@ -1,19 +1,13 @@
-SESComponents
--------------
+The SESComponentsXE package contains the common Delphi components used by the Windows-only applications developed using the Delphi VCL framework (repositories not ending in FMX).
+To install SESComponents:
 
-Shared component package used by Strathclyde Software application programs.
+a) Clone the files from this repository into a folder called SESComponentsXE in the Embarcadero Projects folder in your My Documents folder.
 
-The component package SESCOMPONENTS must be installed on the Delphi XE toolbar before building/editing applications.
+b) Open the Delphi project file SESComponents and build it (as a 32 bit Windows app).
 
-To install the package:
+c) Install the package by using Components>Install Packages Add> Add C:\Users\Public\Documents\Embarcadero\Studio\23.0\Bpl\SESComponents.bpl
 
-1) Clone the SESComponentsXE GitHub repository into the folder ..\My Documents\RAD Studio\Projects\SESComponentsXE<br>
-2) Select File/Open Project<br>
-3) Select Files of Type "*.dpk<br>
-4) Select the "SESComponentsXE" Folder<br>
-5) Select "SESCOMPONENTS.dpk"<br>
-6) Select Project->Build SESComponents<br>
-7) Select Tools->Options and add ..\My Documents\RAD Studio\Projects\SESComponentsXE to the Delphi Options-Library list.<br>
-8) Select Component->Install Packages Add ..\Public Documents\Rad Studio\<Delphi Version No.>\BPL\SESCOMPONENTS.BPL<br>
+d) Add the package source to the library list by selecting Tools>Options>Languages>Delphi>Library and add the source file folder to the Library Path C:\Users\<your computer ID>\Documents\Embarcadero\Studio\Projects\SESComponentsXE
 
+The components will appear under Samples in the Delphi component palette.
 
