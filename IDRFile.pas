@@ -94,6 +94,7 @@ const
      LineROI = 3 ;
      PolyLineROI = 4 ;
      PolygonROI = 5 ;
+     AreaROI = 6 ;
      ROIMaxPoints = 100 ;
 
 type
@@ -1761,7 +1762,7 @@ procedure TIDRFile.LoadROIsFromCSVFile(
 var
     FileHandle : THandle ;
     i : Integer ;
-    ROIs : Array[0..cMaxROIs] of TROI ;         // Regions of interest list (scaled by zoom)
+//    ROIs : Array[0..cMaxROIs] of TROI ;         // Regions of interest list (scaled by zoom)
     InF : TextFile ;
     s : String ;
     ROIList : TStringList ;
@@ -1775,7 +1776,7 @@ begin
     ROIList.LoadFromFile( FileName ) ;
 
     // Clear existing ROIs
-    for i := 0 to High(ROIs) do ROIs[i].InUse := False ;
+    for i := 0 to High(FROIs) do FROIs[i].InUse := False ;
 
     // Read ROIs
 
