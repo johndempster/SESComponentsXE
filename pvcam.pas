@@ -53,6 +53,9 @@ unit pvcam;
 //          to ensure that the camera readout is in overlap mode to maximise acheivable frame capture rate
 // 02.04.18 CheckFrameInterval() Readout time resolution now 0.1 ms and frame transfer time set to 10% of readout time or 1ms which ever is smaller
 //          StartCapture() Exposure time minimum now 0.1 ms (rather than 1 ms)
+// 27.04.26 JD PVCAm cameras now return frame count (necessary to work with MesoCam)
+//          Iris cameras do not support clear_presequence clear mode
+//
 
 {OPTIMIZATION OFF}
 {$DEFINE USECONT}
@@ -290,6 +293,9 @@ TPVCAMSession = record
     CameraType : string ;
     ExposureModes : Array[0..2] of Word ;
     LightSpeedMode : Boolean ;
+    FrameCount : Integer ;                 // No. frames acquired since acquisition started
+    PrevFrameNumber : Integer ;            // Most recent frame # in cyclic buffer acquire
+    NumFramesInBuffer : Integer  ;         // No. of frames in cyclic buffer
     end ;
 
 // Class 0: Abort Exposure flags
@@ -518,12 +524,12 @@ Tpl_exp_get_driver_buffer = function (
 
 Tpl_exp_get_latest_frame = function (
                            hcam : SmallInt ;
-                           frameptr : Pointer
+                           var frameptr : Pointer
                            ) : Word ; stdcall ;
 
 Tpl_exp_get_oldest_frame = function (
                            hcam : SmallInt ;
-                           frame : Pointer
+                           var frame : Pointer
                            ) : Word ; stdcall ;
 
 Tpl_exp_set_cont_mode = function (
@@ -1752,6 +1758,7 @@ begin
 
     NumBytesPerFrame := (2*FrameWidth*FrameHeight) ;
     NumFrames := NumBytesInFrameBuffer div NumBytesPerFrame ;
+    Session.NumFramesInBuffer := NumFrames ;
     NumBytesPerFrame1 := NumBytesPerFrame ;
 
     // Set readout speed of camera
@@ -1807,13 +1814,22 @@ begin
      // if camera is in ext. trigger mode.
      // If camera is a Prime, disable clear pre-sequence because clear takes too long leading
      // to the second frame trogger being missed 22.12.17
+     // camera is an IRIS disable clear pre-sequence because it is not supported
 
      pl_get_param( Session.Handle, PARAM_CLEAR_MODE, ATTR_AVAIL, @Available ) ;
      if Available <> 0 then begin
         ClearMode := Cardinal(CLEAR_PRE_SEQUENCE) ;
-        if ANSIContainsText(Session.CameraType,'Prime') then ClearMode := Cardinal(CLEAR_NEVER)
-                                                        else ClearMode := Cardinal(CLEAR_PRE_SEQUENCE) ;
+        if ANSIContainsText(Session.CameraType,'Prime') or ANSIContainsText(Session.CameraType,'Iris') then
+           begin
+           ClearMode := Cardinal(CLEAR_NEVER) ;
+           end
+        else
+           begin
+           ClearMode := Cardinal(CLEAR_PRE_SEQUENCE) ;
+           end;
+
        if ClearCCDPreExposure and ( TriggerMode <> CamFreeRun) then ClearMode := Cardinal(CLEAR_PRE_EXPosure) ;
+
         pl_set_param( Session.Handle, PARAM_CLEAR_MODE, @ClearMode ) ;
         PVCAM_DisplayErrorMessage( 'pl_set_param(PARAM_CLEAR_MODE) ' ) ;
         end ;
@@ -1876,9 +1892,14 @@ begin
        PVCAM_DisplayErrorMessage( 'pl_exp_setup_cont (Trigger mode)' ) ;
        end ;
 
+    // Clear frame counters
+    Session.FrameCount := 0 ;
+    Session.PrevFrameNumber := 0 ;
+
     // Begin acquisition
     if Err <> 0 then begin
        pl_exp_start_cont( Session.Handle, FrameBuffer, NumBytesInFrameBuffer ) ;
+       PVCAM_DisplayErrorMessage( 'pl_exp_start_cont ' ) ;
        Session.AcquisitionInProgress := True ;
        end ;
 
@@ -1977,21 +1998,33 @@ var
     LatestFramePointer : Pointer ;
     Err : Word ;
 begin
+
     Result := 0 ;
     if not LibraryLoaded then Exit ;
 
-    LatestFramePointer := 0 ;
+    // Get pointer to latest frame acquired
+    LatestFramePointer := Nil ;
     Err := pl_exp_get_latest_frame( Session.Handle, LatestFramePointer ) ;
-    PVCAM_DisplayErrorMessage( 'pl_exp_get_latest_frame ' ) ;
 
-    if Err <> 0 then begin
+    // Add to frame count
+
+    if LatestFramePointer <> Nil then
+       begin
+
        FrameNum := (Integer(LatestFramePointer) - Integer(FrameBufferStart)) div NumBytesPerFrame ;
-       Result := Integer(LatestFramePointer){FrameNum} ;
-       end
-    else begin
-       ShowMessage( 'PVCAM: Error getting frame #' ) ;
-       Result := 0 ;
-       end ;
+
+       // Add no. of frames acquired to session frame counter
+       Session.FrameCount := Session.FrameCount + (FrameNum - Session.PrevFrameNumber) ;
+       if FrameNum < Session.PrevFrameNumber then
+          begin
+          // Buffer cycled
+          Session.FrameCount := Session.FrameCount + Session.NumFramesInBuffer ;
+          end;
+
+       Session.PrevFrameNumber := FrameNum ;
+       Result := Session.FrameCount ;
+       end;
+
     end ;
 
 
