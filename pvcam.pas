@@ -55,6 +55,9 @@ unit pvcam;
 //          StartCapture() Exposure time minimum now 0.1 ms (rather than 1 ms)
 // 27.04.26 JD PVCAm cameras now return frame count (necessary to work with MesoCam)
 //          Iris cameras do not support clear_presequence clear mode
+// 04.05.26 Session.PrevFrameNumber now set to -1 in StartCapture() to prevent over-counting of frames by 1
+//          PulseIntervalTriggerMode added to PVCAM_StartCapture
+//          If PulseIntervalTriggerMode=TRUE = Trigger pulse duration controls exposure duration (BULB_MODE)
 //
 
 {OPTIMIZATION OFF}
@@ -829,6 +832,7 @@ function PVCAM_StartCapture(
          var FrameWidth : Integer ;         // Width of image frame (Out)
          var FrameHeight : Integer ;        // Height of image frame (Out)
          TriggerMode : Integer ;            // Frame capture trigger mode
+         PulseIntervalTriggerMode : Boolean ; // TRUE = Trigger pulse controls exposure duration
          ReadoutSpeedIndex : Integer ;      // Camera readout speed option
          ClearCCDPreExposure : Boolean ;    // TRUE = clear CCD before exposure
          PostExposureReadout : Boolean      // TRUE = readout after exposure
@@ -1714,6 +1718,7 @@ function PVCAM_StartCapture(
          var FrameWidth : Integer ;         // Width of image frame (Out)
          var FrameHeight : Integer ;        // Height of image frame (Out)
          TriggerMode : Integer ;            // Frame capture trigger mode
+         PulseIntervalTriggerMode : Boolean ; // // TRUE = Trigger pulse controls exposure duration
          ReadoutSpeedIndex : Integer ;       // Camera readout speed option
          ClearCCDPreExposure : Boolean ;      // TRUE = Clear CCD before exposure
          PostExposureReadout : Boolean     // TRUE = readout after exposure
@@ -1762,14 +1767,16 @@ begin
     NumBytesPerFrame1 := NumBytesPerFrame ;
 
     // Set readout speed of camera
-    if pl_set_param( Session.Handle, PARAM_SPDTAB_INDEX, @ReadoutSpeedIndex ) = 0 then begin
+    if pl_set_param( Session.Handle, PARAM_SPDTAB_INDEX, @ReadoutSpeedIndex ) = 0 then
+       begin
        PVCAM_DisplayErrorMessage( 'pl_set_param(PARAM_SPDTAB_INDEX) ' ) ;
        Exit ;
        end ;
 
      //Camera temperature
      pl_get_param( Session.Handle, PARAM_TEMP, ATTR_AVAIL, @Available ) ;
-     if Available <> 0 then begin
+     if Available <> 0 then
+        begin
         pl_get_param( Session.Handle, PARAM_TEMP, ATTR_CURRENT, @Temperature ) ;
         Session.Temperature := Temperature*0.01 ;
         end ;
@@ -1793,7 +1800,8 @@ begin
         end ;
 
     // Set camera gain
-    if MultGainEnabled <> 0 then begin
+    if MultGainEnabled <> 0 then
+       begin
        // Use EMCCD multiplier gain if available
        pl_get_param( Session.Handle, PARAM_GAIN_MULT_FACTOR, ATTR_MAX, @MaxGain ) ;
        if MaxGain > 99 then ScaleFactor := MaxGain/100.0
@@ -1801,7 +1809,8 @@ begin
        Gain := Min(Max(Round(AmpGain*ScaleFactor),1),MaxGain) ;
        pl_set_param( Session.Handle, PARAM_GAIN_MULT_FACTOR, @Gain ) ;
        end
-     else begin
+     else
+       begin
        // Otherwise use standard gain
        pl_get_param( Session.Handle, PARAM_GAIN_INDEX, ATTR_MAX, @MaxGain ) ;
        if MaxGain > 99 then ScaleFactor := MaxGain/100.0
@@ -1817,7 +1826,8 @@ begin
      // camera is an IRIS disable clear pre-sequence because it is not supported
 
      pl_get_param( Session.Handle, PARAM_CLEAR_MODE, ATTR_AVAIL, @Available ) ;
-     if Available <> 0 then begin
+     if Available <> 0 then
+        begin
         ClearMode := Cardinal(CLEAR_PRE_SEQUENCE) ;
         if ANSIContainsText(Session.CameraType,'Prime') or ANSIContainsText(Session.CameraType,'Iris') then
            begin
@@ -1837,11 +1847,13 @@ begin
     // Set CCD to frame transfer mode
     // (15.12.10 Set to PMODE_FT again to obtain max. speed in free run)
     // (27.03.18 LightSpeed mode now uses PMODE_ALT_FT not PMODE_ALT_NORMAL)
-    if Session.FrameTransferCapable <> 0 then begin
+    if Session.FrameTransferCapable <> 0 then
+       begin
        if Session.LightSpeedMode then pl_ccd_set_pmode( Session.Handle, Word(PMODE_ALT_FT))
                                  else pl_ccd_set_pmode( Session.Handle, Word(PMODE_FT))
        end
-    else begin
+    else
+       begin
        if Session.LightSpeedMode then pl_ccd_set_pmode( Session.Handle, Word(PMODE_ALT_NORMAL))
                                  else pl_ccd_set_pmode( Session.Handle, Word(PMODE_NORMAL))
        end;
@@ -1856,7 +1868,8 @@ begin
 
        // Normal CCD readout mode
        // -----------------------
-    if TriggerMode = CamFreeRun then begin
+    if TriggerMode = CamFreeRun then
+       begin
        // Free run mode
        NumBytesPerFrame1 := NumBytesPerFrame ;
        Err := pl_exp_setup_cont( Session.Handle,
@@ -1868,11 +1881,11 @@ begin
                                    CIRC_OVERWRITE ) ;
        PVCAM_DisplayErrorMessage( 'pl_exp_setup_cont (Free Run)' ) ;
        end
-    else begin
+    else
+       begin
        // Triggered & bulb mode
        // Note addition readout time can be added by user (via WinFluor setup dialog)
-       ExposureTime := FrameInterval
-                       - AdditionalReadoutTime ; { Additional user defined readout time}
+       ExposureTime := FrameInterval - AdditionalReadoutTime ; { Additional user defined readout time}
        // If post-exposure readout shorten exposure to account for readout
        // otherwise allow 10% of exposure to to a max of 1 ms for frame readout
        PostExposureReadout := PostExposureReadout or Session.PostExposureReadout ;
@@ -1880,6 +1893,10 @@ begin
                               else ExposureTime := ExposureTime - Min(0.001,ExposureTime*0.1) ;
        // No shorter than 0.1 ms exposure
        ExposureTime := Max(ExposureTime,0.0001) ;
+
+       // PulseIntervalTrigger option selected set TriggerMode = CamBulbMode
+       // Duration of exposure is controlled by trigger pulse duration
+       if PulseIntervalTriggerMode then TriggerMode := CamBulbMode ;
 
        NumBytesPerFrame1 := NumBytesPerFrame ;
        Err := pl_exp_setup_cont( Session.Handle,
@@ -1894,10 +1911,11 @@ begin
 
     // Clear frame counters
     Session.FrameCount := 0 ;
-    Session.PrevFrameNumber := 0 ;
+    Session.PrevFrameNumber := -1 ;
 
     // Begin acquisition
-    if Err <> 0 then begin
+    if Err <> 0 then
+       begin
        pl_exp_start_cont( Session.Handle, FrameBuffer, NumBytesInFrameBuffer ) ;
        PVCAM_DisplayErrorMessage( 'pl_exp_start_cont ' ) ;
        Session.AcquisitionInProgress := True ;
@@ -1932,7 +1950,8 @@ begin
 
     // If PARAM_EXPOSURE_MODE parameter not supported use traditional modes
      pl_get_param( Session.Handle, PARAM_EXPOSURE_MODE, ATTR_AVAIL, @Available ) ;
-     if Available = 0 then begin
+     if Available = 0 then
+        begin
         // Standard modes
         Modes := Modes + 'TIMED_MODE, STROBED_MODE, BULB_MODE' ;
         end
@@ -1940,7 +1959,8 @@ begin
         // Determine no. exposure modes supported by camera
        pl_get_param( Session.Handle, PARAM_EXPOSURE_MODE, ATTR_COUNT, @NumModes ) ;
        // Get list of supported modes
-       for i := 0 to NumModes-1 do begin
+       for i := 0 to NumModes-1 do
+           begin
            // Substitute for standard modes
            pl_enum_str_length( Session.Handle,PARAM_EXPOSURE_MODE,i,NumChars) ;
            pl_get_enum_param( Session.Handle,PARAM_EXPOSURE_MODE,i,iValue,cBuf,NumChars) ;
@@ -2059,7 +2079,8 @@ begin
    if not LibraryLoaded then Exit ;
 
    ErrCode := pl_vc_error_code ;
-   if ErrCode <> 0 then begin
+   if ErrCode <> 0 then
+      begin
       pl_vc_error_message( ErrCode, @ErrMessage ) ;
       s := PVCAM_CharArrayToString(ErrMessage) ;
       ShowMessage( Source + ' ' + s ) ;
@@ -2075,7 +2096,8 @@ var
 begin
     i := 0 ;
     s := '' ;
-    while (CBuf[i] <> #0) and (i <= High(CBuf)) do begin
+    while (CBuf[i] <> #0) and (i <= High(CBuf)) do
+        begin
         s := s + CBuf[i] ;
         Inc(i) ;
         end ;

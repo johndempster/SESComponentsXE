@@ -75,7 +75,7 @@ const
      MaxFrameType = 8 ;              // Upper limit of frame types
      MaxFrameDivideFactor = 100 ; 
      MaxChannel = 7 ;                // Upper limit of A/D channels
-     cMaxROIs = 1000 ;               // Upper limit of ROIs (raised from 100 04/10/22)
+     cMaxROIs = 2000 ;               // Upper limit of ROIs (raised from 100 04/10/22) raised to 2000 30.04.26
      cMaxROIsInHeader = 100 ;        // Upper limit of ROIs stored in IDR Header
      MaxMarker = 20 ;               // Upper limit of event markers
      cNumIDRHeaderBytes = 32768 ;  // Old size = 4096 ;
@@ -2254,10 +2254,7 @@ begin
          end ;
 
      // Update A/D channel scaling factors
-     UpdateChannelScalingFactors( Channels,
-                                  FADCNumChannels,
-                                  FADCVoltageRange,
-                                  FADCMaxValue )  ;
+     UpdateChannelScalingFactors( Channels,FADCNumChannels,FADCVoltageRange,FADCMaxValue )  ;
 
      // Release allocated memory
      Header.Free ;

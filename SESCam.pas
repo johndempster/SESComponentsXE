@@ -2064,6 +2064,7 @@ begin
                                                FFrameWidth,
                                                FFrameHeight,
                                                FTriggerMode,
+                                               FPulseIntervalTriggerMode,
                                                FReadoutSpeed,
                                                FCCDClearPreExposure,
                                                FCCDPostExposureReadout ) ;
@@ -2430,6 +2431,7 @@ begin
                                                FFrameWidth,
                                                FFrameHeight,
                                                FTriggerMode,
+                                               FPulseIntervalTriggerMode,
                                                FReadoutSpeed,
                                                FCCDClearPreExposure,
                                                FCCDPostExposureReadout ) ;
