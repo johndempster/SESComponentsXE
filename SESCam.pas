@@ -1282,6 +1282,8 @@ begin
 
              IMAQSession.PulseIntervalTriggerMode := FPulseIntervalTriggerMode ;
 
+             FNumComponentsPerPixel := 1 ;
+
              FNumCameras := 1 ;
              end ;
           end ;
