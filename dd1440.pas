@@ -34,14 +34,23 @@ unit dd1440;
 //          only WDAPI1140.dll)
 // 28.08.19 Name of Axoscope folder on Windows 64 bit systems corrected
 // 24.06.22 DD1440_SaveToLog disabled
+// 13.10.26 Crashes when using pst V10.7 PCLAMP or AxoScope Digidata drivers fixed
+//          Resolved by restricting number of output channels to MAX_AOChannels (rather than MAX_AOChannels+1)
+//          and substituting TTl digital outputs for last AO channel.
 
 interface
 
-  uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math ;
+  uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math, Winapi.Windows ;
+
+const
+    DD1440_MaxADCSamples = 32768*16 ;
+    NumPointsPerBuf = 256 ;
+    MaxBufs = (DD1440_MaxADCSamples div NumPointsPerBuf) + 2 ;
+
 
 const DD1400_ANY_DEVICE      = -1 ;
 const DD1400_MAX_AI_CHANNELS = 16;
-const DD1400_MAX_AO_CHANNELS = 4;
+const DD1400_MAX_AO_CHANNELS = 4 ;
 const DD1400_MAX_TELEGRAPHS  = 4;
 const DD1400_MAX_DO_CHANNELS = 16;
 
@@ -111,7 +120,10 @@ TDATABUFFER = packed record
    pNextBuffer : Pointer ;      // Next buffer in the list.
    pPrevBuffer : Pointer ;      // Previous buffer in the list.
    end ;
+
 PDATABUFFER = ^TDATABUFFER ;
+TDATABUFFERS = Array[0..MaxBufs-1] of TDATABUFFER ;
+PDATABUFFERS = ^TDATABUFFERS ;
 
 //
 // Define a linked list structure for holding floating point acquisition buffers.
@@ -183,10 +195,9 @@ TDD1440_Protocol = packed record
    bSaveAI : ByteBool ;
    bSaveAO : ByteBool ;
                                       // 22.2.16
-   Packing : Array[1..4] of Byte ;    // 4 byte packing of avoid 'Error writing to device' error
+   Packing : Array[1..6] of Byte ;    // 4 byte packing of avoid 'Error writing to device' error
                                       // when external trigger selected and running under 64 bit O/S
                                       // Not clear why this is necessary
-
    end ;
 
 //==============================================================================================
@@ -407,7 +418,7 @@ TDD1440_ADCtoVolts = Function(
             nChannels : Integer ;
             DigValue : Integer
             ) ;
-
+ procedure DisableFPUExceptions ;
   function  DD1440_GetLabInterfaceInfo(
             var Model : string ; { Laboratory interface model name/number }
             var ADCMinSamplingInterval : Double ; { Smallest sampling interval }
@@ -450,14 +461,12 @@ TDD1440_ADCtoVolts = Function(
 
    procedure DD1440_SaveToLog( Msg : string ) ;
 
+   function GetSpecialFolder(const ASpecialFolderID: Integer): string;
+
 implementation
 
-uses seslabio, system.classes ;
+uses seslabio, system.classes, Winapi.ShlObj, System.StrUtils ;
 
-const
-    DD1440_MaxADCSamples = 32768*16 ;
-    NumPointsPerBuf = 256 ;
-    MaxBufs = (DD1440_MaxADCSamples div NumPointsPerBuf) + 2 ;
 var
 
    FADCVoltageRangeMax : single ;    // Max. positive A/D input voltage range
@@ -480,8 +489,8 @@ var
    AIPointer : Integer ;
    AIBufNumSamples : Integer ;        // Input buffer size (no. samples)
    DIBuf : PSmallIntArray ;
-   AIDFlags : PSmallIntArray ;
-   AODFlags : PSmallIntArray ;
+   AIDFlags : PByteArray ; //PSmallIntArray ;
+   AODFlags : PByteArray ; // PSmallIntArray ;
 
    ADCActive : Boolean ;  // A/D sampling in progress flag
    DACActive : Boolean ;  // D/A output in progress flag
@@ -515,9 +524,8 @@ var
 
    DACDefaultValue : Array[0..DD1400_MAX_AO_CHANNELS-1] of SmallInt ;
 
-   AIBufs : Array[0..MaxBufs-1] of TDATABUFFER ;
-   AOBufs : Array[0..MaxBufs-1] of TDATABUFFER ;
-
+   AIBufs : PDATABUFFERS ;  // Digidata analog input data buffer list
+   AOBufs : PDATABUFFERS ;  // DIgidata analog output buffer list
    DIGDefaultValue : Integer ;
 
    LogList : TStringList ;
@@ -561,7 +569,7 @@ var
 
 // Find, Open & close device.
 
-
+  FPUExceptionMask : Set of TFPUException ;
 
 function  DD1440_GetLabInterfaceInfo(
             var Model : string ; { Laboratory interface model name/number }
@@ -654,67 +662,68 @@ procedure DD1440_LoadLibrary  ;
   Load AXDD1440.DLL library into memory
   -------------------------------------}
 var
-     AxonDLL,ProgramDir,SYSDrive : String ; // DLL file paths
+     AxonDLL,ProgramDir,DLLName : String ; // DLL file paths
      SourcePath,TrialPath : string ;
-     Path : Array[0..255] of Char ;
      VMaj,VMin : Integer ;
      SearchRec : TSearchRec ;
+     ProgramFilesFolder : string ;
 begin
 
+     // Executable program folder
      ProgramDir := ExtractFilePath(ParamStr(0)) ;
-     GetSystemDirectory( Path, High(Path) ) ;
-     SYSDrive := ExtractFileDrive(String(Path)) ;
+     // Get 32 bit program files folder
+     ProgramFilesFolder := GetSpecialFolder( CSIDL_PROGRAM_FILES ) ;
 
-//   Find Axdd1400.dll and copy to settings folder
+//   Find folder containing Axdd1400.dll
+
      AxonDLL :=  'AxDD1400.DLL' ;
      SourcePath := '' ;
-     for VMaj := 15 downto 7 do for VMin := 9 downto 0 do begin
-         // Check for PCLAMP installation
-         TrialPath := format( '%s\Program Files\Molecular Devices\pCLAMP%d.%d\',
-                               [SYSDrive,VMaj,VMin,AxonDLL]);
-         if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
-         if SourcePath <> '' then Break ;
+     for VMaj := 15 downto 7 do for VMin := 9 downto 0 do
+         begin
 
-         TrialPath := format( '%s\Program Files (x86)\Molecular Devices\pCLAMP%d.%d\',
-                               [SYSDrive,VMaj,VMin,AxonDLL]);
+         // Check for PCLAMP installation
+         TrialPath := ProgramFilesFolder + format( '\Molecular Devices\pCLAMP%d.%d\',[VMaj,VMin,AxonDLL]);
+         TrialPath := ReplaceText( TrialPath, '.0\','\') ;
          if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
          if SourcePath <> '' then Break ;
 
           // Check for Axoscope installation
-         TrialPath := format( '%s\Program Files\Molecular Devices\Axoscope%d.%d\',
-                               [SYSDrive,VMaj,VMin,AxonDLL]);
-         if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
-         if SourcePath <> '' then Break ;
-
-         TrialPath := format( '%s\Program Files (x86)\Molecular Devices\Axoscope%d.%d\',
-                               [SYSDrive,VMaj,VMin,AxonDLL]);
+         TrialPath := ProgramFilesFolder + format( '\Molecular Devices\Axoscope%d.%d\',[VMaj,VMin,AxonDLL]);
+         TrialPath := ReplaceText( TrialPath, '.0\','\') ;
          if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
          if SourcePath <> '' then Break ;
 
          end;
 
-     // If not available, use version from installation
-     if SourcePath = '' then begin
-        TrialPath := ProgramDir ;
-        if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
-        end;
+     // Load Axon DLLs
 
-     // Copy DLLs to settings folder
+     if SourcePath <> '' then
+        begin
 
-     if SourcePath <> '' then begin
-        // Copy and load Axon DLLs
         Err := FindFirst( SourcePath + 'wdapi*.dll', faAnyFile, SearchRec ) ;
         if Err = 0 then
-           wdapiHnd := DD1440_CopyAndLoadLibrary( SearchRec.Name, SourcePath, SettingsDirectory ) ;
-        AXDD1400Hnd := DD1440_CopyAndLoadLibrary( AxonDLL, SourcePath, SettingsDirectory ) ;
+           Begin
+           DLLName := SourcePath+SearchRec.Name ;
+           wdapiHnd := LoadLibrary(PChar(DLLName)) ;
+           if wdapiHnd = 0 then ShowMessage('Unable to load ' + DLLName ) ;
+           End
+        else ShowMessage('Unable to find ' + SourcePath + 'wdapi*.dll' ) ;
+
+        DLLName := SourcePath + AxonDLL ;
+        AXDD1400Hnd := LoadLibrary(PChar(DLLName)) ;
+        if AXDD1400Hnd = 0 then ShowMessage('Unable to load ' + DLLName ) ;
+
         end
      else ShowMessage( AxonDLL + ' missing from ' + SettingsDirectory ) ;
 
      // Load DLL which calls Axon DLLs
-     DD1440Hnd := DD1440_CopyAndLoadLibrary( 'DD1440.DLL', ProgramDir, SettingsDirectory ) ;
+     DLLName := ProgramDir + 'DD1440.Dll' ;
+     DD1440Hnd := LoadLibrary(PChar(DLLName)) ;
+     if DD1440Hnd = 0 then ShowMessage('Unable to load ' + DLLName ) ;
 
      { Get addresses of procedures in library }
-     if DD1440Hnd > 0 then begin
+     if DD1440Hnd > 0 then
+        begin
 
         @DD1440_CountDevices := DD1440_LoadProcedure(DD1440Hnd,'DD1440_CountDevices') ;
         @DD1440_FindDevices := DD1440_LoadProcedure(DD1440Hnd,'DD1440_FindDevices') ;
@@ -881,7 +890,8 @@ begin
 
 
     // Set output buffers to default values
-    NumOutChannels := DD1400_MAX_AO_CHANNELS + 1 ;
+    NumOutChannels := DD1400_MAX_AO_CHANNELS ;
+
     for ch := 0 to DD1400_MAX_AO_CHANNELS-1 do DACDefaultValue[ch] := -Calibration.anDACOffsets[ch];
     DIGDefaultValue := 0 ;
 
@@ -959,6 +969,9 @@ begin
      FOutPointer := 0 ;
      FNumSamplesRequired := NumADCChannels*NumADCSamples ;
 
+//     DD1440_CheckError(DD1440_GetProtocol(Protocol)) ;
+//     DD1440_CheckError(DD1440_SetProtocol(Protocol)) ;
+
      // Clear protocol fClags
      Protocol.uFlags := 0 ;
      protocol.dSequencePeriodUS :=0;
@@ -968,10 +981,10 @@ begin
      Protocol.bScopeOutPolarity:=false ;
 
      Protocol.bDIEnable := false ;
-     for i := 0 to High(Protocol.bUnused1) do Protocol.bUnused1[i] := 0 ;
-          for i := 0 to High(Protocol.bUnused1) do Protocol.bUnused2[i] := 0 ;
-     Protocol.bDOEnable := false ;
+     for i := 1 to High(Protocol.bUnused1) do Protocol.bUnused1[i] := 0 ;
+     for i := 1 to High(Protocol.bUnused2) do Protocol.bUnused2[i] := 0 ;
      Protocol.uTerminalCount := 0;
+     Protocol.bDOEnable := True ;
      Protocol.bSaveAI:= false ;
      Protocol.bSaveAO := false ;
 
@@ -982,32 +995,47 @@ begin
      Protocol.uAIChannels := NumADCChannels ;
      for ch := 0 to Protocol.uAIChannels-1 do Protocol.anAIChannels[ch] := ADCChannelInputMap[ch] ;
 
+    // Set output buffers to default values
+    NumOutChannels := DD1400_MAX_AO_CHANNELS  ;
+
+    for ch := 0 to DD1400_MAX_AO_CHANNELS-1 do DACDefaultValue[ch] := -Calibration.anDACOffsets[ch];
+    DIGDefaultValue := 0 ;
+
      // Allocate A/D input buffers
 
      // Make sub-buffer contain multiple of both input and output channels
      NumSamplesPerSubBuf := MaxSamplesPerSubBuf*NumADCChannels*NumOutChannels ;
 
-     AIBufNumSamples := ((DeviceInfo[0].InputBufferSamples*2) div NumSamplesPerSubBuf)*NumSamplesPerSubBuf ;
+     AIBufNumSamples := ((DeviceInfo[0].InputBufferSamples{*2}) div NumSamplesPerSubBuf)*NumSamplesPerSubBuf ;
      if AIBuf <> Nil then FreeMem(AIBuf) ;
-     GetMem( AIBuf, AIBufNumSamples*2 ) ;
+     GetMem( AIBuf, AIBufNumSamples*SizeOf(SmallInt) ) ;
      if DIBuf <> Nil then FreeMem(DIBuf) ;
-     GetMem( DIBuf, AIBufNumSamples*2 ) ;
+     GetMem( DIBuf, AIBufNumSamples*SizeOf(SmallInt) ) ;
 
      if AODFlags <> Nil then FreeMem(AODFlags) ;
-     GetMem( AODFlags, AIBufNumSamples*2 ) ;
+     GetMem( AODFlags, AIBufNumSamples*SizeOf(SmallInt) ) ;
      if AIDFlags <> Nil then FreeMem(AIDFlags) ;
-     GetMem( AIDFlags, AIBufNumSamples*2 ) ;
+     GetMem( AIDFlags, AIBufNumSamples*SizeOf(SmallInt) ) ;
 
-     Protocol.pAIBuffers := @AIBufs ;
+//   Allocate In and Out data buffers
+
+     if AIBufs <> Nil then FreeMem( AIBufs ) ;
+     GetMem( AIBufs, SizeOf(TDATABUFFERS) ) ;
+
+     if AOBufs <> Nil then FreeMem( AOBufs ) ;
+     GetMem( AOBufs, SizeOf(TDATABUFFERS) ) ;
+
+     Protocol.pAIBuffers := AIBufs ;
 
      iPointer := Cardinal(AIBuf) ;
      diPointer := Cardinal(DIBuf) ;
-     Protocol.uAIBuffers := Min( AIBufNumSamples div NumSamplesPerSubBuf, High(AIBufs)+1 );
+     Protocol.uAIBuffers := Min( AIBufNumSamples div NumSamplesPerSubBuf, MaxBufs);
+
      for i := 0 to Protocol.uAIBuffers-1 do begin
         AIBufs[i].pnData := Pointer(iPointer) ;
         AIBufs[i].uNumSamples := NumSamplesPerSubBuf ;
         AIBufs[i].uFlags := 0 ;
-        AIBufs[i].psDataFlags := AIDFlags ;
+        AIBufs[i].psDataFlags := nil ; // AIDFlags ;
         iPointer := iPointer + NumSamplesPerSubBuf*2  ;
         diPointer := diPointer + NumSamplesPerSubBuf*2  ;
         end ;
@@ -1016,43 +1044,51 @@ begin
      for i := 0 to Protocol.uAIBuffers-1 do begin
          iPrev := i-1 ;
          if iPrev < 0 then iPrev := Protocol.uAIBuffers-1 ;
-         AIBufs[i].pPrevBuffer := Pointer( Cardinal(@AIBufs) + (iPrev*SizeOf(TDATABuffer)) ) ;
+         AIBufs[i].pPrevBuffer := Pointer( Cardinal(AIBufs) + (iPrev*SizeOf(TDATABuffer)) ) ;
          iNext := i+1 ;
          if iNext >= Protocol.uAIBuffers then iNext := 0 ;
-         AIBufs[i].pNextBuffer := Pointer( Cardinal(@AIBufs) + (iNext*SizeOf(TDATABuffer)) ) ;
+         AIBufs[i].pNextBuffer := Pointer( Cardinal(AIBufs) + (iNext*SizeOf(TDATABuffer)) ) ;
          end ;
 
      // Allocate AO buffer
 
-     AOBufNumSamples := ((DeviceInfo[0].OutputBufferSamples*2) div NumSamplesPerSubBuf)*NumSamplesPerSubBuf ;
+     AOBufNumSamples := ((DeviceInfo[0].OutputBufferSamples{*2}) div NumSamplesPerSubBuf)*NumSamplesPerSubBuf ;
      if AOBuf <> Nil then FreeMem(AOBuf) ;
-     GetMem( AOBuf, AOBufNumSamples*2 ) ;
-     Protocol.pAOBuffers := @AOBufs ;
+     GetMem( AOBuf, AOBufNumSamples*SizeOf(SmallInt) ) ;
+     Protocol.pAOBuffers := AOBufs ;
 
      iPointer := Cardinal(AOBuf) ;
-     Protocol.uAOBuffers := Min( AOBufNumSamples div NumSamplesPerSubBuf, High(AOBufs)+1 );
-     for i := 0 to Protocol.uAOBuffers-1 do begin
+     Protocol.uAOBuffers := Min( AOBufNumSamples div NumSamplesPerSubBuf, MaxBufs );
+
+     for i := 0 to Protocol.uAOBuffers-1 do
+        begin
         AOBufs[i].pnData := Pointer(iPointer) ;
         AOBufs[i].uNumSamples := NumSamplesPerSubBuf ;
         AOBufs[i].uFlags := 0 ;
-        AOBufs[i].psDataFlags := AODFlags ;
-        iPointer := iPointer + NumSamplesPerSubBuf*2  ;
+        AOBufs[i].psDataFlags := nil ; // AODFlags not used ;
+        iPointer := iPointer + NumSamplesPerSubBuf*SizeOf(SmallInt)  ;
         end ;
 
      // Previous/Next buffer pointers
      for i := 0 to Protocol.uAOBuffers-1 do begin
          iPrev := i-1 ;
          if iPrev < 0 then iPrev := Protocol.uAOBuffers-1 ;
-         AOBufs[i].pPrevBuffer := Pointer( Cardinal(@AOBufs) + (iPrev*SizeOf(TDATABuffer)) ) ;
+         AOBufs[i].pPrevBuffer := Pointer( Cardinal(AOBufs) + (iPrev*SizeOf(TDATABuffer)) ) ;
          iNext := i+1 ;
          if iNext >= Protocol.uAOBuffers then iNext := 0 ;
-         AOBufs[i].pNextBuffer := Pointer( Cardinal(@AOBufs) + (iNext*SizeOf(TDATABuffer)) ) ;
+         AOBufs[i].pNextBuffer := Pointer( Cardinal(AOBufs) + (iNext*SizeOf(TDATABuffer)) ) ;
          end ;
 
      // Enable all analog O/P channels and digital channel
+     // Note digital output is substituted for last AO channel
+     // uoChannels decremented by 1 when digital outputs enabled
+     // Fix for crashes with V11 PCLAMP and Axoscope drivers
+
+     Protocol.bDOEnable := true;
      Protocol.uAOChannels := DD1400_MAX_AO_CHANNELS ;
+     if Protocol.bDOEnable then Dec(Protocol.uAOChannels) ;
      for ch := 0 to Protocol.uAOChannels-1 do Protocol.anAOChannels[ch] := ch ;
-     Protocol.bDOEnable := True ;
+     Protocol.bDOEnable := true;
 
      // No digital input
      Protocol.bDIEnable := false ;
@@ -1068,11 +1104,14 @@ begin
      FCircularBuffer := CircularBuffer ;
 
      // Start acquisition if waveform generation not required
-     if TriggerMode <> tmWaveGen then begin
+
+     if TriggerMode <> tmWaveGen then
+        begin
 
         // Enable external start of sweep
         if TriggerMode = tmExtTrigger then Protocol.uFlags := DD1400_FLAG_EXT_TRIGGER
                                       else Protocol.uFlags := 0 ;
+
         // Clear any existing waveform from output buffer
         DD1440_FillOutputBufferWithDefaultValues ;
 
@@ -1234,22 +1273,30 @@ var
     // Allocate internal output waveform buffer
     if OutValues <> Nil then FreeMem(OutValues) ;
     NumOutPoints := NumDACPoints ;
-    GetMem( OutValues, NumOutPoints*NumOutChannels*2 ) ;
+    GetMem( OutValues, NumOutPoints*NumOutChannels*SizeOf(SmallInt) ) ;
 
     // Copy D/A & digital values into internal buffer
     DigCh := NumOutChannels - 1 ;
-    for i := 0 to NumDACPoints-1 do begin
+    for i := 0 to NumDACPoints-1 do
+        begin
         iTo := i*NumOutChannels ;
         iFrom := i*NumDACChannels ;
-        for ch :=  0 to DD1400_MAX_AO_CHANNELS-1 do begin
-            if ch < NumDACChannels then begin
+        for ch :=  0 to DD1400_MAX_AO_CHANNELS-1 do
+            begin
+            if ch < NumDACChannels then
+               begin
                OutValues[iTo+ch] := Round( DACValues[iFrom+ch]/Calibration.afDACGains[ch])
                                      - Calibration.anDACOffsets[ch];
                end
             else OutValues[iTo+ch] := DACDefaultValue[ch] ;
             end ;
-        if DigitalInUse then OutValues^[iTo+DigCh] := DigValues[i]
-                        else  OutValues^[iTo+DigCh] := DIGDefaultValue ;
+
+        if Protocol.bDOEnable then
+           begin
+           if DigitalInUse then OutValues^[iTo+DigCh] := DigValues[i]
+                           else  OutValues^[iTo+DigCh] := DIGDefaultValue ;
+           end;
+
         end ;
 
     // Download protocol to DD1440 and start/restart acquisition
@@ -1260,10 +1307,12 @@ var
     if ExternalTrigger then Protocol.uFlags := DD1400_FLAG_EXT_TRIGGER
                        else  Protocol.uFlags := 0 ;
 
-    // Fill buffer with data from new waveform
+    // Fill Digidata AOBuf buffer with data from new waveform
+
     OutPointer := 0 ;
     MaxOutPointer := (NumOutPoints*NumOutChannels) - 1 ;
-    for i := 0 to AOBufNumSamples-1 do begin
+    for i := 0 to AOBufNumSamples-1 do
+        begin
         AOBuf^[i] := OutValues^[OutPointer] ;
         Inc(OutPointer) ;
         if OutPointer > MaxOutPointer then begin
@@ -1274,8 +1323,7 @@ var
 
     // Load protocol
     DD1440_SetProtocol(  Protocol ) ;
-        DD1440_SaveToLog( 'DD1440_MemoryToDAC DD1440_SetProtocol succeeded ');
-
+    DD1440_SaveToLog( 'DD1440_MemoryToDAC DD1440_SetProtocol succeeded ');
 
     // Start
     DD1440_StartAcquisition ;
@@ -1288,11 +1336,13 @@ var
     AIPosition := 0 ;
     AIPointer := 0 ;
     AOPointer := 0 ;
-    for i := 1 to AOPosition*NumOutChannels do begin
+    for i := 1 to AOPosition*NumOutChannels do
+        begin
         AOBuf^[AOPointer] := OutValues^[OutPointer] ;
         Inc(OutPointer) ;
         Inc(AOPointer) ;
-        if OutPointer > MaxOutPointer then begin
+        if OutPointer > MaxOutPointer then
+           begin
            if RepeatWaveform then OutPointer := 0
                              else OutPointer := OutPointer - NumOutChannels ;
            end ;
@@ -1483,6 +1533,12 @@ begin
      if AODFlags <> Nil then FreeMem(AODFlags) ;
      AODFlags := Nil ;
 
+     if AIBufs <> Nil  then FreeMem( AIBufs ) ;
+     AIBufs := Nil ;
+     if AOBufs <> Nil  then FreeMem( AOBufs ) ;
+     AOBufs := Nil ;
+
+
      DeviceInitialised := False ;
      DACActive := False ;
      ADCActive := False ;
@@ -1516,6 +1572,40 @@ begin
      Result := '' ;
      for i := 0 to StrLen(pInput)-1 do Result := Result + Input[i] ;
      end ;
+
+     procedure DisableFPUExceptions ;
+// ----------------------
+// Disable FPU exceptions
+// ----------------------
+var
+    FPUNoExceptions : Set of TFPUException ;
+begin
+
+     FPUExceptionMask := GetExceptionMask ;
+     Include(FPUNoExceptions, exInvalidOp );
+     Include(FPUNoExceptions, exDenormalized );
+     Include(FPUNoExceptions, exZeroDivide );
+     Include(FPUNoExceptions, exOverflow );
+     Include(FPUNoExceptions, exUnderflow );
+     Include(FPUNoExceptions, exPrecision );
+     SetExceptionMask( FPUNoExceptions ) ;
+
+     end ;
+
+function GetSpecialFolder(const ASpecialFolderID: Integer): string;
+// --------------------------
+// Get Windows special folder
+// --------------------------
+var
+  vSpecialPath : array[0..MAX_PATH] of Char;
+begin
+
+    SHGetFolderPath( 0, ASpecialFolderID, 0,0,vSpecialPath) ;
+    Result := StrPas(vSpecialPath);
+
+  end;
+
+
 
 
 end.

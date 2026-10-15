@@ -29,7 +29,13 @@ unit dd1550;
 
 interface
 
-  uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math ;
+  uses WinTypes,Dialogs, SysUtils, WinProcs,mmsystem, math, Winapi.Windows ;
+
+const
+    DIGD1550_MaxADCSamples = 32768*16 ;
+    NumPointsPerBuf = 64;//256 ;
+    MaxBufs = (DIGD1550_MaxADCSamples div NumPointsPerBuf) + 2 ;
+
 
 const DIGD1550_ANY_DEVICE       = -1;
 const DIGD1550_MAX_AI_CHANNELS  = 8;            // NST reduce to 8 AI channels from 16 to support req 1
@@ -106,6 +112,8 @@ TDATABUFFER = packed record
    pPrevBuffer : Pointer ;       // Previous buffer in the list.
    end ;
 PDATABUFFER = ^TDATABUFFER ;
+TDATABUFFERS = Array[0..MaxBufs-1] of TDATABUFFER ;
+PDATABUFFERS = ^TDATABUFFERS ;
 
 //
 // Define a linked list structure for holding floating point acquisition buffers.
@@ -457,14 +465,12 @@ TDIGD1550_ADCtoVolts = Function(
 
    procedure DIGD1550_FillOutputBufferWithDefaultValues ;
 
+   function GetSpecialFolder(const ASpecialFolderID: Integer): string;
+
 implementation
 
-uses seslabio ;
+uses seslabio, system.classes, Winapi.ShlObj, System.StrUtils ;
 
-const
-    DIGD1550_MaxADCSamples = 32768*16 ;
-    NumPointsPerBuf = 64;//256 ;
-    MaxBufs = (DIGD1550_MaxADCSamples div NumPointsPerBuf) + 2 ;
 var
 
    FADCVoltageRangeMax : single ;    // Max. positive A/D input voltage range
@@ -519,9 +525,8 @@ var
 
    DACDefaultValue : Array[0..DIGD1550_MAX_AO_CHANNELS-1] of SmallInt ;
 
-   AIBufs : Array[0..MaxBufs-1] of TDATABUFFER ;
-   AOBufs : Array[0..MaxBufs-1] of TDATABUFFER ;
-
+   AIBufs : PDATABUFFERS ;  // Digidata analog input data buffer list
+   AOBufs : PDATABUFFERS ;  // DIgidata analog output buffer list
    DIGDefaultValue : Integer ;
 
   DIGD1550_CountDevices : TDIGD1550_CountDevices ;
@@ -641,65 +646,65 @@ procedure DIGD1550_LoadLibrary  ;
   Load AXDIGD1550.DLL library into memory
   -------------------------------------}
 var
-     AxonDLL,ProgramDir,SYSDrive : String ; // DLL file paths
+     AxonDLL,ProgramDir,DLLName : String ; // DLL file paths
      SourcePath,TrialPath : string ;
      Path : Array[0..255] of Char ;
      VMaj,VMin : Integer ;
      SearchRec : TSearchRec ;
+     ProgramFilesFolder : string ;
 begin
 
+     // Executable program folder
      ProgramDir := ExtractFilePath(ParamStr(0)) ;
-     GetSystemDirectory( Path, High(Path) ) ;
-     SYSDrive := ExtractFileDrive(String(Path)) ;
+     // Get 32 bit program files folder
+     ProgramFilesFolder := GetSpecialFolder( CSIDL_PROGRAM_FILES ) ;
 
-//   Find Axdd1550.dll and copy to settings folder
+//   Find folder containing Axdd1400.dll
+
      AxonDLL :=  'AxDD1550.DLL' ;
      SourcePath := '' ;
-     for VMaj := 15 downto 7 do for VMin := 9 downto 0 do begin
-         // Check for PCLAMP installation
-         TrialPath := format( '%s\Program Files\Molecular Devices\pCLAMP%d.%d\',
-                               [SYSDrive,VMaj,VMin,AxonDLL]);
-         if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
-         if SourcePath <> '' then Break ;
+     for VMaj := 15 downto 7 do for VMin := 9 downto 0 do
+         begin
 
-         TrialPath := format( '%s\Program Files (x86)\Molecular Devices\pCLAMP%d.%d\',
-                               [SYSDrive,VMaj,VMin,AxonDLL]);
+         // Check for PCLAMP installation
+         TrialPath := ProgramFilesFolder + format( '\Molecular Devices\pCLAMP%d.%d\',[VMaj,VMin,AxonDLL]);
+         TrialPath := ReplaceText( TrialPath, '.0\','\') ;
          if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
          if SourcePath <> '' then Break ;
 
           // Check for Axoscope installation
-         TrialPath := format( '%s\Program Files\Molecular Devices\Axoscope%d.%d\',
-                               [SYSDrive,VMaj,VMin,AxonDLL]);
-         if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
-         if SourcePath <> '' then Break ;
-
-         TrialPath := format( '%s\Program Files (x86)\Molecular Devices\Axoscope%d.%d\',
-                               [SYSDrive,VMaj,VMin,AxonDLL]);
+         TrialPath := ProgramFilesFolder + format( '\Molecular Devices\Axoscope%d.%d\',[VMaj,VMin,AxonDLL]);
+         TrialPath := ReplaceText( TrialPath, '.0\','\') ;
          if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
          if SourcePath <> '' then Break ;
 
          end;
 
-     // If not available, use version from installation
-     if SourcePath = '' then begin
-        TrialPath := ProgramDir ;
-        if FileExists(TrialPath + AXONDLL) then SourcePath := TrialPath ;
-        end;
+     // Load Axon DLLs
 
-     // Copy to settings folder
-     if SourcePath <> '' then begin
+     if SourcePath <> '' then
+        begin
         Err := FindFirst( SourcePath + 'wdapi*.dll', faAnyFile, SearchRec ) ;
         if Err = 0 then
-           wdapiHnd := DIGD1550_CopyAndLoadLibrary( SearchRec.Name, SourcePath, SettingsDirectory ) ;
-        AXDD1550Hnd := DIGD1550_CopyAndLoadLibrary( AxonDLL, SourcePath, SettingsDirectory ) ;
-        CopyFile( PChar(SourcePath+'DD1550fpga.bin'), PChar(SettingsDirectory+'DD1550fpga.bin'), false ) ;
-        end
-     else ShowMessage( AxonDLL + ' missing from ' + SettingsDirectory ) ;
+           Begin
+           DLLName := SourcePath+SearchRec.Name ;
+           wdapiHnd := LoadLibrary(PChar(DLLName)) ;
+           if wdapiHnd = 0 then ShowMessage('Unable to load ' + DLLName ) ;
+           End
+        else ShowMessage('Unable to find ' + SourcePath + 'wdapi*.dll' ) ;
+
+        DLLName := SourcePath + AxonDLL ;
+        AXDD1550Hnd := LoadLibrary(PChar(DLLName)) ;
+        if AXDD1550Hnd = 0 then ShowMessage('Unable to load ' + DLLName ) ;
+        end ;
 
      // Load DLL which calls Axon DLLs
-     DD1550Hnd := DIGD1550_CopyAndLoadLibrary( 'DD1550.DLL', ProgramDir, SettingsDirectory ) ;
+     DLLName := ProgramDir + 'DD1440.Dll' ;
+     DD1550Hnd := LoadLibrary(PChar(DLLName)) ;
+     if DD1550Hnd = 0 then ShowMessage('Unable to load ' + DLLName ) ;
 
-     if DD1550Hnd > 0 then begin
+     if DD1550Hnd > 0 then
+        begin
         { Get addresses of procedures in library }
         @DIGD1550_CountDevices := DIGD1550_LoadProcedure(dd1550Hnd,'DIGD1550_CountDevices') ;
         @DIGD1550_FindDevices := DIGD1550_LoadProcedure(dd1550Hnd,'DIGD1550_FindDevices') ;
@@ -922,10 +927,17 @@ begin
      AIBufNumSamples := ((DeviceInfo[0].InputBufferSamples*16) div NumSamplesPerSubBuf)*NumSamplesPerSubBuf ;
      if AIBuf <> Nil then FreeMem(AIBuf) ;
      GetMem( AIBuf, AIBufNumSamples*2 ) ;
-     Protocol.pAIBuffers := @AIBufs ;
+
+//   Allocate In and Out data buffers
+
+     if AIBufs <> Nil then FreeMem( AIBufs ) ;
+     GetMem( AIBufs, SizeOf(TDATABUFFERS) ) ;
+     if AOBufs <> Nil then FreeMem( AOBufs ) ;
+     GetMem( AOBufs, SizeOf(TDATABUFFERS) ) ;
+     Protocol.pAIBuffers := AIBufs ;
 
      iPointer := Cardinal(AIBuf) ;
-     Protocol.uAIBuffers := Min( AIBufNumSamples div NumSamplesPerSubBuf, High(AIBufs)+1 );
+     Protocol.uAIBuffers := Min( AIBufNumSamples div NumSamplesPerSubBuf, MaxBufs );
      for i := 0 to Protocol.uAIBuffers-1 do begin
         AIBufs[i].pnData := Pointer(iPointer) ;
         AIBufs[i].uNumSamples := NumSamplesPerSubBuf ;
@@ -952,8 +964,9 @@ begin
      Protocol.pAOBuffers := @AOBufs ;
 
      iPointer := Cardinal(AOBuf) ;
-     Protocol.uAOBuffers := Min( AOBufNumSamples div NumSamplesPerSubBuf, High(AOBufs)+1 );
-     for i := 0 to Protocol.uAOBuffers-1 do begin
+     Protocol.uAOBuffers := Min( AOBufNumSamples div NumSamplesPerSubBuf, MaxBufs );
+     for i := 0 to Protocol.uAOBuffers-1 do
+        begin
         AOBufs[i].pnData := Pointer(iPointer) ;
         AOBufs[i].uNumSamples := NumSamplesPerSubBuf ;
         AOBufs[i].uFlags := 0 ;
@@ -962,7 +975,8 @@ begin
         end ;
 
      // Previous/Next buffer pointers
-     for i := 0 to Protocol.uAOBuffers-1 do begin
+     for i := 0 to Protocol.uAOBuffers-1 do
+         begin
          iPrev := i-1 ;
          if iPrev < 0 then iPrev := Protocol.uAOBuffers-1 ;
          AOBufs[i].pPrevBuffer := Pointer( Cardinal(@AOBufs) + (iPrev*SizeOf(TDATABuffer)) ) ;
@@ -996,7 +1010,8 @@ begin
      FCircularBuffer := CircularBuffer ;
 
      // Start acquisition if waveform generation not required
-     if TriggerMode <> tmWaveGen then begin
+     if TriggerMode <> tmWaveGen then
+        begin
 
         // Enable external start of sweep
         if TriggerMode = tmExtTrigger then Protocol.uFlags := DIGD1550_FLAG_EXT_TRIGGER
@@ -1408,6 +1423,11 @@ begin
      if AIBuf <> Nil then FreeMem( AIBuf ) ;
      AIBuf := Nil ;
 
+     if AIBufs <> Nil  then FreeMem( AIBufs ) ;
+     AIBufs := Nil ;
+     if AOBufs <> Nil  then FreeMem( AOBufs ) ;
+     AOBufs := Nil ;
+
      DeviceInitialised := False ;
      DACActive := False ;
      ADCActive := False ;
@@ -1441,6 +1461,19 @@ begin
      for i := 0 to StrLen(pInput)-1 do Result := Result + Input[i] ;
      end ;
 
+
+
+function GetSpecialFolder(const ASpecialFolderID: Integer): string;
+// --------------------------
+// Get Windows special folder
+var
+  vSpecialPath : array[0..MAX_PATH] of Char;
+begin
+
+    SHGetFolderPath( 0, ASpecialFolderID, 0,0,vSpecialPath) ;
+    Result := StrPas(vSpecialPath);
+
+  end;
 
 end.
 
