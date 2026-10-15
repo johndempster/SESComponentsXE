@@ -33,6 +33,7 @@ unit HekaUnit;
 // 21.09.17 EPC-9 USB option now initialised with IAmplifier := EPC9_Epc9Amp1, pLIH_Options^.UseUSB := 1 rather than IAmplifier := EPC9_Epc10USB
 //          to try to get it to work with the EPC-9 with a USB interface
 // 29.01.22 Heka_SetAmplifier() Amplifier value no longer fixed at 0
+// 22.07.26 Additional device information now returned in DeviceInfo by GetLabInterfaceInfo()
 
 interface
 
@@ -165,7 +166,8 @@ LIH_StatusAdcOverflow = 4 ;
    EPC9_HasScaleEEPROM        = 11;
    EPC9_HasVrefX2AndF2Vmon    = 12;
 
-   EPC8_StrobeBit = 14 ;
+
+   EPC8_StrobeBit = 14 ;
    EPC8_DisableBit = 15 ;
 
 type
@@ -635,7 +637,8 @@ TEPC9_DLLVersion= function : LongInt ; stdcall ;
             var ADCBufferLimit : Integer ;      { Max. no. samples in A/D buffer }
             var DACMaxChannels : Integer ;
             var DACMaxVolts : Single ; { Positive limit of bipolar D/A voltage range }
-            var DACMinUpdateInterval : Double {Min. D/A update interval }
+            var DACMinUpdateInterval : Double ; {Min. D/A update interval }
+            DeviceInfo : TstringList
             ) : Boolean ;
 
   function HEKA_GetMaxDACVolts : single ;
@@ -817,6 +820,8 @@ var
 
    GCF : double ; // Gain correction factor (loaded from HekaGCF.txt)
 
+   HekaDeviceInfo : TstringList ;
+
     EPC9_GetMuxAdcOffset : TEPC9_GetMuxAdcOffset;
     EPC9_GetStimDacOffset : TEPC9_GetStimDacOffset;
     EPC9_AutoCFast : TEPC9_AutoCFast;
@@ -908,7 +913,8 @@ var
      EPC9_GetBoards   : TEPC9_GetBoards ;
      EPC9_GetSelector   : TEPC9_GetSelector ;
 
-    EPC8_EncodeFilter : TEPC8_EncodeFilter ;
+
+    EPC8_EncodeFilter : TEPC8_EncodeFilter ;
     EPC8_DecodeFilter : TEPC8_DecodeFilter ;
     EPC8_DecodeGain : TEPC8_DecodeGain ;
     EPC8_EncodeGain : TEPC8_EncodeGain ;
@@ -961,7 +967,8 @@ function  HEKA_GetLabInterfaceInfo(
             var ADCBufferLimit : Integer ;      { Max. no. samples in A/D buffer }
             var DACMaxChannels : Integer ;
             var DACMaxVolts : Single ; { Positive limit of bipolar D/A voltage range }
-            var DACMinUpdateInterval : Double {Min. D/A update interval }
+            var DACMinUpdateInterval : Double ; {Min. D/A update interval }
+            DeviceInfo : TstringList { Device information list }
             ) : Boolean ;
 { --------------------------------------------
   Get information about the interface hardware
@@ -971,13 +978,20 @@ var
     BoardName : String ;
 begin
 
+     HekaDeviceInfo := DeviceInfo ;
+     HekaDeviceInfo.Clear ;
+     HekaDeviceInfo.Add( 'Heka device Information' ) ;
+
      InterfaceType := InterfaceTypeIn ;
+
+     // Initialise board
 
      if not DeviceInitialised then HEKA_InitialiseBoard ;
      if not DeviceInitialised then begin
         Result := DeviceInitialised ;
         Exit ;
         end ;
+
      // Get name of interface board
      iBoardType := LIH_GetBoardType ;
      case iBoardType of
@@ -1229,7 +1243,7 @@ var
    Path : ANSIString ;
    ErrorMsg : Array[0..511] of ANSIChar ;
    pLIH_Options : PLIH_OptionsType ;
-   GCFFileName : String ;
+   s,GCFFileName : String ;
     F : TextFile ;
 begin
 
@@ -1237,6 +1251,8 @@ begin
 
      if not LibraryLoaded then HEKA_LoadLibrary ;
      if not LibraryLoaded then Exit ;
+
+     HekaDeviceInfo.Add( format('EPC9DLL.DLL Version: %d', [EPC9_DLLVersion])) ;
 
      // Create options record
      pLIH_Options := AllocMem(SizeOf(TLIH_OptionsType)) ;
@@ -1256,7 +1272,9 @@ begin
        else IAmplifier := EPC9_Epc7Ampl ;
        end ;
 
-     if IAmplifier = EPC9_Epc7Ampl then begin
+     if IAmplifier = EPC9_Epc7Ampl then
+        begin
+
         // Initialise board only
         case InterfaceType of
            HekaITC16 : iBoard := LIH_ITC16Board ;
@@ -1273,11 +1291,10 @@ begin
            HekaLIH88 : iBoard := LIH_LIH88Board ;
            else iBoard :=  LIH_ITC16Board ;
            end ;
-        Err := LIH_InitializeInterface( ErrorMsg,
-                                        IAmplifier,
-                                        iBoard,
-                                        pLIH_Options,
-                                        SizeOf(TLIH_OptionsType) ) ;
+
+        // Initialise interface
+        Err := LIH_InitializeInterface( ErrorMsg,IAmplifier,iBoard,pLIH_Options,SizeOf(TLIH_OptionsType) ) ;
+
         EPC9Available := False ;
         EPC9MinCurrentGain := 1.0 ;
         end
@@ -1288,12 +1305,17 @@ begin
         Path := ANSIString(ExtractFilePath(ParamStr(0))) ;
 
         SerialNumber := '' ;
-        Err := EPC9_InitializeAndCheckForLife( ErrorMsg,
-                                               IAmplifier,
-                                               PANSIChar(Path),
-                                               pLIH_Options,
-                                               SizeOf(TLIH_OptionsType) ) ;
+        Err := EPC9_InitializeAndCheckForLife( ErrorMsg,IAmplifier,PANSIChar(Path),pLIH_Options,SizeOf(TLIH_OptionsType) ) ;
         SerialNumber := ANSIString(pLIH_Options^.SerialNumber) ;
+
+        HekaDeviceInfo.Add( 'Serial No.: '+ SerialNumber ) ;
+        HekaDeviceInfo.Add( format('UseUSB: %d',[pLIH_Options^.UseUsb]) );
+        HekaDeviceInfo.Add( format('BoardNumber: %d',[pLIH_Options^.BoardNumber]) );
+        HekaDeviceInfo.Add( format('FIFOSamples: %d',[pLIH_Options^.FIFOSamples]) );
+        HekaDeviceInfo.Add( format('MaxProbes: %d',[pLIH_Options^.MaxProbes]) );
+        HekaDeviceInfo.Add( 'DeviceNumber: ' + ANSIString(pLIH_Options^.DeviceNumber) );
+        HekaDeviceInfo.Add( 'SerialNumber: ' + ANSISTring(pLIH_Options^.SerialNumber) );
+        HekaDeviceInfo.Add( format('ExternalScaling: %d',[pLIH_Options^.ExternalScaling]) );
 
         // Get minimum current gain
         EPC9_SetActiveBoard(0) ;
@@ -1302,7 +1324,8 @@ begin
 
         // Load gain correction factor (if file exists in program directory)
         GCFFileName :=  ExtractFilePath(ParamStr(0)) + Heka_GCFFileName ;
-        if FileExists( GCFFileName ) then begin
+        if FileExists( GCFFileName ) then
+           begin
            AssignFile( F, GCFFileName ) ;
            Reset( F ) ;
            Read(F, GCF ) ;
@@ -1318,9 +1341,21 @@ begin
         EPC9_SetCCTrackTau(0) ;
         EPC9_SetCCTrackHold(0.0);
         EPC9_SetCCFastSpeed(0);
+        EPC9_SetVPoffset( 0.0 ) ;
+        EPC9_SetVLiquidJunction( 0.0 ) ;
+        EPC9_SetVHold( 0.0 ) ;
+        EPC9_flushcache ;
+
+        HekaDeviceInfo.Add( format('VPOffset: %.5g V',[EPC9_GetVPoffset]) );
+        HekaDeviceInfo.Add( format('VLiquidJunction: %.5g V',[EPC9_GetVLiquidJunction]) );
+        HekaDeviceInfo.Add( format('VHold: %.5g V',[EPC9_GetVHold]) );
+        HekaDeviceInfo.Add( format('Ipip: %.5g A',[EPC9_GetIpip(20)]) );
+        HekaDeviceInfo.Add( format('Vmon: %.5g V',[EPC9_GetVmon(20)]) );
+
         //EPC9_SetCSlowTau( 1E-6 ) ;
 
         EPC9Available := True ;
+
         end ;
 
      FreeMem(pLIH_Options) ;
@@ -1328,16 +1363,16 @@ begin
      // Report error and exist
      if Err <> 0 then begin
           case Err of
-              EPC9_NoScaleFiles : ShowMessage(
-              'EPC files: SCALE-nnnnnn.epc & CFAST-nnnnnn.epc missing! Copy to ' + path );
-              EPC9_NoScaleFile : ShowMessage(
-              'EPC file: SCALE-nnnnnn.epc missing! Copy to ' + path ) ;
-              EPC9_NoCFastFile : ShowMessage(
-              'EPC file: CFAST-nnnnnn.epc missing! Copy to ' + path ) ;
-          else ShowMessage(ANSIString(ErrorMsg)) ;
+              EPC9_NoScaleFiles : s := 'EPC files: SCALE-nnnnnn.epc & CFAST-nnnnnn.epc missing!' ;
+              EPC9_NoScaleFile : s := 'EPC file: SCALE-nnnnnn.epc missing!' ;
+              EPC9_NoCFastFile : s := 'EPC file: CFAST-nnnnnn.epc missing!' ;
+          else s := ANSIString(ErrorMsg) ;
           end;
-          EPC9Available := False ;
-          exit ;
+          ShowMessage(s) ;
+          HekaDeviceInfo.Add( s ) ;
+
+//          EPC9Available := False ;
+//          exit ;
           end ;
 
      // Get board capabilities
@@ -1347,6 +1382,13 @@ begin
                         FIFOMaxPoints,
                         AOMaxChannels,
                         AIMaxChannels );
+
+    {  HekaDeviceInfo.Add( format( 'Sampling Interval Step Size: %.4g s',[SamplingIntervalStepSize]));
+      HekaDeviceInfo.Add( format( 'MinSamplingInterval: %.4g s',[MinSamplingInterval]));
+      HekaDeviceInfo.Add( format( 'MaxSamplingInterval: %.4g s',[MaxSamplingInterval]));
+      HekaDeviceInfo.Add( format( 'FIFOMaxPoints: %.0f',[1.0*FIFOMaxPoints]));
+      HekaDeviceInfo.Add( format( 'AOMaxChannels: %.0f',[1.0*AOMaxChannels]));
+      HekaDeviceInfo.Add( format( 'AIMaxChannels: %.0f',[1.0*AIMaxChannels]));}
 
      // Initialise ADC data buffers
      for ch := 0 to AIMaxChannels-1 do begin
@@ -1938,14 +1980,17 @@ begin
 
     Path := ExtractFilePath(ParamStr(0)) + ANSIString(FileName) ;
 
-    if not FileExists(Path) then begin
+    if not FileExists(Path) then
+        begin
         ShowMessage('Cannot open ' + ANSIString(FileName) + '! Locate and copy file to folder ' +  ExtractFilePath(ParamStr(0)));
         Result := 1 ;
         end ;
 
-    if FileExists(Path) then begin
+    if FileExists(Path) then
+       begin
        FileHandle := FileOpen( Path, fmOpenRead ) ;
-       if FileHandle > 0 then begin
+       if FileHandle > 0 then
+          begin
           NumBytes := FileSeek( FileHandle, 0, 2 ) ;
           FileSeek( FileHandle, 0, 0 ) ;
           FileRead( FileHandle, ScaleData, NumBytes ) ;
@@ -2092,7 +2137,7 @@ procedure Heka_GetFilter2Bandwidth(
 // Set current filter bandwidth
 // ----------------------------
 begin
-
+     Bandwidth := 0.0 ;
      if not DeviceInitialised then Exit ;
      Bandwidth := EPC9_GetF2Bandwidth ;
 
@@ -2107,6 +2152,7 @@ begin
 
 procedure Heka_GetCfast( var Value : Single ) ;
 begin
+     Value := 0.0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetCFastTot ;
      end;
@@ -2124,6 +2170,7 @@ begin
 
 procedure Heka_GetCfastTau( var Value : Single ) ;
 begin
+     Value := 0.0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetCFastTau ;
      end;
@@ -2137,6 +2184,7 @@ begin
 
 procedure Heka_GetCslow( var Value : Single ) ;
 begin
+     Value := 0.0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetCslow ;
      end;
@@ -2149,6 +2197,7 @@ begin
 
 procedure Heka_GetCslowRange( var Value : Integer ) ;
 begin
+     Value := 0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetCslowRange ;
      end;
@@ -2162,6 +2211,7 @@ begin
 
 procedure Heka_GetGseries( var Value : Single ) ;
 begin
+     Value := 0.0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetGseries ;
      end;
@@ -2174,6 +2224,7 @@ begin
 
 procedure Heka_GetGleak( var Value : Single ) ;
 begin
+     Value := 0.0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetGleak ;
      end;
@@ -2185,6 +2236,7 @@ begin
 
 procedure Heka_GetRSValue( var Value : Single ) ;
 begin
+     Value := 0.0 ;
      //Value := EPC9_GetRsValue ;
      end;
 
@@ -2196,6 +2248,7 @@ begin
 
 procedure Heka_GetRsFraction( var Value : Single ) ;
 begin
+     Value := 0.0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetRsFraction ;
      end;
@@ -2208,6 +2261,7 @@ begin
 
 procedure Heka_GetRsMode( var Value : Integer ) ;
 begin
+     Value := 0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetRsMode ;
      end;
@@ -2221,6 +2275,7 @@ begin
 
 procedure Heka_GetMode( var Value : Integer ) ;
 begin
+     Value := 0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetMode ;
      end;
@@ -2234,6 +2289,7 @@ begin
 
 procedure Heka_GetGentleModeChange( var Value : Boolean ) ;
 begin
+
      if not DeviceInitialised then Exit ;
      if GentleModeChange = 0 then Value := True
                              else Value := False ;
@@ -2247,6 +2303,7 @@ begin
 
 procedure Heka_GetVHold( var Value : Single ) ;
 begin
+     Value := 0.0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetVHold ;
      end;
@@ -2259,18 +2316,21 @@ begin
 
 procedure Heka_GetVLiquidJunction( var Value : Single ) ;
 begin
+     Value := 0.0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetVLiquidJunction ;
      end;
 
 procedure Heka_SetVPOffset( var Value : Single ) ;
 begin
+     Value := 0.0 ;
      if not DeviceInitialised then Exit ;
      EPC9_SetVPOffset( Value ) ;
      end;
 
 procedure Heka_GetVPOffset( var Value : Single ) ;
 begin
+     Value := 0.0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetVPOffset ;
      end;
@@ -2281,8 +2341,10 @@ begin
      EPC9_SetCCGain( Value ) ;
      end;
 
+
 procedure Heka_GetCCGain( var Value : Integer ) ;
 begin
+     Value := 0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetCCGain ;
      end;
@@ -2295,6 +2357,7 @@ begin
 
 procedure Heka_GetCCTrackHold( var Value : Single ) ;
 begin
+     Value := 0.0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetCCTrackHold ;
      end;
@@ -2307,6 +2370,7 @@ begin
 
 procedure Heka_GetCCTrackTau( var Value : Integer ) ;
 begin
+     Value := 0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetCCTrackTau ;
      end;
@@ -2319,6 +2383,7 @@ begin
 
 procedure Heka_GetExtStimPath( var Value : Integer ) ;
 begin
+     Value := 0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetExtStimPath ;
      end;
@@ -2332,6 +2397,7 @@ begin
 procedure Heka_GetEnableStimFilter( var Value :  Boolean ) ;
 begin
      //Value := GetStimFilterOn ;
+     Value := False ;
      end;
 
 
@@ -2344,12 +2410,14 @@ begin
 
 procedure Heka_GetAmplifier( var Value : Integer ) ;
 begin
+     Value := 0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetActiveBoard ;
      end;
 
 procedure Heka_GetNumAmplifiers( var Value : Integer ) ;
 begin
+     Value := 0 ;
      if not DeviceInitialised then Exit ;
      Value := EPC9_GetBoards ;
      end;
@@ -2400,28 +2468,29 @@ begin
 procedure Heka_EPC9GetCurrentADCInput(
           var Value : Integer ) ;
 begin
-     if not DeviceInitialised then Exit ;
+//     Value := 0 ;
+//     if not DeviceInitialised then Exit ;
      Value := EPC9CurrentADCInput ;
      end;
 
 procedure Heka_EPC9SetCurrentADCInput(
           var Value : Integer ) ;
 begin
-     if not DeviceInitialised then Exit ;
+//     if not DeviceInitialised then Exit ;
      EPC9CurrentADCInput := Value ;
      end;
 
 procedure Heka_EPC9GetVoltageADCInput(
           var Value : Integer ) ;
 begin
-     if not DeviceInitialised then Exit ;
+ //    if not DeviceInitialised then Exit ;
      Value := EPC9VoltageADCInput ;
      end;
 
 procedure Heka_EPC9SetVoltageADCInput(
           var Value : Integer ) ;
 begin
-     if not DeviceInitialised then Exit ;
+ //    if not DeviceInitialised then Exit ;
      EPC9VoltageADCInput := Value ;
      end;
 

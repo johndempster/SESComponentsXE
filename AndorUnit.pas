@@ -2184,7 +2184,7 @@ begin
      if FileExists(Destination) then Result := True
      else
         begin
-        ShowMessage('Andor SDK3: ' + Destination + ' is missing!') ;
+        ShowMessage('Andor SDK2: ' + Destination + ' is missing!') ;
         Result := False ;
         end ;
      end ;

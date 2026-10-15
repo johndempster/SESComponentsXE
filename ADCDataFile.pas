@@ -60,6 +60,7 @@ unit ADCDataFile;
 // 15.05.25 ASCLoadFile now converts ASCII text to FP faster
 // 19.06.25 .csv added and .dat removed from file extensions considered to be ASCII
 // 22.08.25 .EDF European Data Format file format added
+// 13.04.26 WCPRecordAccepted property now defaulted to TRUE
 
 {$R 'adcdatafile.dcr'}
 interface
@@ -1673,8 +1674,8 @@ TEDFHeader = packed record
     Property NumFileHeaderBytes : Integer Read FNumHeaderBytes Write FNumHeaderBytes ;
 
     // WCP file properties
-    Property WCPNumZeroAvg : Integer Read FWCPNumZeroAvg Write FWCPNumZeroAvg ;
-    Property WCPRecordAccepted : Boolean Read FWCPRecordAccepted  Write FWCPRecordAccepted ;
+    Property WCPNumZeroAvg : Integer Read FWCPNumZeroAvg Write FWCPNumZeroAvg default 10 ;
+    Property WCPRecordAccepted : Boolean Read FWCPRecordAccepted  Write FWCPRecordAccepted default True ;
     Property WCPRecordType : String Read FWCPRecordType  Write FWCPRecordType ;
     Property WCPRecordNumber : Single Read FWCPRecordNumber Write FWCPRecordNumber ;
     Property WCPRecordTime : Single Read FWCPRecordTime Write FWCPRecordTime ;
@@ -1772,6 +1773,8 @@ begin
      FASCIISaveRecordsInColumns := False ;  // Save records as blocks of rows is default
 
      UseTempFile := False ;
+
+     FWCPRecordAccepted := True ; // Set WCP data file record accepted flag to TRUE as default
 
      FMarkerList := TStringList.Create ;
 

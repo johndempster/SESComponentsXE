@@ -147,6 +147,7 @@ unit SESLabIO;
   11.04.19 TritonRemoveArtifact() procedure added.
   02.05.22 External start now added to Triton_MemoryToDACAndDigitalOut()
   03.12.25 ADCChannelInvert property added
+  22.07.26 Additional device information now available in DeviceInfo list
   ================================================================================ }
 
 interface
@@ -545,6 +546,7 @@ type
     { Public declarations }
     StimulusStartFlag : Boolean ;
     FOutPointer : Integer ;
+    DeviceInfo : TStringList ;         // Digitiser device information
 
     Constructor Create(AOwner : TComponent) ; override ;
     Destructor Destroy ; override ;
@@ -1095,6 +1097,7 @@ begin
      SettingsFileName := SettingsDirectory + 'lab interface settings.xml' ;
 
      // Load default settings and initialise laboratory interface hardware
+     DeviceInfo := TStringList.Create ;
      if FileExists( SettingsFileName ) then LoadFromXMLFile( SettingsFileName )
                                        else OpenLabInterface( FLabInterfaceType,FDeviceNumber,FADCInputMode ) ;
 
@@ -1550,7 +1553,8 @@ begin
                                     FADCBufferLimit ) ;
 
           FDeviceNumber := DeviceNumber ;
-          if FLabInterfaceAvailable then begin
+          if FLabInterfaceAvailable then
+             begin
              FDACBufferLimit := FADCBufferLimit ;
              FDIGNumOutputs := 8 ; { No. of digital outputs }
              //FDIGInterval := 2 ;
@@ -1558,6 +1562,8 @@ begin
              FDACTriggerOffLevel := IntLimit( Round((FDACMaxValue*4.99)/FDACVoltageRange),
                                               FDACMinValue,FDACMaxValue) ;
              FDACInitialPoints := 0 ;
+             DeviceInfo.Clear ;
+             DeviceInfo.Add( 'Device: ' + FLabInterfaceModel ) ;
              end ;
           end ;
 
@@ -1760,10 +1766,13 @@ begin
                                     FADCBufferLimit,
                                     FDACMaxChannels,
                                     FDACVoltageRange,
-                                    FDACMinUpdateInterval ) ;
+                                    FDACMinUpdateInterval,
+                                    DeviceInfo ) ;
+
           FDACMinValue := FADCMinValue ;
           FDACMaxValue := FADCMaxValue ;
-          if FLabInterfaceAvailable then begin
+          if FLabInterfaceAvailable then
+             begin
              FDACBufferLimit := FADCBufferLimit ;
              FDIGNumOutputs := 4 ; { No. of digital outputs }
              FDIGInterval := FDACBufferLimit ;
@@ -5009,8 +5018,9 @@ begin
 
 function TSESLabIO.EPC9GetFilterMode( Num : Integer ) : Integer ;
 begin
-    Heka_GetFilterMode(Num,Result)  ;
+    Heka_GetFilterMode(Num, Result)  ;
     end;
+
 
 procedure TSESLabIO.EPC9SetFilter2Bandwidth( Value : Single ) ;
 begin
@@ -5022,6 +5032,7 @@ begin
      Heka_GetFilter2Bandwidth(Result)  ;
      end;
 
+
 procedure TSESLabIO.EPC9SetCfast( Value : Single ) ;
 begin
     Heka_SetCfast(Value)  ;
@@ -5031,6 +5042,7 @@ function TSESLabIO.EPC9GetCfast : Single ;
 begin
     Heka_GetCfast(Result)  ;
     end;
+
 
 procedure TSESLabIO.EPC9SetCfastTau( Value : Single ) ;
 begin
@@ -5042,6 +5054,7 @@ begin
     Heka_GetCfastTau(Result)  ;
     end;
 
+
 procedure TSESLabIO.EPC9SetCslowRange( Value : Integer ) ;
 begin
      Heka_SetCslowRange(Value)  ;
@@ -5051,6 +5064,7 @@ function TSESLabIO.EPC9GetCslowRange : Integer ;
 begin
      Heka_GetCslowRange(Result)  ;
      end;
+
 
 procedure TSESLabIO.EPC9SetCslow( Value : Single ) ;
 begin
@@ -5062,6 +5076,7 @@ begin
      Heka_GetCslow(Result)  ;
      end;
 
+
 procedure TSESLabIO.EPC9SetGseries( Value : Single ) ;
 begin
      Heka_SetGseries(Value)  ;
@@ -5071,6 +5086,7 @@ function TSESLabIO.EPC9GetGseries : Single ;
 begin
      Heka_GetGseries(Result)  ;
      end;
+
 
 procedure TSESLabIO.EPC9Setrsvalue( Value : Single ) ;
 begin
@@ -5092,25 +5108,30 @@ begin
      Heka_GetRSFraction(Result)  ;
      end;
 
+
 procedure TSESLabIO.EPC9SetRSMode( Value : Integer ) ;
 begin
      Heka_SetRSMode(Value)  ;
      end;
+
 
 function TSESLabIO.EPC9GetRSMode : Integer ;
 begin
      Heka_GetRSMode(Result)  ;
      end;
 
+
 procedure TSESLabIO.EPC9SetGleak( Value : Single ) ;
 begin
      Heka_SetGleak(Value)  ;
      end;
 
+
 function TSESLabIO.EPC9GetGleak : Single ;
 begin
      Heka_GetGleak(Result)  ;
      end;
+
 
 procedure TSESLabIO.EPC9SetMode( Value : Integer ) ;
 begin
@@ -5122,25 +5143,30 @@ begin
      Heka_GetMode(Result)  ;
      end;
 
+
 procedure TSESLabIO.EPC9SetGentleModeChange( Value : Boolean ) ;
 begin
      Heka_SetGentleModeChange(Value)  ;
      end;
+
 
 function TSESLabIO.EPC9GetGentleModeChange : Boolean ;
 begin
      Heka_GetGentleModeChange(Result)  ;
      end;
 
+
 procedure TSESLabIO.EPC9SetVHold( Value : Single ) ;
 begin
      Heka_SetVHold(Value)  ;
      end;
 
+
 function TSESLabIO.EPC9GetVHold : Single ;
 begin
      Heka_GetVHold(Result)  ;
      end;
+
 
 procedure TSESLabIO.EPC9SetVLiquidJunction( Value : Single ) ;
 begin
@@ -5152,6 +5178,7 @@ begin
      Heka_GetVLiquidJunction(Result)  ;
      end;
 
+
 procedure TSESLabIO.EPC9SetVPOffset( Value : Single ) ;
 begin
      Heka_SetVPOffset(Value)  ;
@@ -5161,6 +5188,7 @@ function TSESLabIO.EPC9GetVPOffset : Single ;
 begin
      Heka_GetVPOffset(Result)  ;
      end;
+
 
 procedure TSESLabIO.EPC9SetCCGain( Value : Integer ) ;
 begin
@@ -5172,6 +5200,7 @@ begin
      Heka_GetCCGain(Result)  ;
      end;
 
+
 procedure TSESLabIO.EPC9SetCCTrackHold( Value : Single ) ;
 begin
      Heka_SetCCTrackHold(Value)  ;
@@ -5181,6 +5210,7 @@ function TSESLabIO.EPC9GetCCTrackHold : Single ;
 begin
      Heka_GetCCTrackHold(Result)  ;
      end;
+
 
 procedure TSESLabIO.EPC9SetCCTrackTau( Value : Integer ) ;
 begin
@@ -5192,15 +5222,18 @@ begin
      Heka_GetCCTrackTau(Result)  ;
      end;
 
+
 procedure TSESLabIO.EPC9SetExtStimPath( Value : Integer ) ;
 begin
      Heka_SetExtStimPath(Value)  ;
      end;
 
+
 function TSESLabIO.EPC9GetExtStimPath : Integer ;
 begin
-     Heka_GetExtStimPath(Result)  ;
+     Heka_GetExtStimPath(result)  ;
      end;
+
 
 procedure TSESLabIO.EPC9SetEnableStimFilter( Value : Boolean ) ;
 begin
@@ -5212,6 +5245,7 @@ begin
      Heka_GetEnableStimFilter(Result)  ;
      end;
 
+
 procedure TSESLabIO.EPC9SetAmplifier( Value : Integer ) ;
 begin
      Heka_SetAmplifier(Value)  ;
@@ -5222,10 +5256,12 @@ begin
      Heka_GetAmplifier(Result)  ;
      end;
 
+
 function TSESLabIO.EPC9GetNumAmplifiers : Integer ;
 begin
      Heka_GetNumAmplifiers(Result)  ;
      end;
+
 
 procedure TSESLabIO.EPC9AutoCFast ;
 begin
@@ -5271,6 +5307,7 @@ function TSESLabIO.EPC9GetCurrentADCInput  : Integer ;
 begin
     Heka_EPC9GetCurrentADCInput( Result ) ;
     end;
+
 
 procedure TSESLabIO.EPC9SetVoltageADCInput( Value : Integer ) ;
 begin

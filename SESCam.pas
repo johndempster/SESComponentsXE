@@ -80,6 +80,7 @@ unit SESCam;
  14.11.18 JD  IDSuEYE and Thorlabs now updates FFrameCounter with frame count since StartCapture()
  27.03.19 JD  DCAM FrameCount property now returns no. of frames captured
  02.09,24 JD  Vieworks pulseinterval trigger mode added
+ 27.04.26 JD  PVCAm cameras now return frame count (necessary to work with MesoCam)
 
   ================================================================================ }
 {$OPTIMIZATION OFF}
@@ -1281,6 +1282,8 @@ begin
 
              IMAQSession.PulseIntervalTriggerMode := FPulseIntervalTriggerMode ;
 
+             FNumComponentsPerPixel := 1 ;
+
              FNumCameras := 1 ;
              end ;
           end ;
@@ -1566,7 +1569,8 @@ procedure TSESCam.ReadCamera ;
 // -----------------------
 begin
 
-     if FCameraAvailable then begin
+     if FCameraAvailable then
+        begin
 
         case FCameraType of
 
@@ -1585,6 +1589,7 @@ begin
               end ;
 
             RS_PVCAM,RS_PVCAM_PENTAMAX : begin
+              FFrameCount := PVCAM_GetLatestFrameNumber( PVCAMSession ) ;
               end ;
 
             IMAQ_1394 : begin
@@ -2061,6 +2066,7 @@ begin
                                                FFrameWidth,
                                                FFrameHeight,
                                                FTriggerMode,
+                                               FPulseIntervalTriggerMode,
                                                FReadoutSpeed,
                                                FCCDClearPreExposure,
                                                FCCDPostExposureReadout ) ;
@@ -2427,6 +2433,7 @@ begin
                                                FFrameWidth,
                                                FFrameHeight,
                                                FTriggerMode,
+                                               FPulseIntervalTriggerMode,
                                                FReadoutSpeed,
                                                FCCDClearPreExposure,
                                                FCCDPostExposureReadout ) ;

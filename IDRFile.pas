@@ -75,7 +75,7 @@ const
      MaxFrameType = 8 ;              // Upper limit of frame types
      MaxFrameDivideFactor = 100 ; 
      MaxChannel = 7 ;                // Upper limit of A/D channels
-     cMaxROIs = 1000 ;               // Upper limit of ROIs (raised from 100 04/10/22)
+     cMaxROIs = 2000 ;               // Upper limit of ROIs (raised from 100 04/10/22) raised to 2000 30.04.26
      cMaxROIsInHeader = 100 ;        // Upper limit of ROIs stored in IDR Header
      MaxMarker = 20 ;               // Upper limit of event markers
      cNumIDRHeaderBytes = 32768 ;  // Old size = 4096 ;
@@ -94,6 +94,7 @@ const
      LineROI = 3 ;
      PolyLineROI = 4 ;
      PolygonROI = 5 ;
+     AreaROI = 6 ;
      ROIMaxPoints = 100 ;
 
 type
@@ -1761,7 +1762,7 @@ procedure TIDRFile.LoadROIsFromCSVFile(
 var
     FileHandle : THandle ;
     i : Integer ;
-    ROIs : Array[0..cMaxROIs] of TROI ;         // Regions of interest list (scaled by zoom)
+//    ROIs : Array[0..cMaxROIs] of TROI ;         // Regions of interest list (scaled by zoom)
     InF : TextFile ;
     s : String ;
     ROIList : TStringList ;
@@ -1775,7 +1776,7 @@ begin
     ROIList.LoadFromFile( FileName ) ;
 
     // Clear existing ROIs
-    for i := 0 to High(ROIs) do ROIs[i].InUse := False ;
+    for i := 0 to High(FROIs) do FROIs[i].InUse := False ;
 
     // Read ROIs
 
@@ -2253,10 +2254,7 @@ begin
          end ;
 
      // Update A/D channel scaling factors
-     UpdateChannelScalingFactors( Channels,
-                                  FADCNumChannels,
-                                  FADCVoltageRange,
-                                  FADCMaxValue )  ;
+     UpdateChannelScalingFactors( Channels,FADCNumChannels,FADCVoltageRange,FADCMaxValue )  ;
 
      // Release allocated memory
      Header.Free ;
