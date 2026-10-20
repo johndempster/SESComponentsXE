@@ -26,6 +26,9 @@ unit dd1550;
 //          only WDAPI1140.dll)
 // 04.09.17 .. Max. no. of DAC channels limited to 4
 // 28.08.19 Name of Axoscope folder on Windows 64 bit systems corrected
+// 19.10.26 Crashes when using pst V10.7 PCLAMP or AxoScope Digidata drivers fixed
+//          Resolved by restricting number of output channels to MAX_AOChannels (rather than MAX_AOChannels+1)
+//          and substituting TTl digital outputs for last AO channel.
 
 interface
 
@@ -659,7 +662,7 @@ begin
      // Get 32 bit program files folder
      ProgramFilesFolder := GetSpecialFolder( CSIDL_PROGRAM_FILES ) ;
 
-//   Find folder containing Axdd1400.dll
+//   Find folder containing Axdd1550.dll
 
      AxonDLL :=  'AxDD1550.DLL' ;
      SourcePath := '' ;
@@ -699,7 +702,7 @@ begin
         end ;
 
      // Load DLL which calls Axon DLLs
-     DLLName := ProgramDir + 'DD1440.Dll' ;
+     DLLName := ProgramDir + 'DD1550.Dll' ;
      DD1550Hnd := LoadLibrary(PChar(DLLName)) ;
      if DD1550Hnd = 0 then ShowMessage('Unable to load ' + DLLName ) ;
 
@@ -833,7 +836,7 @@ begin
      DACActive := False ;
 
     // Set output buffers to default values
-    NumOutChannels := DIGD1550_MAX_AO_CHANNELS + 1 ;
+    NumOutChannels := DIGD1550_MAX_AO_CHANNELS ;
     for ch := 0 to DIGD1550_MAX_AO_CHANNELS-1 do DACDefaultValue[ch] := -Calibration.anDACOffsets[ch];
     DIGDefaultValue := 0 ;
 
@@ -925,20 +928,23 @@ begin
      // Make sub-buffer contain multiple of both input and output channels
      NumSamplesPerSubBuf := MaxSamplesPerSubBuf*NumADCChannels*NumOutChannels ;
      AIBufNumSamples := ((DeviceInfo[0].InputBufferSamples*16) div NumSamplesPerSubBuf)*NumSamplesPerSubBuf ;
+
      if AIBuf <> Nil then FreeMem(AIBuf) ;
-     GetMem( AIBuf, AIBufNumSamples*2 ) ;
+     GetMem( AIBuf, AIBufNumSamples*SizeOf(SmallInt) ) ;
 
 //   Allocate In and Out data buffers
-
      if AIBufs <> Nil then FreeMem( AIBufs ) ;
      GetMem( AIBufs, SizeOf(TDATABUFFERS) ) ;
+     Protocol.pAIBuffers := AIBufs ;
+
      if AOBufs <> Nil then FreeMem( AOBufs ) ;
      GetMem( AOBufs, SizeOf(TDATABUFFERS) ) ;
-     Protocol.pAIBuffers := AIBufs ;
+     Protocol.pAOBuffers := AOBufs ;
 
      iPointer := Cardinal(AIBuf) ;
      Protocol.uAIBuffers := Min( AIBufNumSamples div NumSamplesPerSubBuf, MaxBufs );
-     for i := 0 to Protocol.uAIBuffers-1 do begin
+     for i := 0 to Protocol.uAIBuffers-1 do
+        begin
         AIBufs[i].pnData := Pointer(iPointer) ;
         AIBufs[i].uNumSamples := NumSamplesPerSubBuf ;
         AIBufs[i].uFlags := 0 ;
@@ -947,21 +953,21 @@ begin
         end ;
 
      // Previous/Next buffer pointers
-     for i := 0 to Protocol.uAIBuffers-1 do begin
+     for i := 0 to Protocol.uAIBuffers-1 do
+         begin
          iPrev := i-1 ;
          if iPrev < 0 then iPrev := Protocol.uAIBuffers-1 ;
-         AIBufs[i].pPrevBuffer := Pointer( Cardinal(@AIBufs) + (iPrev*SizeOf(TDATABuffer)) ) ;
+         AIBufs[i].pPrevBuffer := Pointer( Cardinal(AIBufs) + (iPrev*SizeOf(TDATABuffer)) ) ;
          iNext := i+1 ;
          if iNext >= Protocol.uAIBuffers then iNext := 0 ;
-         AIBufs[i].pNextBuffer := Pointer( Cardinal(@AIBufs) + (iNext*SizeOf(TDATABuffer)) ) ;
+         AIBufs[i].pNextBuffer := Pointer( Cardinal(AIBufs) + (iNext*SizeOf(TDATABuffer)) ) ;
          end ;
 
      // Allocate AO buffer
 
      AOBufNumSamples := ((DeviceInfo[0].OutputBufferSamples*16) div NumSamplesPerSubBuf)*NumSamplesPerSubBuf ;
      if AOBuf <> Nil then FreeMem(AOBuf) ;
-     GetMem( AOBuf, AOBufNumSamples*2 ) ;
-     Protocol.pAOBuffers := @AOBufs ;
+     GetMem( AOBuf, AOBufNumSamples*SizeOf(SmallInt) ) ;
 
      iPointer := Cardinal(AOBuf) ;
      Protocol.uAOBuffers := Min( AOBufNumSamples div NumSamplesPerSubBuf, MaxBufs );
@@ -971,7 +977,7 @@ begin
         AOBufs[i].uNumSamples := NumSamplesPerSubBuf ;
         AOBufs[i].uFlags := 0 ;
         AOBufs[i].psDataFlags := Nil ;
-        iPointer := iPointer + NumSamplesPerSubBuf*2  ;
+        iPointer := iPointer + NumSamplesPerSubBuf*SizeOf(SmallInt)  ;
         end ;
 
      // Previous/Next buffer pointers
@@ -979,16 +985,17 @@ begin
          begin
          iPrev := i-1 ;
          if iPrev < 0 then iPrev := Protocol.uAOBuffers-1 ;
-         AOBufs[i].pPrevBuffer := Pointer( Cardinal(@AOBufs) + (iPrev*SizeOf(TDATABuffer)) ) ;
+         AOBufs[i].pPrevBuffer := Pointer( Cardinal(AOBufs) + (iPrev*SizeOf(TDATABuffer)) ) ;
          iNext := i+1 ;
          if iNext >= Protocol.uAOBuffers then iNext := 0 ;
-         AOBufs[i].pNextBuffer := Pointer( Cardinal(@AOBufs) + (iNext*SizeOf(TDATABuffer)) ) ;
+         AOBufs[i].pNextBuffer := Pointer( Cardinal(AOBufs) + (iNext*SizeOf(TDATABuffer)) ) ;
          end ;
 
      // Enable all analog O/P channels and digital channel
+     Protocol.bDOEnable := true;
      Protocol.uAOChannels := DIGD1550_MAX_AO_CHANNELS ;
+     if Protocol.bDOEnable then Dec(Protocol.uAOChannels) ;
      for ch := 0 to Protocol.uAOChannels-1 do Protocol.anAOChannels[ch] := ch ;
-     Protocol.bDOEnable := True ;
 
      // No digital input
      Protocol.bDIEnable := False ;
@@ -1113,7 +1120,8 @@ begin
      NewPoints := Integer(NewAOPosition - AOPosition) ;
      AOPosition := NewAOPosition ;
 
-     if DACActive then begin
+     if DACActive then
+       begin
        // Copy into transfer buffer
        MaxOutPointer := (NumOutPoints*NumOutChannels) - 1 ;
        for i := 0 to NewPoints*NumOutChannels-1 do begin
@@ -1185,17 +1193,19 @@ var
     // Allocate internal output waveform buffer
     if OutValues <> Nil then FreeMem(OutValues) ;
     NumOutPoints := NumDACPoints ;
-    GetMem( OutValues, NumOutPoints*NumOutChannels*2 ) ;
+    GetMem( OutValues, NumOutPoints*NumOutChannels*SizeOf(SmallInt) ) ;
 
     // Copy D/A & digital values into internal buffer
     DigCh := NumOutChannels - 1 ;
-    for i := 0 to NumDACPoints-1 do begin
+    for i := 0 to NumDACPoints-1 do
+        begin
         iTo := i*NumOutChannels ;
         iFrom := i*NumDACChannels ;
-        for ch :=  0 to DIGD1550_MAX_AO_CHANNELS-1 do begin
-            if ch < NumDACChannels then begin
-               OutValues[iTo+ch] := Round( DACValues[iFrom+ch]/Calibration.afDACGains[ch])
-                                     - Calibration.anDACOffsets[ch];
+        for ch :=  0 to DIGD1550_MAX_AO_CHANNELS-1 do
+            begin
+            if ch < NumDACChannels then
+               begin
+               OutValues[iTo+ch] := Round( DACValues[iFrom+ch]/Calibration.afDACGains[ch]) - Calibration.anDACOffsets[ch];
                end
             else OutValues[iTo+ch] := DACDefaultValue[ch] ;
             end ;
@@ -1214,7 +1224,8 @@ var
     // Fill buffer with data from new waveform
     OutPointer := 0 ;
     MaxOutPointer := (NumOutPoints*NumOutChannels) - 1 ;
-    for i := 0 to AOBufNumSamples-1 do begin
+    for i := 0 to AOBufNumSamples-1 do
+        begin
         AOBuf^[i] := OutValues^[OutPointer] ;
         Inc(OutPointer) ;
         if OutPointer > MaxOutPointer then begin
@@ -1244,7 +1255,8 @@ var
     AIPosition := 0 ;
     AIPointer := 0 ;
     AOPointer := 0 ;
-    for i := 1 to AOPosition*NumOutChannels do begin
+    for i := 1 to AOPosition*NumOutChannels do
+        begin
         AOBuf^[AOPointer] := OutValues^[OutPointer] ;
         Inc(OutPointer) ;
         Inc(AOPointer) ;
@@ -1326,7 +1338,8 @@ begin
      DACScale := MaxDACValue/FDACVoltageRangeMax ;
 
      { Update D/A channels }
-     for ch := 0 to Min(nChannels,DIGD1550_MAX_AO_CHANNELS)-1 do begin
+     for ch := 0 to Min(nChannels,DIGD1550_MAX_AO_CHANNELS)-1 do
+         begin
          // Correct for errors in hardware DAC scaling factor
          DACValue := Round(DACVolts[ch]*DACScale/Calibration.afDACGains[ch]) ;
          // Correct for DAC zero offset

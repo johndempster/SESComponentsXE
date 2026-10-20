@@ -120,7 +120,6 @@ TDATABUFFER = packed record
    pNextBuffer : Pointer ;      // Next buffer in the list.
    pPrevBuffer : Pointer ;      // Previous buffer in the list.
    end ;
-
 PDATABUFFER = ^TDATABUFFER ;
 TDATABUFFERS = Array[0..MaxBufs-1] of TDATABUFFER ;
 PDATABUFFERS = ^TDATABUFFERS ;
@@ -891,7 +890,6 @@ begin
 
     // Set output buffers to default values
     NumOutChannels := DD1400_MAX_AO_CHANNELS ;
-
     for ch := 0 to DD1400_MAX_AO_CHANNELS-1 do DACDefaultValue[ch] := -Calibration.anDACOffsets[ch];
     DIGDefaultValue := 0 ;
 
@@ -1088,7 +1086,6 @@ begin
      Protocol.uAOChannels := DD1400_MAX_AO_CHANNELS ;
      if Protocol.bDOEnable then Dec(Protocol.uAOChannels) ;
      for ch := 0 to Protocol.uAOChannels-1 do Protocol.anAOChannels[ch] := ch ;
-     Protocol.bDOEnable := true;
 
      // No digital input
      Protocol.bDIEnable := false ;
@@ -1294,7 +1291,7 @@ var
         if Protocol.bDOEnable then
            begin
            if DigitalInUse then OutValues^[iTo+DigCh] := DigValues[i]
-                           else  OutValues^[iTo+DigCh] := DIGDefaultValue ;
+                           else OutValues^[iTo+DigCh] := DIGDefaultValue ;
            end;
 
         end ;
