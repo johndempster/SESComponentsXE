@@ -704,13 +704,13 @@ begin
            Begin
            DLLName := SourcePath+SearchRec.Name ;
            wdapiHnd := LoadLibrary(PChar(DLLName)) ;
-           if wdapiHnd = 0 then ShowMessage('Unable to load ' + DLLName ) ;
+           if wdapiHnd = INVALID_HANDLE_VALUE then ShowMessage('Unable to load ' + DLLName ) ;
            End
         else ShowMessage('Unable to find ' + SourcePath + 'wdapi*.dll' ) ;
 
         DLLName := SourcePath + AxonDLL ;
         AXDD1400Hnd := LoadLibrary(PChar(DLLName)) ;
-        if AXDD1400Hnd = 0 then ShowMessage('Unable to load ' + DLLName ) ;
+        if AXDD1400Hnd = INVALID_HANDLE_VALUE then ShowMessage('Unable to load ' + DLLName ) ;
 
         end
      else ShowMessage( AxonDLL + ' missing from ' + SettingsDirectory ) ;
@@ -718,10 +718,10 @@ begin
      // Load DLL which calls Axon DLLs
      DLLName := ProgramDir + 'DD1440.Dll' ;
      DD1440Hnd := LoadLibrary(PChar(DLLName)) ;
-     if DD1440Hnd = 0 then ShowMessage('Unable to load ' + DLLName ) ;
+     if DD1440Hnd = INVALID_HANDLE_VALUE then ShowMessage('Unable to load ' + DLLName ) ;
 
      { Get addresses of procedures in library }
-     if DD1440Hnd > 0 then
+     if DD1440Hnd <> INVALID_HANDLE_VALUE then
         begin
 
         @DD1440_CountDevices := DD1440_LoadProcedure(DD1440Hnd,'DD1440_CountDevices') ;
@@ -911,6 +911,8 @@ procedure DD1440_FillOutputBufferWithDefaultValues ;
 var
     i,ch,DIGChannel : Integer ;
 begin
+
+    if AOBuf = Nil then Exit ;
 
     // Circular transfer buffer
     ch := 0 ;
@@ -1509,12 +1511,13 @@ begin
      DD1440_SaveToLog( 'DD1440_CloseDevice succeeded') ;
 
      // Free DLL libraries
-     if DD1440Hnd > 0 then FreeLibrary( DD1440Hnd ) ;
-     DD1440Hnd := 0 ;
-     if AxDD1400Hnd > 0 then FreeLibrary( AxDD1400Hnd ) ;
-     AxDD1400Hnd := 0 ;
-     if wdapiHnd > 0 then FreeLibrary( wdapiHnd ) ;
-     wdapiHnd := 0 ;
+     if DD1440Hnd <> INVALID_HANDLE_VALUE then FreeLibrary( DD1440Hnd ) ;
+     DD1440Hnd := INVALID_HANDLE_VALUE ;
+
+     if AxDD1400Hnd <> INVALID_HANDLE_VALUE then FreeLibrary( AxDD1400Hnd ) ;
+     AxDD1400Hnd := INVALID_HANDLE_VALUE ;
+     if wdapiHnd <> INVALID_HANDLE_VALUE then FreeLibrary( wdapiHnd ) ;
+     wdapiHnd := INVALID_HANDLE_VALUE ;
 
      if OutValues <> Nil then FreeMem( OutValues ) ;
      OutValues := Nil ;
@@ -1539,7 +1542,7 @@ begin
      DeviceInitialised := False ;
      DACActive := False ;
      ADCActive := False ;
-
+     LibraryLoaded := False ;
      LogList.Free ;
 
      end ;
