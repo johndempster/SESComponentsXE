@@ -37,6 +37,8 @@ unit dd1440;
 // 13.10.26 Crashes when using pst V10.7 PCLAMP or AxoScope Digidata drivers fixed
 //          Resolved by restricting number of output channels to MAX_AOChannels (rather than MAX_AOChannels+1)
 //          and substituting TTl digital outputs for last AO channel.
+// 28.10.27 DLL handles now defined as HMODULE
+//          DD1440_FillOutputBufferWithDefaultValues() now exits if AOBuf not allocateed
 
 interface
 
@@ -397,7 +399,6 @@ TDD1440_ADCtoVolts = Function(
           var SamplingInterval : Double ;
           ADCNumChannels : Integer ) ;
 
-
   function  DD1440_MemoryToDACAndDigitalOut(
           var DACValues : Array of SmallInt  ; // D/A output values
           NumDACChannels : Integer ;                // No. D/A channels
@@ -443,11 +444,6 @@ TDD1440_ADCtoVolts = Function(
 
   procedure DD1440_CloseLaboratoryInterface ;
 
-  function  DD1440_CopyAndLoadLibrary(
-          DLLName : string ;
-          SourcePath : string ;
-          DestPath : string ) : Thandle ;
-
   function  DD1440_LoadProcedure(
          Hnd : THandle ;       { Library DLL handle }
          Name : string         { Procedure name within DLL }
@@ -491,21 +487,20 @@ var
    AIDFlags : PByteArray ; //PSmallIntArray ;
    AODFlags : PByteArray ; // PSmallIntArray ;
 
-   ADCActive : Boolean ;  // A/D sampling in progress flag
-   DACActive : Boolean ;  // D/A output in progress flag
+   ADCActive : Boolean = false ;  // A/D sampling in progress flag
+   DACActive : Boolean = false ;  // D/A output in progress flag
 
    Err : Integer ;                           // Error number returned by Digidata
    ErrorMsg : Array[0..80] of ANSIChar ;         // Error messages returned by Digidata
 
-   DD1440Hnd : THandle ;         // D1440.dll library handle
-   AXDD1400Hnd : THandle ;        // axDD1440.dll library handle
-   wdapiHnd : THandle ;       // wdapi.dll library handle
-   LibraryLoaded : boolean ;      // Libraries loaded flag
+   DD1440Hnd : HModule ;         // D1440.dll library handle
+   AXDD1400Hnd : HModule ;       // axDD1440.dll library handle
+   wdapiHnd : HModule ;          // wdapi.dll library handle
+   LibraryLoaded : boolean = False ;                   // Libraries loaded flag
 
    Protocol : TDD1440_Protocol ;  // Digidata command protocol
    NumDevices : Integer ;
    DeviceInfo : Array[0..7] of TDD1440_Info ;
-
 
    Calibration : TDD1440_Calibration ; // Calibration parameters
    SettingsDirectory : String ;
@@ -704,13 +699,13 @@ begin
            Begin
            DLLName := SourcePath+SearchRec.Name ;
            wdapiHnd := LoadLibrary(PChar(DLLName)) ;
-           if wdapiHnd = INVALID_HANDLE_VALUE then ShowMessage('Unable to load ' + DLLName ) ;
+           if wdapiHnd = 0 then ShowMessage('Unable to load ' + DLLName ) ;
            End
         else ShowMessage('Unable to find ' + SourcePath + 'wdapi*.dll' ) ;
 
         DLLName := SourcePath + AxonDLL ;
         AXDD1400Hnd := LoadLibrary(PChar(DLLName)) ;
-        if AXDD1400Hnd = INVALID_HANDLE_VALUE then ShowMessage('Unable to load ' + DLLName ) ;
+        if AXDD1400Hnd = 0 then ShowMessage('Unable to load ' + DLLName ) ;
 
         end
      else ShowMessage( AxonDLL + ' missing from ' + SettingsDirectory ) ;
@@ -718,10 +713,10 @@ begin
      // Load DLL which calls Axon DLLs
      DLLName := ProgramDir + 'DD1440.Dll' ;
      DD1440Hnd := LoadLibrary(PChar(DLLName)) ;
-     if DD1440Hnd = INVALID_HANDLE_VALUE then ShowMessage('Unable to load ' + DLLName ) ;
+     if DD1440Hnd = 0  then ShowMessage('Unable to load ' + DLLName ) ;
 
      { Get addresses of procedures in library }
-     if DD1440Hnd <> INVALID_HANDLE_VALUE then
+     if DD1440Hnd <> 0 then
         begin
 
         @DD1440_CountDevices := DD1440_LoadProcedure(DD1440Hnd,'DD1440_CountDevices') ;
@@ -775,23 +770,6 @@ begin
       LogList.SaveToFile( SettingsDirectory + 'DD1440 Log.txt' );
 
 end ;
-
-
-function  DD1440_CopyAndLoadLibrary(
-          DLLName : string ;
-          SourcePath : string ;
-          DestPath : string ) : Thandle ;
-// ---------------------------------------------------------
-// Copy DLL library from source to destination path and load
-// ---------------------------------------------------------
-begin
-     CopyFile( PChar(SourcePath+DLLName), PChar(DestPath+DLLName), false ) ;
-
-     DD1440_SaveToLog( 'DLL used: ' + SourcePath+DLLName ) ;
-
-     Result := LoadLibrary(PChar(DestPath+DLLName)) ;
-     if Result = 0 then ShowMessage('Unable to load ' + DestPath+DLLName );
-     end;
 
 
 function  DD1440_LoadProcedure(
@@ -1511,13 +1489,12 @@ begin
      DD1440_SaveToLog( 'DD1440_CloseDevice succeeded') ;
 
      // Free DLL libraries
-     if DD1440Hnd <> INVALID_HANDLE_VALUE then FreeLibrary( DD1440Hnd ) ;
-     DD1440Hnd := INVALID_HANDLE_VALUE ;
-
-     if AxDD1400Hnd <> INVALID_HANDLE_VALUE then FreeLibrary( AxDD1400Hnd ) ;
-     AxDD1400Hnd := INVALID_HANDLE_VALUE ;
-     if wdapiHnd <> INVALID_HANDLE_VALUE then FreeLibrary( wdapiHnd ) ;
-     wdapiHnd := INVALID_HANDLE_VALUE ;
+     if DD1440Hnd <> 0 then FreeLibrary( DD1440Hnd ) ;
+     DD1440Hnd := 0 ;
+     if AxDD1400Hnd <> 0 then FreeLibrary( AxDD1400Hnd ) ;
+     AxDD1400Hnd := 0 ;
+     if wdapiHnd <> 0 then FreeLibrary( wdapiHnd ) ;
+     wdapiHnd := 0 ;
 
      if OutValues <> Nil then FreeMem( OutValues ) ;
      OutValues := Nil ;
@@ -1537,7 +1514,6 @@ begin
      AIBufs := Nil ;
      if AOBufs <> Nil  then FreeMem( AOBufs ) ;
      AOBufs := Nil ;
-
 
      DeviceInitialised := False ;
      DACActive := False ;

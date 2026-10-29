@@ -30,6 +30,9 @@ unit dd1550B;
 // 20.10.26 Crashes when using pst V10.7 PCLAMP or AxoScope Digidata drivers fixed
 //          Resolved by restricting number of output channels to MAX_AOChannels (rather than MAX_AOChannels+1)
 //          and substituting TTl digital outputs for last AO channel.
+// 28.10.27 DLL handles now defined as HMODULE
+//          DD1550A_FillOutputBufferWithDefaultValues() now exits if AOBuf not allocateed
+
 
 interface
 
@@ -455,7 +458,7 @@ TDIGD1550B_ADCtoVolts = Function(
   procedure DIGD1550B_CloseLaboratoryInterface ;
 
   function  DIGD1550B_LoadProcedure(
-         Hnd : THandle ;       { Library DLL handle }
+         Hnd : HMODULE ;       { Library DLL handle }
          Name : string         { Procedure name within DLL }
          ) : Pointer ;         { Return pointer to procedure }
 
@@ -493,17 +496,17 @@ var
    AIBufNumSamples : Integer ;        // Input buffer size (no. samples)
    GetADCSamplesInUse : Boolean ;
 
-   ADCActive : Boolean ;  // A/D sampling in progress flag
-   DACActive : Boolean ;  // D/A output in progress flag
+   ADCActive : Boolean = false ;  // A/D sampling in progress flag
+   DACActive : Boolean = false ;  // D/A output in progress flag
 
    Err : Integer ;                           // Error number returned by Digidata
    ErrorMsg : Array[0..80] of ANSIChar ;         // Error messages returned by Digidata
 
-   DD1550BHnd : THandle ;         // DD1550B.dll library handle
-   AxDD1550BHnd : THandle ;       // AxDD1550B.dll library handle
-   wdapiHnd : THandle ;      // wdapi.dll library handle
+   DD1550BHnd : HMODULE ;         // DD1550B.dll library handle
+   AxDD1550BHnd : HMODULE ;       // AxDD1550B.dll library handle
+   wdapiHnd : HMODULE ;      // wdapi.dll library handle
 
-   LibraryLoaded : boolean ;      // Libraries loaded flag
+   LibraryLoaded : boolean = false ;      // Libraries loaded flag
    Protocol : TDIGD1550B_Protocol ;  // Digidata command protocol
    NumDevices : Integer ;
    DeviceInfo : Array[0..7] of TDIGD1550B_Info ;
@@ -703,7 +706,7 @@ begin
      DD1550BHnd := LoadLibrary(PChar(DLLName)) ;
      if DD1550BHnd = 0 then ShowMessage('Unable to load ' + DLLName ) ;
 
-     if DD1550BHnd > 0 then
+     if DD1550BHnd <> 0 then
         begin
         { Get addresses of procedures in library }
         @DIGD1550B_CountDevices := DIGD1550B_LoadProcedure(DD1550BHnd,'DIGD1550B_CountDevices') ;
@@ -751,7 +754,7 @@ begin
 
 
 function  DIGD1550B_LoadProcedure(
-         Hnd : THandle ;       { Library DLL handle }
+         Hnd : HMODULE ;       { Library DLL handle }
          Name : string         { Procedure name within DLL }
          ) : Pointer ;         { Return pointer to procedure }
 { ----------------------------
@@ -839,6 +842,8 @@ procedure DIGD1550B_FillOutputBufferWithDefaultValues ;
 var
     i,ch,DIGChannel : Integer ;
 begin
+
+    if AOBuf = Nil then Exit ;
 
     // Circular transfer buffer
     ch := 0 ;
@@ -1402,11 +1407,11 @@ begin
      DIGD1550B_CloseDevice ;
 
      // Free DLL libraries
-     if DD1550BHnd > 0 then FreeLibrary(DD1550BHnd) ;
+     if DD1550BHnd <> 0 then FreeLibrary(DD1550BHnd) ;
      DD1550BHnd := 0 ;
-     if AxDD1550BHnd > 0 then FreeLibrary(AxDD1550BHnd) ;
+     if AxDD1550BHnd <> 0 then FreeLibrary(AxDD1550BHnd) ;
      AxDD1550BHnd := 0 ;
-     if wdapiHnd > 0 then FreeLibrary(wdapiHnd) ;
+     if wdapiHnd <> 0 then FreeLibrary(wdapiHnd) ;
      wdapiHnd := 0 ;
 
      if OutValues <> Nil then FreeMem( OutValues ) ;
@@ -1424,6 +1429,7 @@ begin
      DeviceInitialised := False ;
      DACActive := False ;
      ADCActive := False ;
+     LibraryLoaded := False ;
 
      end ;
 
